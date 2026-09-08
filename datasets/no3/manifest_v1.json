@@ -1,0 +1,340 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "eal-no3-local-v1",
+  "parameter": "NO3",
+  "unit": "mg/L",
+  "reagentBrand": "益尔",
+  "supportedLevels": [
+    0,
+    1,
+    5,
+    10,
+    25,
+    50,
+    100
+  ],
+  "splitRule": "同一独立测试液批次不得跨调参与最终验证集",
+  "samples": [
+    {
+      "id": "no3-sample-001",
+      "batchId": "unknown-batch-001",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/测试液与完整色卡同框示例.jpg",
+      "sha256": "fd134478d1965bc97ba7eef7e922d8b4657c584e45eb983b489a1b6905a55998",
+      "width": 1279,
+      "height": 1706,
+      "label": {
+        "minimum": 10,
+        "maximum": 25
+      },
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ],
+      "regions": {
+        "card": {
+          "x": 0,
+          "y": 0.592,
+          "w": 0.705,
+          "h": 0.195
+        },
+        "liquid": {
+          "x": 0.439,
+          "y": 0.522,
+          "w": 0.038,
+          "h": 0.058
+        }
+      },
+      "annotationSource": "Existing SAMPLE_CARD/SAMPLE_LIQUID geometry; not inferred from concentration"
+    },
+    {
+      "id": "no3-numbered-1",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/1_10-25.jpg",
+      "sha256": "3e7f0cbb4ff25b547de7a8e60a04484ce46cfb4e3d7577540d37f41f3c62d7d6",
+      "width": 4032,
+      "height": 3024,
+      "label": {
+        "minimum": 10.0,
+        "maximum": 25.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.097,
+          "y": 0.31,
+          "w": 0.676,
+          "h": 0.33
+        },
+        "liquid": {
+          "x": 0.4,
+          "y": 0.135,
+          "w": 0.065,
+          "h": 0.105
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "no3-numbered-2",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/2_10-25.jpg",
+      "sha256": "b835f02ac93ad3dd3f650345615f1ad33822bcc8385dffcbe25213c1e9abe1f9",
+      "width": 4032,
+      "height": 3024,
+      "label": {
+        "minimum": 10.0,
+        "maximum": 25.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.105,
+          "y": 0.318,
+          "w": 0.674,
+          "h": 0.32
+        },
+        "liquid": {
+          "x": 0.414,
+          "y": 0.145,
+          "w": 0.066,
+          "h": 0.1
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "no3-numbered-3",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/3_5-10.jpg",
+      "sha256": "b7f0bbaad19d812e60804b11f2fc203466de1877f1f00a3fa2fa83abf51b870a",
+      "width": 4032,
+      "height": 3024,
+      "label": {
+        "minimum": 5.0,
+        "maximum": 10.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.058,
+          "y": 0.383,
+          "w": 0.812,
+          "h": 0.404
+        },
+        "liquid": {
+          "x": 0.435,
+          "y": 0.23,
+          "w": 0.065,
+          "h": 0.065
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "no3-numbered-4",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/4_5-10.jpg",
+      "sha256": "0db38afeb2bbd9ebac09716a57a96558cd13a8c53d013cd5af92c2a58d5375b0",
+      "width": 1702,
+      "height": 1276,
+      "label": {
+        "minimum": 5.0,
+        "maximum": 10.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.049,
+          "y": 0.305,
+          "w": 0.826,
+          "h": 0.4
+        },
+        "liquid": {
+          "x": 0.49,
+          "y": 0.17,
+          "w": 0.075,
+          "h": 0.08
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "no3-numbered-5",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/5_5-10.jpg",
+      "sha256": "ba6344f9d779279d704f5f867a609a297394dffe567555d158ddaa6acbcb64ed",
+      "width": 4032,
+      "height": 3024,
+      "label": {
+        "minimum": 5.0,
+        "maximum": 10.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.08,
+          "y": 0.367,
+          "w": 0.78,
+          "h": 0.383
+        },
+        "liquid": {
+          "x": 0.395,
+          "y": 0.215,
+          "w": 0.075,
+          "h": 0.065
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "no3-numbered-6",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/6_10-25.jpg",
+      "sha256": "c5aa28c2893b9ab091f961c75b061649d03f5cb359428cf1dffea728c6a77ce3",
+      "width": 4032,
+      "height": 3024,
+      "label": {
+        "minimum": 10.0,
+        "maximum": 25.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.05,
+          "y": 0.252,
+          "w": 0.79,
+          "h": 0.378
+        },
+        "liquid": {
+          "x": 0.431,
+          "y": 0.1,
+          "w": 0.065,
+          "h": 0.09
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "no3-numbered-7",
+      "batchId": "unknown-batch",
+      "split": "unassigned",
+      "imagePath": "../../resource/NO3/7_5-10.jpg",
+      "sha256": "3c65870e7ffc7a3c8b2cd286209dae6e1fca7a8c8e4300fb6f105299446b06db",
+      "width": 4032,
+      "height": 3024,
+      "label": {
+        "minimum": 5.0,
+        "maximum": 10.0
+      },
+      "labelSource": "user-provided filename",
+      "reagentLot": null,
+      "cardVersion": null,
+      "device": null,
+      "lighting": null,
+      "capturedAt": null,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.075,
+          "y": 0.369,
+          "w": 0.783,
+          "h": 0.386
+        },
+        "liquid": {
+          "x": 0.395,
+          "y": 0.208,
+          "w": 0.075,
+          "h": 0.065
+        }
+      },
+      "annotationSource": "Existing manual geometry in no3-dataset-audit.mjs; not fitted to concentration",
+      "eligibleForFinalEvaluation": false,
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    }
+  ],
+  "revision": 2,
+  "annotationCoordinateSpace": "normalized displayed image after EXIF orientation, before user rotation"
+}

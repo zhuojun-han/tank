@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "repositories": [
+    {
+      "path": ".",
+      "role": "app-web-docs-datasets-tools"
+    }
+  ],
+  "modules": ["app", "web-demo"],
+  "runtime": {
+    "minimumNode": "22.13.0",
+    "flutter": "3.44.7",
+    "dart": "3.12.2"
+  },
+  "entryDocumentLimits": {
+    "README.md": 120,
+    "docs/PROJECT_CONTEXT.md": 160,
+    "docs/CURRENT_STATUS.md": 180
+  },
+  "localEvidenceDirectories": [
+    "artifacts",
+    "app/artifacts",
+    "app/build",
+    "web-demo/artifacts",
+    "web-demo/tests/artifacts"
+  ],
+  "localEvidenceExtensions": [".log"],
+  "datasets": [
+    "datasets/no3/manifest_v1.json",
+    "datasets/po4/manifest.json"
+  ],
+  "sharedContracts": [
+    {
+      "source": "contracts/maintenance-dosing.json"
+    }
+  ]
+}

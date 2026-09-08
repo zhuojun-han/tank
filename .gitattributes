@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Archived originals retain their recorded hashes and original line endings.
+docs/archive/** -text

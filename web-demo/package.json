@@ -1,0 +1,46 @@
+{
+  "name": "lanjiao-water-quality-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "vinext dev",
+    "build": "vinext build",
+    "start": "node tools/preview.mjs",
+    "test": "npm run check",
+    "test:unit": "node tools/run-unit.mjs",
+    "test:ssr": "node --test tests/rendered-html.test.mjs",
+    "test:e2e": "playwright test",
+    "test:dataset:no3": "node tests/no3-dataset-audit.mjs",
+    "typecheck": "tsc --noEmit --incremental false",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "check": "npm run typecheck && npm run lint && npm run test:unit && npm run build && npm run test:ssr && npm run test:e2e"
+  },
+  "dependencies": {
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.47.0",
+    "@cloudflare/workers-types": "5.20260722.1",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.3.4",
+    "react-server-dom-webpack": "19.2.8",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.2.2",
+    "wrangler": "4.114.0"
+  },
+  "type": "module"
+}

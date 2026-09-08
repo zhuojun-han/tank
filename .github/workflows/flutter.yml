@@ -1,0 +1,48 @@
+name: Flutter checks
+
+on:
+  push:
+    paths: ['app/**', 'datasets/**', 'resource/**', 'contracts/**', 'tools/**', 'docs/**', 'README.md', 'AGENTS.md', 'project-workspace.json', '.gitattributes', '.gitignore', '.github/workflows/flutter.yml']
+  pull_request:
+    paths: ['app/**', 'datasets/**', 'resource/**', 'contracts/**', 'tools/**', 'docs/**', 'README.md', 'AGENTS.md', 'project-workspace.json', '.gitattributes', '.gitignore', '.github/workflows/flutter.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - id: runtime
+        working-directory: .
+        run: node -e "const c=require('./project-workspace.json');require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'flutter='+c.runtime.flutter+'\n')"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ steps.runtime.outputs.flutter }}
+          channel: stable
+          cache: true
+      - name: Workspace and dataset checks
+        working-directory: .
+        run: node tools/check-project.mjs
+      - name: Workspace tool tests
+        working-directory: .
+        run: node --test tools/tests/*.test.mjs
+      - run: flutter pub get --enforce-lockfile
+      - run: dart format --output=none --set-exit-if-changed lib test tool
+      - run: flutter analyze
+      - run: flutter test
+      - name: Verify generated database code
+        run: |
+          git ls-files --error-unmatch -- lib/data/database/app_database.g.dart
+          dart run build_runner build
+          git diff --exit-code -- lib/data/database/app_database.g.dart
+      - name: Compile Android debug
+        run: flutter build apk --debug --no-pub

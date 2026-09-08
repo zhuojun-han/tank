@@ -1,0 +1,57 @@
+# 技术与数据合同
+
+本文件维护两端架构边界、数据与时间语义。实现事实以源码与锁文件为准，当前测试和平台状态只在 [CURRENT_STATUS](CURRENT_STATUS.md) 维护；产品行为见 [MVP_SPEC](MVP_SPEC.md)。
+
+## 分层与仓库
+
+Flutter 使用页面/状态 → 业务服务与仓库 → Drift/SQLite、私有文件、平台能力的分层。页面不直接拼接 SQL、调度平台通知或管理检测照片文件。网页通过 React 页面调用纯计算/日期/颜色模块，使用 localStorage 保存本地状态；不依赖云数据库、账户或视觉大模型。
+
+项目使用一个根 Git 仓库，统一管理 `app/`、`web-demo/`、`docs/`、`datasets/`、`resource/`、`contracts/` 和 `tools/`；`web-demo/` 是普通子目录。工作区由根 [project-workspace.json](../project-workspace.json) 定义，CI 统一从根 `.github/workflows/` 执行，App/Web 检查分别在对应目录运行。跨端改动分别记录验证；只有远程工作流实际执行后才报告 CI 结果，推送代码不等于发布网站或 App。
+
+原 Web 独立仓库的 38 次提交仅保存在本机根 `.git/legacy-web-repository/`；这份 Git 元数据不随当前根仓库推送，新克隆不会自带该历史。
+
+## 时间与隔离
+
+- `capturedAt`、`confirmedAt`、`dueAt`、事件时间、snooze 截止等时间点以 UTC 保存，显示时使用设备当前时区。
+- 检测倒计时仅在前台运行时刷新 UI；后台保留 UTC 截止时刻及已安排的系统提醒，恢复后按截止重算，已到期仅完成一次。旧会话快照不得覆盖重启后的计时或正在复核的草稿。
+- 日期周期的开始日、发生日、停止边界及网页补液日是本地日历日期 `YYYY-MM-DD`，不是待偏移的 UTC 时间点。提醒时刻由本地日期和时分组合，再转 UTC；跨时区需重新安排平台提醒。
+- 数据操作以 `tankId`、参数/任务 ID 等作用域重新校验；异步页面打开后的保存仍需检查目标归属和输入，避免串缸。
+- 普通固定日期周期与旧操作时间周期必须分开处理，见 [产品规格](MVP_SPEC.md)。日历按窗口展开，不预生成无限实体。
+
+## App 持久化与兼容
+
+当前 Drift schema 和 JSON 备份格式均为 **v10**。版本定义分别在 [app_database.dart](../app/lib/data/database/app_database.dart) 与 [local_backup_service.dart](../app/lib/data/backup/local_backup_service.dart)；历史格式和列为兼容保留，不能按“无新写入”判断可直接删除。
+
+| 实体/字段 | 当前合同 |
+| --- | --- |
+| Tanks / WaterParameters / TankParameters | 默认海缸、内置/自定义参数、按缸启停；停用不删除记录 |
+| WaterQualityTargets | 同缸同参数唯一范围，最小值不大于最大值 |
+| ReagentProfiles | 试剂、单位、档位、计时与版本资料；缺资料不自动推断已验证 |
+| TestRecords | 确认上下限与可空 confirmedInterpolation；原始 estimatedMinValue/estimatedMaxValue/estimatedInterpolation、算法方法/版本、质量/失败原因与人工结果分离 |
+| ActiveTestSessions | 检测阶段、计时、确认/原始范围及插值草稿，放弃不形成正式记录 |
+| MaintenanceTasks / TaskEvents | 一次性计划、周期规则 recurrenceJson、逐日状态/稍后/停止与历史事件 |
+| AppPreferences / TestTimerDefaults | 当前缸、主题、提醒开关、鱼类档案与压缩自定义立绘、每缸每参数计时默认 |
+
+v10 增加确认/原始插值和对应草稿字段，并为已有 PO4 参数启用拍照入口；旧范围不补虚构插值。v9 周期字段、v8 鱼类档案继续兼容。旧 `measuredAt`、照片列等仍可能被迁移/旧备份使用；新检测的正式照片引用保持空。
+
+修改人工值和备注不覆盖算法原始估值、拍摄时间或算法版本。单值、范围和范围内可空插值分别校验；展示取整不改变原始小数和记录值。
+
+## 备份与文件
+
+- JSON v10 及 ZIP 完整备份包含 11 张业务表的可迁移内容，支持读取 v1–v9；当前照片/草稿照片引用和设备派生通知 ID 在备份读取/写出时剥离。用户鱼类立绘是结构化业务配置，与检测照片不同。
+- ZIP 新输出仅含 `database.json` 与 `manifest.json`，校验版本、字段、关联、路径、CRC、SHA-256 和容量限制；旧含照片 ZIP 仍校验完整性但不复制照片。
+- 设置页恢复为权威快照：完整校验和影响确认后，在同一 SQLite 事务替换业务数据；失败需回滚，不以逐条部分成功替代。平台通知权限不迁移，提交后按本机权限重排。
+- CSV 便于查看检测记录，含范围/插值，不是恢复格式；防止公式注入。备份层细节见 [README](../app/lib/data/backup/README.md)。
+- 检测照片仅在当次拍照处理中使用私有缓存；确认、取消、重拍或手动降级后清理。正式记录和新备份不包含照片；不在升级时静默删除旧用户留档。
+
+每次 schema 改动升级版本并提供迁移验证；不要修改生成代码代替源定义和生成步骤。空间不足、失败清理、恢复异常须优先保护已确认数据。
+
+## 网页数据
+
+当前浏览器业务状态保存在 `reef-demo-state-v10`。保留旧状态兼容；新增字段提供安全默认值，不把演示记录自动当用户实测。`maintenanceCycles` 保存配方快照和残液当量，日历发生项即时生成，普通 tasks 不被物化为每日自动完成事件。补液数据合同见 [滴定规范](MAINTENANCE_DOSING_CALCULATOR.md)；此新增结构尚未同步 App。
+
+网页 localStorage 与 App JSON/ZIP 不是兼容格式；同步功能不得顺带导入演示历史。网页只在打开时提醒，系统通知由 Flutter 独立实现和验证。
+
+## 计算与算法
+
+公式、单位、数值限制由 [PO4](LANTHANUM_CHLORIDE_CALCULATOR.md)、[KH](SODIUM_BICARBONATE_KH_CALCULATOR.md)、[海盐](SALINITY_CALCULATOR.md)、[稳定滴定](MAINTENANCE_DOSING_CALCULATOR.md) 维护。颜色比较合同在 [拍照规范](IMAGE_ESTIMATION.md)。两端使用共同的参考数据验证行为一致，不由此推定真实化学效果或浓度准确率。稳定滴定的同输入/输出样例只维护根 [contracts/maintenance-dosing.json](../contracts/maintenance-dosing.json)，App 与 Web 测试直接读取此文件。变更合同须审阅期望值并运行两端相关测试，不从某端实现临时生成期望而跳过审阅。

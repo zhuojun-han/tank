@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "contract": "maintenance-dosing-actual-volume-v1",
+  "absoluteTolerance": 1e-9,
+  "units": { "volumeMl": "mL", "flow": "unit per minute or second", "minutes": "minutes per day", "dailyChange": "PO4 mg/L/day or KH dKH/day" },
+  "defaults": { "waterL": 200, "volumeMl": 500, "flow": 1.4, "minutes": 1, "unit": "ml/s", "khStrength": 6, "khPurity": 100, "temperature": 20 },
+  "cases": [
+    { "id": "default-po4", "input": { "chemical": "po4", "dailyChange": 0.02 }, "expected": { "dailyStockMl": 0.4, "dailyLiquidMl": 84, "actualDays": 5.9523809523809526, "stockMl": 2.380952380952381, "feasible": true } },
+    { "id": "default-kh", "input": { "chemical": "kh", "dailyChange": 0.5 }, "expected": { "dailyStockMl": 60, "dailyLiquidMl": 84, "actualDays": 5.9523809523809526, "stockMl": 357.14285714285717, "feasible": true } },
+    { "id": "larger-reservoir", "input": { "chemical": "po4", "dailyChange": 0.02, "volumeMl": 1000 }, "expected": { "dailyStockMl": 0.4, "dailyLiquidMl": 84, "actualDays": 11.904761904761905, "stockMl": 4.761904761904762, "feasible": true } },
+    { "id": "flow-per-minute", "input": { "chemical": "po4", "dailyChange": 0.05, "flow": 100, "unit": "ml/min" }, "expected": { "dailyStockMl": 1, "dailyLiquidMl": 100, "actualDays": 5, "stockMl": 5, "feasible": true } },
+    { "id": "no-demand", "input": { "chemical": "po4", "dailyChange": 0 }, "expected": { "dailyStockMl": 0, "dailyLiquidMl": 84, "actualDays": 5.9523809523809526, "stockMl": 0, "feasible": true } },
+    { "id": "stock-exceeds-reservoir", "input": { "chemical": "kh", "dailyChange": 2 }, "expected": { "dailyStockMl": 240, "dailyLiquidMl": 84, "actualDays": 5.9523809523809526, "stockMl": 1428.5714285714287, "feasible": false } },
+    { "id": "kh-stock-strength-and-purity", "input": { "chemical": "kh", "dailyChange": 0.5, "flow": 100, "unit": "ml/min", "khStrength": 8, "khPurity": 95 }, "expected": { "dailyStockMl": 80, "dailyLiquidMl": 100, "actualDays": 5, "stockMl": 400, "feasible": true } },
+    { "id": "empty-volume", "input": { "chemical": "po4", "dailyChange": 0.02, "volumeMl": 0 }, "reject": true },
+    { "id": "zero-flow", "input": { "chemical": "po4", "dailyChange": 0.02, "flow": 0 }, "reject": true },
+    { "id": "kh-stock-solubility", "input": { "chemical": "kh", "dailyChange": 0.5, "khStrength": 4, "temperature": 20 }, "reject": true }
+  ]
+}

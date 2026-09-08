@@ -1,0 +1,122 @@
+[
+  {
+    "source": "README.md",
+    "originalSha256": "6774e9f00ab767d8dbeeca5db272c749a8740056bf6c8b67191500d10b75bf5d",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/README.md",
+    "archiveSha256": "ade63e1c402846acd0c7f9de1617df90ec673a366be68dafc33d5620be3fd490"
+  },
+  {
+    "source": "AGENTS.md",
+    "originalSha256": "5177dc5225e3e50cc36724c11e0c42a8cfb4efbafc446b20ff7746761a951e5d",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/AGENTS.md",
+    "archiveSha256": "71c98fdfa982a899821785a4ca136f0aface4f8104983bd48593403e2fa0fd89"
+  },
+  {
+    "source": "docs/PROJECT_CONTEXT.md",
+    "originalSha256": "192aceed3d8bdedbe25ef1d32636d0af41e2c689dc72469be48752dfe692b471",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/PROJECT_CONTEXT.md",
+    "archiveSha256": "33d5238a1d816fb07320f90cf00b779c68f7b355c7866a6bd87055a1650f626a"
+  },
+  {
+    "source": "docs/CURRENT_STATUS.md",
+    "originalSha256": "900c3bec59785c51315121730101e459a7184cb4a29ab16badb58b1edc41c218",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/CURRENT_STATUS.md",
+    "archiveSha256": "d7cc77cab4f2accf5b713688ab738a85434c1e3109b897d002168f283e816538"
+  },
+  {
+    "source": "docs/MVP_SPEC.md",
+    "originalSha256": "ab485715636cbda5125870fe4e28f64224d217f74587d2b951a8b511fa2fc81a",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/MVP_SPEC.md",
+    "archiveSha256": "8c5d8d75c8b69936200d2436c2adfc9ccb4830a28fb76d390e77dc73297484c0"
+  },
+  {
+    "source": "docs/TECHNICAL_DESIGN.md",
+    "originalSha256": "5cfea467552c1e9c0c94b09f7c8e835a8bc1d248c5e683d315fb0b6ea0a11bcc",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/TECHNICAL_DESIGN.md",
+    "archiveSha256": "a4a136406e3fba01724517fb49320356abf2acb54c898c5b6ff554917566f2e5"
+  },
+  {
+    "source": "docs/IMAGE_ESTIMATION.md",
+    "originalSha256": "5c0a1bd1154349369903806fcfa5806ec43e7714c68aaa2244fcc2f082604621",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/IMAGE_ESTIMATION.md",
+    "archiveSha256": "1740286b28a159d44ab872440818b82d1336f0343b52731edc15561a0cbaf750"
+  },
+  {
+    "source": "docs/MAINTENANCE_DOSING_CALCULATOR.md",
+    "originalSha256": "43b7a3925769ae544646cd7e91bb9d2861fb49069c4f66c2176ed1d4ee70a7b8",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/MAINTENANCE_DOSING_CALCULATOR.md",
+    "archiveSha256": "8626422717715058c1215dfed3d55ff173037ccd6d9a555891fac57bc1eac104"
+  },
+  {
+    "source": "docs/DEVELOPMENT_PLAN.md",
+    "originalSha256": "ea4607a2b635988f7e1642a04a68294dd04fb06b5cb409d2e4ccddb7f076f5d5",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/DEVELOPMENT_PLAN.md",
+    "archiveSha256": "e20bcc34232c75be0cb324e4457fe3f49cb8ab1aa7aacbee7131155438c3ccde"
+  },
+  {
+    "source": "docs/FLUTTER_DEVELOPMENT_TODO.md",
+    "originalSha256": "fcee0fab4e7198b1c397540a3a9399e461f34ac2adbc9070369a18717da47147",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/FLUTTER_DEVELOPMENT_TODO.md",
+    "archiveSha256": "18050eccdcfe124c7406ea7cd561ba01e20b910f856dfb708eca57da35a01fef"
+  },
+  {
+    "source": "docs/RELEASE_CHECKLIST.md",
+    "originalSha256": "a874c1fafd9078ab36673ed998b38ca69c2f22df2a60ce5d34ff53571f38c1df",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/RELEASE_CHECKLIST.md",
+    "archiveSha256": "8a303cce72b0f6fcaa77a9d86c190c36aad3f1ae1d51a366d9a2edfefd6cda84"
+  },
+  {
+    "source": "docs/KNOWN_LIMITATIONS.md",
+    "originalSha256": "d120b113fef8bdd71832c6cf9684344654c6fd200eef41e450f418f465926fa5",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/KNOWN_LIMITATIONS.md",
+    "archiveSha256": "d4b4a11d3237057a6ddae59cedf2618c1d67b4caed4ef9d80bde12d9ac1e2b86"
+  },
+  {
+    "source": "docs/PRIVACY.md",
+    "originalSha256": "f1a7a9c9db03e80e54a8083c2d7b5a78495abd9ed03b3b5edc74c228d40db944",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/PRIVACY.md",
+    "archiveSha256": "d82149dd3617585417f134b116da5807df728d4efce0a100213cc2271242dfba"
+  },
+  {
+    "source": "docs/NO3_OFFLINE_EVALUATION_V0.md",
+    "originalSha256": "8fe9496d4fac84994ca9f7d27dc3ef6ad2a280497fcb538274bb5e5b09974756",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/NO3_OFFLINE_EVALUATION_V0.md",
+    "archiveSha256": "4a6dbf48afd7cee8bb5cdfaa0f2c1a418c1e58c44515b8686b173db4a65b616f"
+  },
+  {
+    "source": "docs/coordination/app-sync-backlog.md",
+    "originalSha256": "0b6fc0c445cab447c2b4c7fb349295f4fd4b2e2446ba072618fa54bd20eac2d7",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/coordination/app-sync-backlog.md",
+    "archiveSha256": "35b0ddef942f2708c0f281d69cdf4624daa6e962e38d4610b66d51a65d892eb9"
+  },
+  {
+    "source": "app/README.md",
+    "originalSha256": "e9c4043b37caecf00a929012d44255a7db222ea598c914b87616349a13ecc75f",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/app/README.md",
+    "archiveSha256": "5383858741631ce9021856c21d9476c9125f55f94576308df7860be02ba53b96"
+  },
+  {
+    "source": "app/lib/data/backup/README.md",
+    "originalSha256": "cd160692a17bd2c40dbf185b71031518ba8c785036532501091bea9dcb47d2de",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/app/lib/data/backup/README.md",
+    "archiveSha256": "4aa21ae2a6437c9bd01e4b2473944da82f7d3149781e354864cb958925e9f677"
+  },
+  {
+    "source": "web-demo/README.md",
+    "originalSha256": "0de55952769d478e0a64404d089c610be95527410fc90daa20801dc02ae2274c",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/web-demo/README.md",
+    "archiveSha256": "44c5f1f531ecf8de47fe2acc4d7c887c1e2d164d71731f4cdb865d595b873f39"
+  },
+  {
+    "source": "docs/SODIUM_BICARBONATE_KH_CALCULATOR.md",
+    "originalSha256": "10e06173583295e0497bfb9791dea976c081ac6a111f05cec9a2eb7da609d1ef",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/SODIUM_BICARBONATE_KH_CALCULATOR.md",
+    "archiveSha256": "c4704258b51a03fee8c802efeb3ad27490e83663e3aca29a5d0fae0774c88c7a"
+  },
+  {
+    "source": "docs/ADVICE_RULES.md",
+    "originalSha256": "77b1bc3f57e59597290f34b1f18334c7d66da7c5ba6788f97c5acb0d7681f063",
+    "archive": "docs/archive/2026-09-08-before-workflow-cleanup/docs/ADVICE_RULES.md",
+    "archiveSha256": "e7408f5faeb404fee0e090c38c0818817fd89b2deefdb35f51e65d43d505b9d8"
+  }
+]

@@ -1,0 +1,202 @@
+{
+  "parameter": "PO4",
+  "unit": "mg/L",
+  "levels": [
+    0,
+    0.03,
+    0.1,
+    0.25,
+    0.5,
+    1,
+    3
+  ],
+  "samples": [
+    {
+      "id": "1",
+      "imagePath": "../../resource/PO4/1_0.1-0.25.jpg",
+      "sha256": "8cd09fb35691f4c7740e869f935cf0d5ef08fb7bbb82cb4c549cb9d9d92cd039",
+      "displayWidth": 3024,
+      "displayHeight": 4032,
+      "manualLabel": {
+        "minimum": 0.25,
+        "maximum": 0.5
+      },
+      "batchId": null,
+      "split": "unassigned",
+      "eligibleForFinalEvaluation": false,
+      "originalFilenameLabel": {
+        "minimum": 0.1,
+        "maximum": 0.25
+      },
+      "labelCorrection": {
+        "date": "2026-09-08",
+        "source": "user confirmation in conversation",
+        "note": "用户确认编号1算法范围正确，原文件名人工标注有误；原图与文件名保留。"
+      },
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.385,
+          "y": 0.187,
+          "w": 0.28,
+          "h": 0.61
+        },
+        "liquid": {
+          "x": 0.3,
+          "y": 0.48,
+          "w": 0.025,
+          "h": 0.025
+        }
+      },
+      "columns": 2,
+      "annotationSource": "Existing manual geometry in po4-color-match/samples.ts; not fitted to concentration",
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "2",
+      "imagePath": "../../resource/PO4/2_0.1-0.25.jpg",
+      "sha256": "3f4eae7c75e69e68f0144316e6d2e2ea7df019335a66e073d7a00553bcf0a190",
+      "displayWidth": 3024,
+      "displayHeight": 4032,
+      "manualLabel": {
+        "minimum": 0.1,
+        "maximum": 0.25
+      },
+      "batchId": null,
+      "split": "unassigned",
+      "eligibleForFinalEvaluation": false,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.381,
+          "y": 0.165,
+          "w": 0.284,
+          "h": 0.608
+        },
+        "liquid": {
+          "x": 0.325,
+          "y": 0.345,
+          "w": 0.025,
+          "h": 0.025
+        }
+      },
+      "columns": 2,
+      "annotationSource": "Existing manual geometry in po4-color-match/samples.ts; not fitted to concentration",
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "3",
+      "imagePath": "../../resource/PO4/3_3.jpg",
+      "sha256": "faef0852aaaaa0670b8fa26dfcb32b2e3668deb3a65b5e283b5b1ebc581c2396",
+      "displayWidth": 4032,
+      "displayHeight": 3024,
+      "manualLabel": {
+        "minimum": 3.0,
+        "maximum": 3.0
+      },
+      "batchId": null,
+      "split": "unassigned",
+      "eligibleForFinalEvaluation": false,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.135,
+          "y": 0.274,
+          "w": 0.735,
+          "h": 0.326
+        },
+        "liquid": {
+          "x": 0.33,
+          "y": 0.7,
+          "w": 0.025,
+          "h": 0.03
+        }
+      },
+      "columns": 4,
+      "annotationSource": "Existing manual geometry in po4-color-match/samples.ts; not fitted to concentration",
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "4",
+      "imagePath": "../../resource/PO4/4_0.1-0.25.jpg",
+      "sha256": "3fbe6e28101ba3e56ae374c3a72d753b02cde4db8b7d99c36b37c31e6575a973",
+      "displayWidth": 3024,
+      "displayHeight": 4032,
+      "manualLabel": {
+        "minimum": 0.1,
+        "maximum": 0.25
+      },
+      "batchId": null,
+      "split": "unassigned",
+      "eligibleForFinalEvaluation": false,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.4075,
+          "y": 0.14,
+          "w": 0.3,
+          "h": 0.658
+        },
+        "liquid": {
+          "x": 0.34,
+          "y": 0.45,
+          "w": 0.028,
+          "h": 0.03
+        }
+      },
+      "columns": 2,
+      "annotationSource": "Existing manual geometry in po4-color-match/samples.ts; not fitted to concentration",
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    },
+    {
+      "id": "5",
+      "imagePath": "../../resource/PO4/5_0.5-1.jpg",
+      "sha256": "24cc7403aa6438d6d1e7c931081c8272304b1dc1fb843d9fc2bfca8b1f05f8f4",
+      "displayWidth": 3072,
+      "displayHeight": 4096,
+      "manualLabel": {
+        "minimum": 0.5,
+        "maximum": 1.0
+      },
+      "batchId": null,
+      "split": "unassigned",
+      "eligibleForFinalEvaluation": false,
+      "regionsAnnotated": true,
+      "regions": {
+        "card": {
+          "x": 0.395,
+          "y": 0.28,
+          "w": 0.18,
+          "h": 0.4
+        },
+        "liquid": {
+          "x": 0.59,
+          "y": 0.57,
+          "w": 0.018,
+          "h": 0.02
+        }
+      },
+      "columns": 2,
+      "annotationSource": "Existing manual geometry in po4-color-match/samples.ts; not fitted to concentration",
+      "exclusionReasons": [
+        "独立测试液批次未确认",
+        "试剂批次、色卡版本、设备和光照信息缺失"
+      ]
+    }
+  ],
+  "schemaVersion": 1,
+  "revision": 2,
+  "annotationCoordinateSpace": "normalized displayed image after EXIF orientation, before user rotation"
+}
