@@ -52,6 +52,8 @@ v10 增加确认/原始插值和对应草稿字段，并为已有 PO4 参数启�
 
 当前浏览器业务状态保存在 `reef-demo-state-v10`。保留旧状态兼容；新增字段提供安全默认值，不把演示记录自动当用户实测。`maintenanceCycles` 保存配方快照和残液当量，日历发生项即时生成，普通 tasks 不被物化为每日自动完成事件。补液数据合同见 [滴定规范](MAINTENANCE_DOSING_CALCULATOR.md)；此新增结构尚未同步 App。
 
+加载只读取首个现存版本；新存档损坏时仍阻断恢复，不回退覆盖。长历史图表保留全部记录和滚动范围，仅挂载可见区域附近的标记，范围缺插值时仍跨越连接前后有效点。计划按单遍分组选头，动画只展开可显示的鱼只。遗留时间戳提醒按真实时刻比较，长于浏览器单次定时上限时分段等待，未到期不重复写存档；图片和备份资源边界分别见 [拍照规范](IMAGE_ESTIMATION.md#图片资源边界) 与 [App 备份层](../app/lib/data/backup/README.md)。
+
 网页任务的可选 `rolling` 保存 `version: 1`、`nextDate`、`revision` 与 `completed: [{ dueDate, completedDate }]`，分别记录待办排期基准、修改版本和实际完成历史；日期修改须重新核对版本及任务归属。可选 `legacySchedule` 保存旧 `scheduledDate`、可选 `intervalDays` 与 `defaultCompletedBeforeDate`，只兼容旧默认历史，编辑时保留，不给新任务补造完成记录。`projection: { date, today }` 仅为当前日期下的渲染投影，不写入存档；自动顺延不反复改写历史。行为与平台范围见 [产品合同](MVP_SPEC.md#网页完成驱动排期)。
 
 KH 目标默认值使用一次初始化标记 `khTargetDefaultsApplied: true`，沿用现有存储键。读取旧存档时，仅给已有且上下限均为 `null` 的 KH 目标补 `7–9 dKH`，不新增目标行或启用未启用的 KH；既有自定义值和单边目标保持原样。初始化成功后随状态保存标记，用户随后清空目标再加载时保持为空，不重复填回。新建 KH 目标或用户主动启用 KH 时使用默认范围。
