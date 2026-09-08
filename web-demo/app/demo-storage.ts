@@ -130,9 +130,13 @@ export function loadDemoState(access: StorageAccess, defaults: DemoState, now = 
     targets: initializeKhTargetRanges(defaults.targets), tasks: compatibleTasks(defaults.tasks, now) };
   try {
     const storage = access();
-    const raw = keys.map(key => storage.getItem(key)).find(value => value !== null);
-    if (raw === undefined) return { state: fallback, blocked: false };
-    const parsed: unknown = JSON.parse(raw!);
+    let raw: string | null = null;
+    for (const key of keys) {
+      raw = storage.getItem(key);
+      if (raw !== null) break;
+    }
+    if (raw === null) return { state: fallback, blocked: false };
+    const parsed: unknown = JSON.parse(raw);
     requireValid(object(parsed), '根对象');
     // Every supported historical snapshot already contained these fields.
     // An empty/partial object is damaged data, not an invitation to seed demos.

@@ -175,11 +175,13 @@ export function fishCount(items: FishStockItem[]) {
 }
 
 export function animatedFish(items: FishStockItem[]) {
-  return items
-    .flatMap((item) => Array.from({ length: item.quantity }, (_, index) => ({
-      key: `${item.id}-${index}`,
-      species: item.species,
-      artwork: item.artwork,
-    })))
-    .slice(0, MAX_ANIMATED_FISH);
+  const swimmers: { key: string; species: string; artwork: FishArtwork }[] = [];
+  for (const item of items) {
+    const count = Math.min(item.quantity, MAX_ANIMATED_FISH - swimmers.length);
+    for (let index = 0; index < count; index++) {
+      swimmers.push({ key: `${item.id}-${index}`, species: item.species, artwork: item.artwork });
+    }
+    if (swimmers.length === MAX_ANIMATED_FISH) break;
+  }
+  return swimmers;
 }

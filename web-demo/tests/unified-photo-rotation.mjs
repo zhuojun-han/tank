@@ -4,7 +4,7 @@ import {mkdir} from 'node:fs/promises';
 const browser=await launchBrowser();
 try {
  const page=await browser.newPage({viewport:{width:375,height:812}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- const imageState=()=>page.locator('.cm-photo img').evaluate(async img=>{await img.decode();return{width:img.naturalWidth,height:img.naturalHeight,src:img.src};});
+ const imageState=()=>page.locator('.cm-photo img').evaluate(async img=>{await img.decode();const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);const hash=await crypto.subtle.digest('SHA-256',ctx.getImageData(0,0,canvas.width,canvas.height).data);canvas.width=0;canvas.height=0;return{width:img.naturalWidth,height:img.naturalHeight,pixels:Array.from(new Uint8Array(hash)).join(',')};});
  await page.goto(`${baseURL}/`);await page.waitForFunction(()=>localStorage.getItem('reef-demo-state-v10'));
  await page.locator('.history-bar-scroll').first().waitFor();
  const dates=await page.locator('.history-bar-slot time').allTextContents();assert.ok(dates.includes('08-03'));assert.ok(!dates.some(d=>d.includes(':')));
@@ -15,7 +15,7 @@ try {
   await page.getByRole('button',{name:'比较颜色并给出范围'}).click();await page.getByTestId('comparison-result').waitFor();
   await page.getByRole('button',{name:'↷ 顺时针90°',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.cm-photo img').dataset.rotation==='90' && ![...document.querySelectorAll('button')].find(b=>b.textContent==='↶ 逆时针90°').disabled);
-  const rotated=await imageState();assert.equal(rotated.width,original.height);assert.equal(rotated.height,original.width);assert.notEqual(rotated.src,original.src);
+  const rotated=await imageState();assert.equal(rotated.width,original.height);assert.equal(rotated.height,original.width);assert.notEqual(rotated.pixels,original.pixels);
   assert.equal(await page.locator('.cm-box').count(),0);assert.equal(await page.getByTestId('comparison-result').count(),0);assert.ok(await page.getByRole('button',{name:'按模板自动取色',exact:true}).isDisabled());
   await page.getByRole('button',{name:'↶ 逆时针90°',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('.cm-photo img').dataset.rotation==='0' && ![...document.querySelectorAll('button')].find(b=>b.textContent==='↶ 逆时针90°').disabled);

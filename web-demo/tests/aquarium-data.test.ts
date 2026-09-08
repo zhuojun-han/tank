@@ -78,6 +78,20 @@ test("keeps exact stock quantity while bounding animated fish", () => {
   assert.deepEqual(animatedFish(stock)[0].artwork, clownfishArtwork);
 });
 
+test("stops expanding stock as soon as the visible fish budget is filled", () => {
+  const stock = normalizeFishStock([
+    { id: "school", tankId: 1, species: "小丑鱼", quantity: 999, introducedOn: "2026-08-15" },
+    { id: "later", tankId: 1, species: "蓝魔", quantity: 99, introducedOn: "2026-08-15" },
+  ], []);
+  let artworkReads = 0;
+  Object.defineProperty(stock[0], "artwork", { get() { artworkReads++; return clownfishArtwork; } });
+  Object.defineProperty(stock[1], "quantity", { get() { throw new Error("Offscreen stock must not be expanded"); } });
+  const fish = animatedFish(stock);
+  assert.equal(fish.length, MAX_ANIMATED_FISH);
+  assert.equal(artworkReads, MAX_ANIMATED_FISH);
+  assert.equal(fish.at(-1)?.key, `school-${MAX_ANIMATED_FISH - 1}`);
+});
+
 test("keeps validated custom artwork and rejects unsafe data URLs", () => {
   const dataUrl = "data:image/webp;base64,AAAA";
   const stock = normalizeFishStock([{

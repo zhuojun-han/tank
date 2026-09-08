@@ -174,10 +174,12 @@ type RecurringTask = CalendarTaskSchedule & { id: number; handledAt?: string };
 
 /** Restore timed snoozes when their exact deadline has passed. */
 export function wakeExpiredSnoozedTasks<T extends RecurringTask>(tasks: T[], nowIso: string): T[] {
+  const now = Date.parse(nowIso);
+  if (!Number.isFinite(now)) return tasks;
   return tasks.map((task) => {
     if (task.intervalDays && !task.oneOff && task.snoozedUntilByDate) {
       const expiredDates = Object.entries(task.snoozedUntilByDate)
-        .filter(([, deadline]) => deadline <= nowIso)
+        .filter(([, deadline]) => Date.parse(deadline) <= now)
         .map(([date]) => date);
       if (expiredDates.length === 0) return task;
       const expired = new Set(expiredDates);
@@ -187,7 +189,7 @@ export function wakeExpiredSnoozedTasks<T extends RecurringTask>(tasks: T[], now
         snoozedUntilByDate: Object.fromEntries(Object.entries(task.snoozedUntilByDate).filter(([date]) => !expired.has(date))),
       };
     }
-    if (task.state === "snoozed" && task.snoozedUntil && task.snoozedUntil <= nowIso) {
+    if (task.state === "snoozed" && task.snoozedUntil && Date.parse(task.snoozedUntil) <= now) {
       return { ...task, state: "due", snoozedUntil: undefined };
     }
     return task;

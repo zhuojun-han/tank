@@ -371,15 +371,25 @@ export default function Home() {
       ...Object.entries(task.snoozedUntilByDate ?? {}).filter(([date]) => task.snoozedDates?.includes(date)).map(([, deadline]) => deadline),
     ]);
     if (deadlines.length === 0) return;
-    const nextDeadline = Math.min(...deadlines.map((deadline) => new Date(deadline).getTime()));
-    const id = window.setTimeout(() => {
+    const nextDeadline = deadlines.reduce((earliest, deadline) => {
+      const time = Date.parse(deadline);
+      return Number.isFinite(time) ? Math.min(earliest, time) : earliest;
+    }, Infinity);
+    if (!Number.isFinite(nextDeadline)) return;
+    // Browsers overflow delays above 2^31-1 ms into an immediate timer. Wait in
+    // bounded steps and do not rewrite storage until the deadline is reached.
+    const delay = () => Math.min(2_147_483_647, Math.max(0, nextDeadline - Date.now()));
+    let id: number;
+    const wake = () => {
+      if (Date.now() < nextDeadline) { id = window.setTimeout(wake, delay()); return; }
       setTasks((items) => wakeExpiredSnoozedTasks(items, new Date().toISOString()));
       setReminderDismissedDate("");
-    }, Math.max(0, nextDeadline - Date.now()));
+    };
+    id = window.setTimeout(wake, delay());
     return () => window.clearTimeout(id);
   }, [ready, tasks]);
   const timerLocked = timerRunning || detectionClock.getSnapshot() < timerTotal;
-  const chartMax = Math.max(1, ...trendRecords.map((item) => item.high), trendTarget?.max ?? 0) * 1.2;
+  const chartMax = trendRecords.reduce((max, item) => Math.max(max, item.high), Math.max(1, trendTarget?.max ?? 0)) * 1.2;
   const latestPo4Record = tankRecords.find((item) => item.parameterId === "po4");
   const exactLatestPo4 = latestPo4Record && latestPo4Record.low === latestPo4Record.high ? latestPo4Record.low : "";
   const po4Target = targets.find((item) => item.tankId === tankId && item.parameterId === "po4");
@@ -481,7 +491,7 @@ export default function Home() {
       return;
     }
     try { persistTaskChanges(initializeRollingTasks([{
-      id: Math.max(Date.now(), ...tasks.map(task => task.id + 1)),
+      id: tasks.reduce((max, task) => Math.max(max, task.id + 1), Date.now()),
       tankId,
       ...scheduleFields,
       completedDates: [],
@@ -560,7 +570,7 @@ export default function Home() {
   }
   function scheduleLanthanumTasks(plan: LanthanumUiPlan) {
     const startDate = new Date(`${plan.scheduledStartDate}T12:00:00`);
-    const nextTaskId = Math.max(0, ...tasks.map((item) => item.id)) + 1;
+    const nextTaskId = tasks.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     const generatedTasks: TaskItem[] = plan.dailyPlan.map((day, index) => {
       const scheduled = addDays(startDate, index);
       const detail = `当天先复测 PO4、KH 并观察鱼和珊瑚；达到 ${plan.targetPo4MgL} mg/L、达到 0.03 mg/L 或出现急促呼吸、收缩等异常时，停止本次及后续计划。第 ${day.day} 天理论上最多取固定母液 ${formatVolume(day.stockToUseMl)}，用 RO/DI 水定容至最终 500 mL；只在复测仍需处理时执行，重算值更低时以更低值为准。仅慢速加入机械过滤或蛋分入口上游并捕获沉淀，不得直接加入展示缸。`;
@@ -618,7 +628,7 @@ export default function Home() {
   }
   function scheduleAlkalinityTasks(plan: AlkalinityUiPlan) {
     const startDate = new Date(`${plan.scheduledStartDate}T12:00:00`);
-    const nextTaskId = Math.max(0, ...tasks.map((item) => item.id)) + 1;
+    const nextTaskId = tasks.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     const generatedTasks: TaskItem[] = plan.dailyPlan.map((day, index) => {
       const scheduled = addDays(startDate, index);
       const detail = `当天先复测 KH、pH 并观察生物；达到 ${plan.targetDkh} dKH、重算后无需补充或出现异常时，停止当天及后续计划。第 ${day.day} 天理论取母液 ${formatVolume(day.stockToUseMl)}，对应投加当量 ${day.theoreticalDoseDkh.toFixed(3)} dKH（计划净提升 ${day.plannedNetDkhRise.toFixed(3)} + 假设当日消耗 ${day.assumedDkhConsumption.toFixed(3)}）；分次在强水流处缓慢加入。母液不得与钙、镁等浓缩液直接混合，应分开容器并错开添加；循环均匀后复测，重算值更低时以更低值为准。`;
@@ -672,7 +682,7 @@ export default function Home() {
     setMaintenanceModal(true);
   }
   function saveMaintenanceCycle(cycle: MaintenanceCycle) {
-    cycle = { ...cycle, id: Math.max(Date.now(), ...maintenanceCycles.map(item => item.id + 1)) };
+    cycle = { ...cycle, id: maintenanceCycles.reduce((max, item) => Math.max(max, item.id + 1), Date.now()) };
     const next = addMaintenanceCycle(maintenanceCycles, cycle);
     // Write before acknowledging success so a full browser store cannot lose a refill.
     if (storageBlocked) throw new Error("原存档尚未恢复，已暂停保存。请先处理页面上的存储提示。");

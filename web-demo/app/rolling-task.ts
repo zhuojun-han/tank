@@ -63,7 +63,8 @@ function legacyNextDate(task: RollingTask) {
   if (task.defaultCompletedBeforeDate && next < task.defaultCompletedBeforeDate) {
     next = addTaskCalendarDays(start, Math.ceil((ordinal(task.defaultCompletedBeforeDate) - ordinal(start)) / step) * step);
   }
-  const reopened = (task.reopenedDates ?? []).filter(date => matchesRule(date) && !handled.includes(date)).sort()[0];
+  const handledDates = new Set(handled);
+  const reopened = (task.reopenedDates ?? []).filter(date => matchesRule(date) && !handledDates.has(date)).sort()[0];
   return reopened && reopened < next ? reopened : next;
 }
 
@@ -109,20 +110,30 @@ export function taskDisplayDate(task: CalendarTaskSchedule, today?: string) {
   return pendingBaseDate(task, today);
 }
 
+function comparePendingChemicalTasks(a: RollingTask, b: RollingTask) {
+  return a.rolling!.nextDate.localeCompare(b.rolling!.nextDate)
+    || (a.dayIndex ?? 0) - (b.dayIndex ?? 0) || a.id - b.id;
+}
+
 function pendingChemicalMembers<T extends RollingTask>(tasks: T[], selected: T) {
   const key = chemicalKey(selected);
   return key ? tasks.filter(task => chemicalKey(task) === key && active(task) && task.rolling)
-    .sort((a, b) => a.rolling!.nextDate.localeCompare(b.rolling!.nextDate) || (a.dayIndex ?? 0) - (b.dayIndex ?? 0) || a.id - b.id) : [selected];
+    .sort(comparePendingChemicalTasks) : [selected];
 }
 
 /** Roll one unresolved head forward. Finite chemical days keep their spacing and doses. */
 export function projectRollingTasks<T extends RollingTask>(tasks: T[], today: string): T[] {
   ordinal(today);
-  const shifts = new Map<string, number>();
+  // Select each queue's head in one pass instead of rescanning every task per plan.
+  const heads = new Map<string, T>();
   for (const task of tasks) {
     const key = chemicalKey(task);
-    if (!key || !task.rolling || !active(task) || shifts.has(key)) continue;
-    const head = pendingChemicalMembers(tasks, task)[0];
+    if (!key || !task.rolling || !active(task)) continue;
+    const head = heads.get(key);
+    if (!head || comparePendingChemicalTasks(task, head) < 0) heads.set(key, task);
+  }
+  const shifts = new Map<string, number>();
+  for (const [key, head] of heads) {
     shifts.set(key, ordinal(pendingBaseDate(head, today)!) - ordinal(head.rolling!.nextDate));
   }
   return tasks.map(task => {

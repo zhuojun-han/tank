@@ -76,6 +76,37 @@ test("timed snoozes wake one-off and recurring occurrences at their deadline", (
   assert.equal(taskStateOnDate(awakened[1], "2026-09-05", "2026-09-05"), "snoozed");
 });
 
+test("timed snoozes compare instants across offsets and leave future or invalid deadlines unchanged", () => {
+  const tasks = [
+    { id: 1, state: "snoozed" as const, snoozedUntil: "2026-09-05T18:00:00+08:00" },
+    { id: 2, state: "snoozed" as const, snoozedUntil: "2026-09-05T03:00:00-07:00" },
+    { id: 3, state: "snoozed" as const, snoozedUntil: "2026-09-05T09:30:00-01:00" },
+    { id: 4, state: "snoozed" as const, snoozedUntil: "!invalid" },
+    {
+      id: 5, state: "due" as const, intervalDays: 1,
+      snoozedDates: ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"],
+      snoozedUntilByDate: {
+        "2026-09-01": "2026-09-05T18:00:00+08:00",
+        "2026-09-02": "2026-09-05T03:00:00-07:00",
+        "2026-09-03": "2026-09-05T09:30:00-01:00",
+        "2026-09-04": "!invalid",
+      },
+    },
+  ];
+  const before = structuredClone(tasks);
+  for (const now of ["2026-09-05T10:00:00Z", "2026-09-05T18:00:00+08:00", "2026-09-05T03:00:00-07:00"]) {
+    const awakened = wakeExpiredSnoozedTasks(tasks, now);
+    assert.deepEqual(awakened.slice(0, 2).map(task => [task.state, task.snoozedUntil]), [["due", undefined], ["due", undefined]]);
+    assert.deepEqual(awakened.slice(2, 4), before.slice(2, 4));
+    assert.deepEqual(awakened[4].snoozedDates, ["2026-09-03", "2026-09-04"]);
+    assert.deepEqual(awakened[4].snoozedUntilByDate, {
+      "2026-09-03": "2026-09-05T09:30:00-01:00", "2026-09-04": "!invalid",
+    });
+  }
+  assert.deepEqual(tasks, before);
+  assert.strictEqual(wakeExpiredSnoozedTasks(tasks, "invalid-now"), tasks);
+});
+
 test("stopping a chemical plan keeps the selected day but removes later days from calendar", () => {
   const tasks = [
     { id: 1, tankId: 1, source: "alkalinity-plan", planId: "kh-1", dayIndex: 1, scheduledDate: "2026-09-05", state: "due" as const },

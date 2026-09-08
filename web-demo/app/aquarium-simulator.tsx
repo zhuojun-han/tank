@@ -223,6 +223,8 @@ export function FishManagerSheet({
   const [newArtworkDataUrl, setNewArtworkDataUrl] = useState("");
   const [processingArtworkId, setProcessingArtworkId] = useState("");
   const [error, setError] = useState("");
+  const artworkRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => artworkRequest.current?.abort(), []);
 
   function updateItem(id: string, patch: Partial<FishStockItem>) {
     setDraft((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -235,19 +237,28 @@ export function FishManagerSheet({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    artworkRequest.current?.abort();
+    const controller = new AbortController();
+    artworkRequest.current = controller;
     setProcessingArtworkId(destination);
     setError("");
     try {
-      const dataUrl = await prepareFishArtwork(file);
+      const dataUrl = await prepareFishArtwork(file, controller.signal);
+      if (controller.signal.aborted || artworkRequest.current !== controller) return;
       if (destination === "new") {
         setNewArtworkDataUrl(dataUrl);
       } else {
         updateItem(destination, { artwork: { source: "custom", dataUrl } });
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "立绘处理失败，请换一张图片。");
+      if (!controller.signal.aborted && artworkRequest.current === controller) {
+        setError(reason instanceof Error ? reason.message : "立绘处理失败，请换一张图片。");
+      }
     } finally {
-      setProcessingArtworkId("");
+      if (!controller.signal.aborted && artworkRequest.current === controller) {
+        artworkRequest.current = null;
+        setProcessingArtworkId("");
+      }
     }
   }
 

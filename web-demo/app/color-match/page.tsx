@@ -6,6 +6,7 @@ import { compareColors, cssColor, TEMPLATE, LEVELS, pickSwatches, SAMPLE_CARD, S
 import './styles.css';
 import { PO4_LEVELS, PO4_UPRIGHT, PO4_SAMPLES } from '../po4-color-match/samples';
 import { ResultSummary } from './result-summary';
+import { checkImageDimensions, fitImageDimensions, inspectImageFile, loadImageElement, releaseImage } from '../image-input';
 
 export type PhotoReview = { parameterId?: "no3" | "po4"; low: number; high: number; interpolation: number | null; source: string; algorithmVersion: string };
 export default function ColorMatchPage() { return <ColorMatchPanel onReview={review => {
@@ -23,6 +24,7 @@ export function ColorMatchPanel({ onReview, onClose, parameterId = "no3" }: { pa
   const [src, setSrc] = useState(example);
   const [displaySrc, setDisplaySrc] = useState(example);
   const [rotation, setRotation] = useState(0);
+  const [imageVersion, setImageVersion] = useState(0);
   const [pixels, setPixels] = useState<Pixels>();
   const [card, setCard] = useState<Rect>(initialCard);
   const [liquid, setLiquid] = useState<Rect>(initialLiquid);
@@ -32,34 +34,50 @@ export function ColorMatchPanel({ onReview, onClose, parameterId = "no3" }: { pa
   const [error, setError] = useState('');
   const [result, setResult] = useState<ReturnType<typeof compareColors>>();
   const [sampleName, setSampleName] = useState('你提供的同框示例');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [liquidReady, setLiquidReady] = useState(true);
   const [cardReady, setCardReady] = useState(true);
   const start = useRef<{ x: number; y: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadVersion = useRef(0);
+  useEffect(() => () => { uploadVersion.current++; }, []);
   useEffect(() => {
-    let alive = true;
-    const img = new Image();
-    img.onload = () => {
-      if (!alive) return;
-      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-      canvas.width = rotation % 180 ? h : w; canvas.height = rotation % 180 ? w : h;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) { setError('浏览器无法读取图片像素。'); return; }
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(rotation * Math.PI / 180);
-      ctx.drawImage(img, -w / 2, -h / 2, w, h);
-      setDisplaySrc(canvas.toDataURL('image/png'));
-      setPixels(ctx.getImageData(0, 0, canvas.width, canvas.height));
-      setBusy(false);
-    };
-    img.onerror = () => { if (alive) { setError('图片无法打开，请使用 JPG、PNG 或 WebP。'); setBusy(false); } };
-    img.src = src;
-    return () => { alive = false; };
-  }, [src, rotation]);
+    const controller = new AbortController();
+    let img: HTMLImageElement | undefined;
+    const canvas = document.createElement('canvas');
+    void (async () => {
+      try {
+        img = await loadImageElement(src, controller.signal);
+        controller.signal.throwIfAborted();
+        checkImageDimensions(img.naturalWidth, img.naturalHeight);
+        const { width: w, height: h } = fitImageDimensions(img.naturalWidth, img.naturalHeight, 1600);
+        canvas.width = rotation % 180 ? h : w; canvas.height = rotation % 180 ? w : h;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) throw new Error('浏览器无法读取图片像素。');
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(rotation * Math.PI / 180);
+        ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        const nextPixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        releaseImage(img); img = undefined;
+        const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('图片处理失败，请重试。')), 'image/png'));
+        controller.signal.throwIfAborted();
+        setDisplaySrc(URL.createObjectURL(blob));
+        setPixels(nextPixels);
+      } catch (reason) {
+        if (!controller.signal.aborted) {
+          setPixels(undefined);
+          setError(reason instanceof Error ? reason.message : '图片处理失败，请重试。');
+        }
+      } finally {
+        if (img) releaseImage(img);
+        canvas.width = 0; canvas.height = 0;
+        if (!controller.signal.aborted) setBusy(false);
+      }
+    })();
+    return () => { controller.abort(); };
+  }, [src, rotation, imageVersion]);
   useEffect(() => () => {if(src.startsWith('blob:')) URL.revokeObjectURL(src);}, [src]);
+  useEffect(() => () => {if(displaySrc.startsWith('blob:')) URL.revokeObjectURL(displaySrc);}, [displaySrc]);
   const invalidate = () => { setResult(undefined); setError(''); };
   const position = (e: React.PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -89,7 +107,7 @@ export function ColorMatchPanel({ onReview, onClose, parameterId = "no3" }: { pa
     catch (e) { setError(String(e)); }
   }
   function loadExample() {
-    if (src !== example || rotation !== 0) { setPixels(undefined); setBusy(true); }
+    setPixels(undefined); setBusy(true); setImageVersion(value => value + 1);
     invalidate(); setRotation(0); setSwatches([]); setCard(initialCard); setLiquid(initialLiquid);
     setLiquidReady(true); setCardReady(true); setSrc(example); setSampleName('你提供的同框示例'); setMode('liquid');
   }
@@ -98,16 +116,30 @@ export function ColorMatchPanel({ onReview, onClose, parameterId = "no3" }: { pa
     setCardReady(false); setLiquidReady(false); setMode('card'); setDraft(undefined); start.current=null;
     setRotation(value=>(value+delta+360)%360);
   }
+  async function selectPhoto(file: File) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size <= 0 || file.size > 15 * 1024 * 1024) { setError('请选择 15 MB 以内的 JPG、PNG 或 WebP 图片。'); return; }
+    const version = ++uploadVersion.current;
+    invalidate(); setBusy(true);
+    try {
+      await inspectImageFile(file);
+      if (version !== uploadVersion.current) return;
+      setRotation(0); setSwatches([]); setPixels(undefined); setLiquidReady(false); setCardReady(false); setMode('card'); setSampleName(file.name); setSrc(URL.createObjectURL(file));
+    } catch (reason) {
+      if (version === uploadVersion.current) {
+        setError(reason instanceof Error ? reason.message : '图片无法读取。');
+        setBusy(false);
+      }
+    }
+  }
   const box = (rect: Rect, label: string, className: string) => <span key={label} className={`cm-box ${className}`} style={{ left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.w * 100}%`, height: `${rect.h * 100}%` }}><b>{label}</b></span>;
   return <main className="cm">
     <header>{onClose ? <button onClick={onClose}>不记录，返回检测</button> : <Link href="/">← 返回海缸助手</Link>}<span className="cm-pill">{po4 ? "PO₄" : "NO₃"}</span></header>
     <section className="cm-intro"><h1>拍照比色</h1><p>选照片 → 框选 → 比较 → 确认记录</p></section>
     <div className="cm-layout"><section className="cm-panel">
-      <div className="cm-actions"><button onClick={loadExample}>使用你的示例照片</button><button onClick={() => fileRef.current?.click()}>选择照片 / 拍照</button></div>
-      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e => {
+      <div className="cm-actions"><button disabled={busy} onClick={loadExample}>使用你的示例照片</button><button disabled={busy} onClick={() => fileRef.current?.click()}>选择照片 / 拍照</button></div>
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={busy} onChange={e => {
         const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 15 * 1024 * 1024) { setError('请选择 15 MB 以内的 JPG、PNG 或 WebP 图片。'); return; }
-        invalidate(); setRotation(0); setSwatches([]); setPixels(undefined); setBusy(true); setLiquidReady(false); setCardReady(false); setMode('card'); setSampleName(file.name); setSrc(URL.createObjectURL(file));
+        void selectPhoto(file);
       }} />
 
       <div className="cm-actions"><button disabled={busy || !pixels} onClick={()=>rotate(-90)}>↶ 逆时针90°</button><button disabled={busy || !pixels} onClick={()=>rotate(90)}>↷ 顺时针90°</button></div>
@@ -125,7 +157,7 @@ export function ColorMatchPanel({ onReview, onClose, parameterId = "no3" }: { pa
         <button className="cm-primary" disabled={!pixels || !cardReady || busy} onClick={extract}>按模板自动取色</button>
         {swatches.length > 0 && <><div className="cm-swatches">{swatches.map((s, i) => <button key={i} className={mode === String(i) ? 'selected' : ''} onClick={() => setMode(String(i))}><span style={{ background: cssColor(s.sample.rgb) }} /><strong>{s.level}</strong><small>调整 #{i + 1}</small></button>)}</div><p className="cm-hint">点色块可重新框选。</p></>}
       </section>
-      <section className="cm-panel"><h2>比色结果</h2><button className="cm-primary" disabled={!pixels || !liquidReady || swatches.length !== 8} onClick={compare}>比较颜色并给出范围</button>
+      <section className="cm-panel"><h2>比色结果</h2><button className="cm-primary" disabled={busy || !pixels || !liquidReady || swatches.length !== 8} onClick={compare}>比较颜色并给出范围</button>
         {error && <p role="alert" className="cm-error">{error}</p>}
         {result && <div aria-live="polite" data-testid="comparison-result"><ResultSummary result={result} decimals={0} /><details className="cm-diagnostics"><summary>查看取色详情</summary>{pixels && <p className="cm-liquid-color"><i style={{ background: cssColor(sampleRegion(pixels, liquid).rgb) }} />本次测试液取色</p>}<h3>与测试液的颜色差异</h3><ol className="cm-rank">{result.ranked.map(r => <li key={r.level}><i style={{ background: cssColor(r.rgb) }} /><span>{r.level} mg/L</span><small>色差 {r.delta.toFixed(1)}</small></li>)}</ol></details></div>}
         {onReview && result?.range && <button className="cm-primary" onClick={() => onReview({ parameterId, low: result.range![0], high: result.range![1], interpolation: result.interpolatedValue === null ? null : Number(result.interpolatedValue.toFixed(3)), source: sampleName, algorithmVersion: po4 ? 'po4-web-test-3' : 'eal-no3-mvp-4' })}>修改结果并选择是否记录</button>}

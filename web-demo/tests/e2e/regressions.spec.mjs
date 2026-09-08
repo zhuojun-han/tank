@@ -6,10 +6,10 @@ const run = promisify(execFile);
 // and have their own command; retired UI scripts are indexed under archive/.
 for (const script of [
   'storage-browser.mjs', 'chemical-preview-browser.mjs', 'color-match-browser.mjs',
-  'photo-record-browser.mjs', 'unified-photo-rotation.mjs', 'photo-timer-routing.mjs',
-  'po4-integration-history.mjs', 'line-history.mjs', 'paged-record-list.mjs',
+  'photo-record-browser.mjs', 'unified-photo-rotation.mjs', 'image-input-browser.mjs', 'photo-timer-routing.mjs',
+  'po4-integration-history.mjs', 'line-history.mjs', 'history-window-browser.mjs', 'paged-record-list.mjs',
   'maintenance-volume.mjs', 'maintenance-browser.mjs', 'maintenance-cycle-browser.mjs',
-  'maintenance-countdown-browser.mjs', 'task-postponement-browser.mjs',
+  'maintenance-countdown-browser.mjs', 'task-postponement-browser.mjs', 'snooze-timer-browser.mjs',
   'kh-titration-browser.mjs', 'target-linkage-browser.mjs',
 ]) {
   test(script, async ({}, info) => {

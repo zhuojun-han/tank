@@ -256,3 +256,22 @@ test('deferred refill dates round-trip without changing the reservoir and invali
     assert.equal(bad.getItem(STORAGE_KEY), raw);
   }
 });
+
+test('loading reads only through the first existing snapshot, including a damaged newest one', () => {
+  for (const [key, raw, blocked, expectedReads] of [
+    [STORAGE_KEY, JSON.stringify(defaults), false, [STORAGE_KEY]],
+    [STORAGE_KEY, '{broken', true, [STORAGE_KEY]],
+    ['reef-demo-state-v8', JSON.stringify(defaults), false, [STORAGE_KEY, 'reef-demo-state-v9', 'reef-demo-state-v8']],
+  ] as const) {
+    const storage = store({ [key]: raw, 'reef-demo-state-v4': JSON.stringify(defaults) });
+    const reads: string[] = [];
+    const before = [...storage.values];
+    const loaded = loadDemoState(() => ({ ...storage, getItem(candidate) {
+      reads.push(candidate);
+      return storage.getItem(candidate);
+    } }), defaults, now);
+    assert.equal(loaded.blocked, blocked);
+    assert.deepEqual(reads, expectedReads);
+    assert.deepEqual([...storage.values], before);
+  }
+});

@@ -86,6 +86,25 @@ test("legacy migration keeps real and implicit history, preserves missing-source
   assert.deepEqual(migrated[0].skippedDates, before[0].skippedDates);
 });
 
+test("legacy migration keeps duplicate history and chooses only the earliest unresolved date on its recurrence", () => {
+  const task = manual({
+    scheduledDate: "2026-09-01", intervalDays: 2, defaultCompletedBeforeDate: "2026-09-15",
+    completedDates: ["2026-09-05", "2026-09-02", "2026-09-05"],
+    skippedDates: ["2026-09-07"],
+    reopenedDates: ["2026-09-11", "2026-09-05", "2026-08-30", "2026-09-04", "2026-09-03", "2026-09-07", "2026-09-03"],
+  });
+  const before = structuredClone(task);
+  const [migrated] = ready([task]);
+  assert.equal(migrated.rolling!.nextDate, "2026-09-03");
+  assert.deepEqual(migrated.rolling!.completed, []);
+  for (const key of ["completedDates", "skippedDates", "reopenedDates"] as const) {
+    assert.deepEqual(migrated[key], before[key]);
+  }
+  assert.deepEqual(task, before);
+  const [handledOnly] = ready([{ ...task, reopenedDates: ["2026-09-07", "2026-09-05", "2026-09-02"] }]);
+  assert.equal(handledOnly.rolling!.nextDate, "2026-09-15");
+});
+
 test("old decades-long default history migrates by interval arithmetic and retains its rule on edit", () => {
   const tasks = ready([manual({ scheduledDate: "1980-01-01", intervalDays: 2, defaultCompletedBeforeDate: "2026-09-08" })]);
   assert.equal(tasks[0].rolling!.nextDate, "2026-09-08");
@@ -256,4 +275,41 @@ test("backdating cannot cross the last explicit legacy completion and a reopened
   const reopened = reopenRollingTask(stopped, 1, "2026-09-08", "2026-09-09");
   assert.deepEqual(reopened[0].skippedDates, ["2026-09-15"]);
   assert.equal(pendingTasksOnDate(projectRollingTasks(reopened, "2026-09-15"), "2026-09-15").length, 1);
+});
+
+test("projection selects each mixed queue head by date, day index and id without mutating history", () => {
+  const tasks = ready([
+    chemical({ id: 30, scheduledDate: "2026-09-01", dayIndex: 2, snoozedUntil: "2026-09-15T12:00:00Z" }),
+    chemical({ id: 20, scheduledDate: "2026-09-01", dayIndex: 1, snoozedUntil: "2026-09-14T12:00:00Z" }),
+    chemical({ id: 10, scheduledDate: "2026-09-01", dayIndex: 1, snoozedUntil: "2026-09-10T12:00:00Z" }),
+    chemical({ id: 40, scheduledDate: "2026-09-02", dayIndex: 3 }),
+    chemical({ id: 50, scheduledDate: "2026-08-01", hiddenFromCalendar: true }),
+    chemical({ id: 60, scheduledDate: "2026-08-01", state: "done", completedDates: ["2026-08-01"] }),
+    chemical({ id: 70, scheduledDate: "2026-09-02", tankId: 2 }),
+    chemical({ id: 80, scheduledDate: "2026-09-12", source: "lanthanum-plan" }),
+    chemical({ id: 90, scheduledDate: "2026-09-03", planId: "another-plan" }),
+    manual({ id: 100, scheduledDate: "2026-09-04" }),
+  ]);
+  const before = structuredClone(tasks);
+  const projected = projectRollingTasks(tasks, "2026-09-08");
+  assert.deepEqual(projected.slice(0, 4).map(task => taskDisplayDate(task)), ["2026-09-10", "2026-09-10", "2026-09-10", "2026-09-11"]);
+  assert.equal(projected[4], tasks[4]);
+  assert.equal(projected[5], tasks[5]);
+  assert.deepEqual(projected.slice(6).map(task => taskDisplayDate(task)), ["2026-09-08", "2026-09-12", "2026-09-08", "2026-09-08"]);
+  assert.deepEqual(tasks, before);
+});
+
+test("many independent chemical plans require only linear grouping reads", () => {
+  let planReads = 0;
+  const tasks = Array.from({ length: 2_500 }, (_, index) => {
+    const task = chemical({ id: index + 1, scheduledDate: "2026-09-01",
+      rolling: { version: 1, nextDate: "2026-09-01", revision: 0, completed: [] } });
+    Object.defineProperty(task, "planId", { enumerable: true, get() { planReads++; return `plan-${index}`; } });
+    return task;
+  });
+  const projected = projectRollingTasks(tasks, "2026-09-08");
+  assert.equal(projected.length, tasks.length);
+  assert.ok(projected.every(task => taskDisplayDate(task) === "2026-09-08"));
+  assert.ok(planReads < tasks.length * 12, `grouping read plan identifiers ${planReads} times`);
+  assert.ok(tasks.every(task => task.rolling!.nextDate === "2026-09-01" && task.rolling!.completed.length === 0));
 });
