@@ -8,6 +8,8 @@ Flutter 使用页面/状态 → 业务服务与仓库 → Drift/SQLite、私有�
 
 项目使用一个根 Git 仓库，统一管理 `app/`、`web-demo/`、`docs/`、`datasets/`、`resource/`、`contracts/` 和 `tools/`；`web-demo/` 是普通子目录。工作区由根 [project-workspace.json](../project-workspace.json) 定义，CI 统一从根 `.github/workflows/` 执行，App/Web 检查分别在对应目录运行。跨端改动分别记录验证；只有远程工作流实际执行后才报告 CI 结果，推送代码不等于发布网站或 App。
 
+[工作区检查](../.github/workflows/workspace.yml) 对 push/PR 执行轻量结构、文档、样本、合同及工具测试；[App](../.github/workflows/flutter.yml) 和 [Web](../.github/workflows/web.yml) 按影响各端的源码、数据、合同与构建配置触发完整检查。纯文档变更只运行轻量流程，不重复编译两端；手动触发仍可执行完整检查。
+
 原 Web 独立仓库的 38 次提交仅保存在本机根 `.git/legacy-web-repository/`；这份 Git 元数据不随当前根仓库推送，新克隆不会自带该历史。
 
 ## 时间与隔离

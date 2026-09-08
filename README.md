@@ -2,7 +2,7 @@
 
 面向海水缸的本地水质记录、NO3/PO4 拍照辅助比色、趋势和日常维护工具。`web-demo/` 用于先实现用户的新功能；`app/` 是 Flutter Android/iOS 客户端。两端分别保存数据，功能同步不等于云端数据同步。
 
-GitHub 目标仓库为 [zhuojun-han/tank](https://github.com/zhuojun-han/tank)。App、Web、文档与样本统一由项目根仓库管理，目录约定见 [技术设计](docs/TECHNICAL_DESIGN.md)。
+代码仓库为 [zhuojun-han/tank](https://github.com/zhuojun-han/tank)。App、Web、文档与样本统一由项目根仓库管理，目录约定见 [技术设计](docs/TECHNICAL_DESIGN.md)。
 
 ## 开始工作
 

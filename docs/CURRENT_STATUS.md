@@ -8,8 +8,8 @@
 
 - CPU：无窗口模拟器仍在首页前台使用软件渲染。相同 Debug 首页切换硬件 GPU 后，宿主 CPU 约 66.3% → 15.5%；退到 Android 桌面约 1%–2%，App 进程该段采样为 0。不能据此推定发布版真机性能。
 - App：修复检测计时在后台持有旧草稿、到期重复完成的问题；前台恢复按截止时间结算，数据库条件更新防止旧快照覆盖。205 项全量测试、分析、格式和 Debug 构建通过；保留数据安装，11 张表逐行一致，所查启动日志无未处理异常。
-- 仓库：App/Web 已统一根仓，CI 入口与共享合同已去重；已配置 [GitHub 仓库](https://github.com/zhuojun-han/tank)，首次提交和推送待本轮最终核对。尚无远程 CI 结果。
-- 文档：README、AGENTS 与模块规范按单一权威整理，根检查通过；旧 Web Git 历史仍完整保存在本机，20 份历史文档原文和哈希保留。
+- 仓库：App/Web 已统一根仓并上传到 [GitHub 私有仓库](https://github.com/zhuojun-han/tank)。首次源码提交 `eab147a` 已核对本地与远程 main 一致；GitHub 两端检查已启动，结果见本轮实证，不把本地通过当作远程通过。
+- 文档：README、AGENTS 与模块规范按单一权威整理，67 份文档及根检查通过；纯文档提交只跑轻量工作区 CI。旧 Web Git 历史仍完整保存在本机，20 份历史文档原文和哈希保留。
 - 本轮单仓调整验证：根工具 5 项、Web 单元 96 项及合同/文档检查通过；没有部署网站或发布 App。
 
 上一批存储、查询分页、备份、依赖和趋势设备验证见 [优化收尾](coordination/project-optimization-followup-2026-09-08.md)；此前分阶段实证见 [原交接](coordination/project-optimization-2026-09-08.md) 与 [文档整理](coordination/project-workflow-cleanup-2026-09-08.md)，旧测试数不替代当前验证。

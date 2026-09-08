@@ -34,7 +34,7 @@
 
 App、Web、文档、样本与工具统一由根 Git 管理。原 Web 的 38 次提交及元数据完整移至本机 `.git/legacy-web-repository`，没有删除；它们不属于此次根仓上传的提交历史。
 
-根 `.github/workflows/` 分别运行两端检查，Web 工作目录、缓存和产物路径已按单仓调整。两端测试直接读取根 `contracts/maintenance-dosing.json`，删除重复副本；忽略本机数据库、日志、构建包、缓存和密钥文件。归档使用 `.gitattributes` 保留原始字节，20 份归档哈希核对一致。
+根 `.github/workflows/` 分别运行两端检查，Web 工作目录、缓存和产物路径已按单仓调整。另设轻量工作区检查负责结构、文档、样本、合同和工具测试，避免两端重复执行；纯 Markdown 变更不触发 App/Web 完整编译，源码、合同、数据与构建配置按影响范围触发。两端测试直接读取根 `contracts/maintenance-dosing.json`，删除重复副本；忽略本机数据库、日志、构建包、缓存和密钥文件。归档使用 `.gitattributes` 保留原始字节，20 份归档哈希核对一致。
 
 README 只负责导航，AGENTS 只留协作要求；同步授权在 PROJECT_CONTEXT、结构在 TECHNICAL_DESIGN、验证选择和性能测量在 DEVELOPMENT_PLAN、命令用法在各端 README。删除循环阅读要求、重复授权描述及陈旧命令说明；历史报告不改写成当前完成事实。
 
@@ -45,10 +45,10 @@ README 只负责导航，AGENTS 只留协作要求；同步授权在 PROJECT_CON
 | Flutter | 205 项全量测试通过，Dart 分析 0 问题，改动文件格式检查通过，Debug APK 构建成功 |
 | Android 覆盖安装 | `adb install -r` 成功，前台 Activity 核对及首页截图正常；11 张表逐行一致，当前进程所查日志无未处理异常 |
 | Web 单仓调整 | 96 项单元测试通过，其中根滴定合同 10 项；本轮未改变 Web 产品源码，未重复上批完整浏览器流程 |
-| 根工程 | 5 项工具测试、入口/文档/样本/合同检查通过；两份 CI YAML 解析和路径检查通过 |
-| 上传准备 | 已建立指定 origin，实际暂存内容未发现 gitlink、超过 50 MiB 的文件、受检凭据模式或被排除的本机产物；最终提交后核对远程 SHA |
+| 根工程 | 5 项工具测试、67 份文档及入口/样本/合同检查通过；最终三份 CI YAML 解析、34 组触发路径与重复步骤检查通过 |
+| 上传 | 首次提交含 484 个文件，实际暂存内容未发现 gitlink、超过 50 MiB 的文件、受检凭据模式或被排除的本机产物；本地、`ls-remote` 与 GitHub API 的 main SHA 一致 |
 
-上传状态：已完成本地准备，尚待本轮首次提交与推送；远程 CI 尚无执行结果。上传源码不等于部署网站或发布 App。
+上传状态：已成功推送至用户指定的私有仓库，首次源码提交为 [`eab147a11460d9cd878a4a52e9aaea97e5955111`](https://github.com/zhuojun-han/tank/commit/eab147a11460d9cd878a4a52e9aaea97e5955111)。14:08（UTC+8）查询：首次 [Web 检查](https://github.com/zhuojun-han/tank/actions/runs/34193035625) 全部通过；[Flutter 检查](https://github.com/zhuojun-han/tank/actions/runs/34193035661) 的依赖安装、格式、分析、测试和生成核对通过，Android 编译仍在运行。后续文档/CI 整理提交的远程结果须按其提交独立核对。上传源码不等于部署网站或发布 App。
 
 新 APK：201,571,385 字节，SHA256 `29fc173e7c789e8950a46162283afa2e65d530ee723df1a1ac9f65a4264e0430`。覆盖安装后再采样 12.048 秒，宿主 PID 33048 为 0.932%，App PID 4009 为 0.000%，前台为 Android 桌面。本地实证位于忽略目录 `artifacts/android-cpu-2026-09-08/`（采样、AVD 配置备份、截图、数据库对照与日志）以及 `app/build/background-timer-*-2026-09-08.log`，不随源码上传。暂存检查记录为 `artifacts/github-publish-staging-review.json`。
 

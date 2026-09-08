@@ -2,9 +2,9 @@ name: Flutter checks
 
 on:
   push:
-    paths: ['app/**', 'datasets/**', 'resource/**', 'contracts/**', 'tools/**', 'docs/**', 'README.md', 'AGENTS.md', 'project-workspace.json', '.gitattributes', '.gitignore', '.github/workflows/flutter.yml']
+    paths: ['app/**', '!app/**/*.md', 'datasets/**', 'resource/**', 'contracts/**', 'project-workspace.json', '.gitattributes', '.github/workflows/flutter.yml']
   pull_request:
-    paths: ['app/**', 'datasets/**', 'resource/**', 'contracts/**', 'tools/**', 'docs/**', 'README.md', 'AGENTS.md', 'project-workspace.json', '.gitattributes', '.gitignore', '.github/workflows/flutter.yml']
+    paths: ['app/**', '!app/**/*.md', 'datasets/**', 'resource/**', 'contracts/**', 'project-workspace.json', '.gitattributes', '.github/workflows/flutter.yml']
   workflow_dispatch:
 
 permissions:
@@ -29,12 +29,6 @@ jobs:
           flutter-version: ${{ steps.runtime.outputs.flutter }}
           channel: stable
           cache: true
-      - name: Workspace and dataset checks
-        working-directory: .
-        run: node tools/check-project.mjs
-      - name: Workspace tool tests
-        working-directory: .
-        run: node --test tools/tests/*.test.mjs
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test tool
       - run: flutter analyze

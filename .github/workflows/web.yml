@@ -2,9 +2,9 @@ name: Web checks
 
 on:
   push:
-    paths: ['web-demo/**', 'contracts/**', 'datasets/**', 'resource/**', 'tools/**', 'docs/**', 'README.md', 'AGENTS.md', 'project-workspace.json', '.gitattributes', '.gitignore', '.github/workflows/web.yml']
+    paths: ['web-demo/**', '!web-demo/**/*.md', 'contracts/**', 'datasets/**', 'resource/**', 'project-workspace.json', '.gitattributes', '.github/workflows/web.yml']
   pull_request:
-    paths: ['web-demo/**', 'contracts/**', 'datasets/**', 'resource/**', 'tools/**', 'docs/**', 'README.md', 'AGENTS.md', 'project-workspace.json', '.gitattributes', '.gitignore', '.github/workflows/web.yml']
+    paths: ['web-demo/**', '!web-demo/**/*.md', 'contracts/**', 'datasets/**', 'resource/**', 'project-workspace.json', '.gitattributes', '.github/workflows/web.yml']
   workflow_dispatch:
 
 permissions:
@@ -23,9 +23,6 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: web-demo/package-lock.json
-      - name: Workspace and dataset checks
-        working-directory: .
-        run: node tools/check-project.mjs
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run check
