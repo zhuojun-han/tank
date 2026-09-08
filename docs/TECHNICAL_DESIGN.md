@@ -55,6 +55,8 @@ v10 增加确认/原始插值和对应草稿字段，并为已有 PO4 参数启�
 
 当前浏览器业务状态保存在 `reef-demo-state-v10`。保留旧状态兼容；新增字段提供安全默认值，不把演示记录自动当用户实测。`maintenanceCycles` 保存配方快照和残液当量，日历发生项即时生成，普通 tasks 不被物化为每日自动完成事件。补液数据合同见 [滴定规范](MAINTENANCE_DOSING_CALCULATOR.md)；App 对应独立 MaintenanceCycles 表。
 
+`Tank.startedOn` 为可选本地日历日期 `YYYY-MM-DD`，仅由用户设置；旧档缺失或空字符串均按未设置处理，不迁移推断日期。编辑保留海缸 ID 和其他业务数据，提交拒绝非法及未来日期。存档中的合法未来日期可能来自设备日期回拨，允许读取但不显示负天数；非法类型或日期仍阻断恢复。运行天数按日历日序差计算以避开夏令时，复用本地日期刷新；表单提交时重新读取当天日期。产品显示与 App 范围见 [产品规格](MVP_SPEC.md#首页检测趋势与设置)。
+
 加载只读取首个现存版本；新存档损坏时仍阻断恢复，不回退覆盖。长历史图表保留全部记录和滚动范围，仅挂载可见区域附近的标记，范围缺插值时仍跨越连接前后有效点。计划按单遍分组选头，动画只展开可显示的鱼只。遗留时间戳提醒按真实时刻比较，长于浏览器单次定时上限时分段等待，未到期不重复写存档；图片和备份资源边界分别见 [拍照规范](IMAGE_ESTIMATION.md#图片资源边界) 与 [App 备份层](../app/lib/data/backup/README.md)。
 
 网页任务的可选 `rolling` 保存 `version: 1`、`nextDate`、`revision` 与 `completed: [{ dueDate, completedDate }]`，分别记录待办排期基准、修改版本和实际完成历史；日期修改须重新核对版本及任务归属。可选 `legacySchedule` 保存旧 `scheduledDate`、可选 `intervalDays` 与 `defaultCompletedBeforeDate`，只兼容旧默认历史，编辑时保留，不给新任务补造完成记录。`projection: { date, today }` 仅为当前日期下的渲染投影，不写入存档；自动顺延不反复改写历史。行为与平台范围见 [产品合同](MVP_SPEC.md#网页完成驱动排期)。

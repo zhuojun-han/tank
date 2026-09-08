@@ -10,7 +10,7 @@ for (const script of [
   'po4-integration-history.mjs', 'line-history.mjs', 'history-window-browser.mjs', 'paged-record-list.mjs',
   'maintenance-volume.mjs', 'maintenance-browser.mjs', 'maintenance-cycle-browser.mjs',
   'maintenance-countdown-browser.mjs', 'task-postponement-browser.mjs', 'snooze-timer-browser.mjs',
-  'kh-titration-browser.mjs', 'target-linkage-browser.mjs',
+  'kh-titration-browser.mjs', 'target-linkage-browser.mjs', 'tank-age-browser.mjs',
 ]) {
   test(script, async ({}, info) => {
     const { stdout, stderr } = await run(process.execPath, [`tests/${script}`], {

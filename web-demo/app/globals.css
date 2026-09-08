@@ -54,6 +54,11 @@ h2 { font-size: 18px; margin-bottom: 4px; }
 .aquarium-heading small { color: var(--aqua-dark); font-size: 8px; font-weight: 900; letter-spacing: .12em; }
 .aquarium-heading strong { margin-top: 3px; font-size: 13px; }
 .aquarium-heading b { color: var(--aqua-dark); font-size: 10px; white-space: nowrap; }
+.aquarium-runtime, .aquarium-edit, .aquarium-scene { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0; text-align: left; }
+.aquarium-runtime { flex: 1; min-width: 0; }
+.aquarium-edit { color: var(--aqua-dark); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.aquarium-scene { display: block; width: 100%; }
+.aquarium-runtime:focus-visible, .aquarium-edit:focus-visible, .aquarium-scene:focus-visible { outline: 2px solid var(--aqua-dark); outline-offset: -3px; }
 .aquarium-water { position: relative; display: block; height: 190px; overflow: hidden; background: #176d83 url("/aquarium/reef-tank-natural.webp") center 48% / cover no-repeat; }
 .aquarium-water::after { content: ""; position: absolute; z-index: 1; inset: 0; box-shadow: inset 0 0 22px rgba(4,45,60,.2); pointer-events: none; }
 .aquarium-fish { position: absolute; z-index: 3; top: var(--fish-top); left: var(--fish-left); width: var(--fish-size); height: auto; color: #f28a45; filter: drop-shadow(0 4px 4px rgba(9,70,82,.18)); will-change: transform; }
@@ -282,6 +287,14 @@ input, select, textarea { width: 100%; border: 1px solid var(--line); background
 .alkalinity-sheet { max-height: 92vh; }
 .salinity-sheet { max-height: 92vh; }
 .fish-manager-sheet { max-height: 92vh; }
+.tank-manager-list { display: grid; gap: 10px; margin-bottom: 18px; }
+.tank-manager-row { display: flex; align-items: center; gap: 12px; padding: 14px; background: white; border: 1px solid var(--line); border-radius: 16px; }
+.tank-manager-row > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tank-manager-row strong { display: block; }
+.tank-manager-row strong small { display: block; color: var(--aqua-dark); font-size: 10px; margin-top: 3px; }
+.tank-manager-row p { color: var(--muted); font-size: 11px; margin: 5px 0 0; }
+.tank-manager-row > button { flex: none; }
+.tank-form-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
 .fish-stock-editor { display: grid; gap: 9px; }
 .fish-stock-editor article { border: 1px solid var(--line); border-radius: 17px; background: white; padding: 12px; }
 .fish-stock-title { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }

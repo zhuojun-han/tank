@@ -51,6 +51,55 @@ test('no existing snapshot initializes a valid state and nullable interpolation 
   assert.equal(saveDemoState(() => storage, result.state).ok, true);
   assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)!).records[0].interpolation, null);
 });
+
+test('tank start dates preserve missing, blank and per-tank values through old storage migration', () => {
+  const tanks = [...defaultTanks, { id: 3, name: '已开缸', volume: '120 L', startedOn: '2024-02-29' }]
+    .map(tank => tank.id === 2 ? { ...tank, startedOn: '' } : tank);
+  for (const version of [4, 5, 6, 7, 8, 9, 10]) {
+    const oldKey = `reef-demo-state-v${version}`;
+    const raw = JSON.stringify({ ...defaults, tanks });
+    const storage = store({ [oldKey]: raw });
+    const loaded = loadDemoState(() => storage, defaults, now);
+    assert.equal(loaded.blocked, false);
+    assert.deepEqual(loaded.state.tanks, tanks);
+    assert.equal(Object.hasOwn(loaded.state.tanks[0], 'startedOn'), false);
+    assert.deepEqual(loaded.state.records, defaults.records);
+    assert.equal(storage.getItem(oldKey), raw);
+    assert.equal(saveDemoState(() => storage, loaded.state).ok, true);
+    const restored = loadDemoState(() => storage, defaults, now);
+    assert.deepEqual(restored.state.tanks, tanks);
+    if (version !== 10) assert.equal(storage.getItem(oldKey), raw);
+  }
+});
+
+test('a valid start date ahead of the current device day remains writable without locking the whole archive', () => {
+  const tanks = defaultTanks.map(tank => tank.id === 1 ? { ...tank, startedOn: '2026-09-09' } : tank);
+  const raw = JSON.stringify({ ...defaults, tanks });
+  const storage = store({ [STORAGE_KEY]: raw });
+  const loaded = loadDemoState(() => storage, defaults, new Date('2026-09-08T23:30:00+08:00'));
+  assert.equal(loaded.blocked, false);
+  assert.deepEqual(loaded.state.tanks, tanks);
+  assert.equal(storage.getItem(STORAGE_KEY), raw, 'loading does not alter the original date');
+  assert.equal(saveDemoState(() => storage, loaded.state).ok, true);
+  const restored = loadDemoState(() => storage, defaults, new Date('2026-09-07T12:00:00+08:00'));
+  assert.equal(restored.blocked, false, 'clock rollback cannot block unrelated records');
+  assert.deepEqual(restored.state.tanks, tanks);
+  assert.deepEqual(restored.state.records, defaults.records);
+});
+
+test('invalid tank start dates reject load and save while preserving the original snapshot', () => {
+  for (const startedOn of [null, 20260908, {}, '2026-02-30', '2025-02-29', '2026-13-01', '2026-9-8', '2026-09-08T00:00:00Z', 'bad']) {
+    const invalid = { ...defaults, tanks: [{ ...defaultTanks[0], startedOn }, defaultTanks[1]] } as unknown as DemoState;
+    const raw = JSON.stringify(invalid);
+    const storage = store({ [STORAGE_KEY]: raw, 'reef-demo-state-v9': JSON.stringify(defaults) });
+    const before = [...storage.values];
+    const loaded = loadDemoState(() => storage, defaults, now);
+    assert.equal(loaded.blocked, true, raw);
+    assert.match(loaded.message!, /海缸/);
+    assert.equal(saveDemoState(() => storage, invalid).ok, false, raw);
+    assert.deepEqual([...storage.values], before);
+  }
+});
 test('accepted legacy recipes with blank unused channel inputs restore without changing their chemical effect', () => {
   const input = { solutionMl: 500, waterL: 200, po4Rise: .02, khDrop: .5, khStrength: 6, khPurity: 100, temperature: 20, po4Flow: 1.4, khFlow: 1.4, po4Minutes: 1, khMinutes: 1, po4Unit: 'ml/s' as const, khUnit: 'ml/s' as const };
   for (const chemical of ['po4', 'kh'] as const) {

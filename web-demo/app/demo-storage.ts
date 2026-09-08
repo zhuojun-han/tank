@@ -103,7 +103,10 @@ export function validateDemoState(state: unknown): asserts state is DemoState {
   requireValid(object(state), '根对象');
   requireValid(state.schemaVersion === undefined || state.schemaVersion === 1, '版本（可能来自更新的应用）');
   requireValid(optional(state, 'khTargetDefaultsApplied', v => v === true), 'KH 默认目标标记');
-  rows(state.tanks, '海缸', r => finite(r.id) && string(r.name) && string(r.volume));
+  // Stored dates may temporarily be ahead of the device clock after travel or
+  // a clock correction. Only input confirmation enforces the current-day limit.
+  rows(state.tanks, '海缸', r => finite(r.id) && string(r.name) && string(r.volume)
+    && optional(r, 'startedOn', v => v === '' || date(v)));
   requireValid((state.tanks as Tank[]).length > 0 && (state.tanks as Tank[]).some(t => t.id === state.tankId), '当前海缸');
   rows(state.parameters, '参数', r => string(r.id) && string(r.name) && string(r.label) && string(r.unit) && typeof r.builtIn === 'boolean' && typeof r.photoSupported === 'boolean');
   requireValid((state.parameters as Parameter[]).length > 0, '参数列表');

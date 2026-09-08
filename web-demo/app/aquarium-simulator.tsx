@@ -35,7 +35,9 @@ import {
 type AquariumSimulatorProps = {
   tankName: string;
   stock: FishStockItem[];
+  runningDays: number | null;
   onOpen: () => void;
+  onManageTank: () => void;
 };
 
 type FishManagerSheetProps = {
@@ -95,7 +97,7 @@ function FishArtworkView({
   </span>;
 }
 
-export function AquariumSimulator({ tankName, stock, onOpen }: AquariumSimulatorProps) {
+export function AquariumSimulator({ tankName, stock, runningDays, onOpen, onManageTank }: AquariumSimulatorProps) {
   const count = fishCount(stock);
   const swimmers = useMemo(() => animatedFish(stock), [stock]);
   const waterRef = useRef<HTMLSpanElement | null>(null);
@@ -167,16 +169,14 @@ export function AquariumSimulator({ tankName, stock, onOpen }: AquariumSimulator
     };
   }, [swimmers]);
 
-  return <button
-    className="aquarium-card"
-    type="button"
-    onClick={onOpen}
-    aria-label={`编辑 ${tankName} 的鱼类档案；${summary}`}
-  >
-    <span className="aquarium-heading">
-      <span><small>我的鱼缸</small><strong>{count ? `${count} 条鱼在游动` : "点击添加第一条鱼"}</strong></span>
-      <b>编辑 ›</b>
-    </span>
+  return <section className="aquarium-card" aria-label={`${tankName} 的鱼缸`}>
+    <div className="aquarium-heading">
+      <button type="button" className="aquarium-runtime" data-testid="tank-running-days" onClick={onManageTank}>
+        <small>鱼缸运行时长</small><strong>{runningDays === null ? "设置开缸日期" : `已运行 ${runningDays} 天`}</strong>
+      </button>
+      <button type="button" className="aquarium-edit" onClick={onOpen} aria-label={`编辑 ${tankName} 的鱼类档案；${summary}`}>编辑鱼只 ›</button>
+    </div>
+    <button className="aquarium-scene" type="button" onClick={onOpen} aria-label={`查看 ${tankName} 的鱼只`}>
     <span className="aquarium-water" aria-hidden="true" ref={waterRef}>
       <i className="aquarium-bubble bubble-one" />
       <i className="aquarium-bubble bubble-two" />
@@ -204,7 +204,8 @@ export function AquariumSimulator({ tankName, stock, onOpen }: AquariumSimulator
       <span>{summary}</span>
       {count > MAX_ANIMATED_FISH && <small>动画最多展示 {MAX_ANIMATED_FISH} 条，档案数量已全部保存</small>}
     </span>
-  </button>;
+    </button>
+  </section>;
 }
 
 export function FishManagerSheet({
