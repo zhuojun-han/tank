@@ -29,7 +29,11 @@
 - `dart analyze --fatal-infos` 无问题；`flutter test --no-pub --concurrency=1` **269 项全部通过**，日志 `app/build/sync-full-tests-final.log`。覆盖 KH/目标、周期续配、任务日期/通知、v11 升级、旧备份、合并冲突、窄屏与现有拍照/趋势。
 - 首轮修复了旧不完整 schema 夹具兼容、补液链合并冲突及 320px 趋势溢出。旧首页夹具遗漏新数据源导致的 Drift 零延迟清理计时器已补齐依赖与卸载清理，未屏蔽计时器断言。
 - `node tools/check-project.mjs` 通过，含共享合同、74 篇文档和数据集完整性；不作为样本准确率证明。
-- `flutter build apk --debug --no-pub` 完成，保留既有 JBR native-access / flutter_timezone Kotlin 迁移警告；Android 模拟器 `emulator-5554` 已 `adb install -r` 成功，确认 MainActivity 正常前台。原 App 数据升级前已备份；后续完整比对与云端结果继续记录本节。
+- `flutter build apk --debug --no-pub` 完成，保留既有 JBR native-access / flutter_timezone Kotlin 迁移警告；Android API 36 模拟器 `emulator-5554` 已 `adb install -r` 成功，确认 MainActivity 正常前台。
+- 升级前备份、退出后逐字段比对：schema **10 → 11**；3 个海缸、1 条检测记录、5 个任务、7 条任务事件、8 个指标配置、3 个目标范围的原始字段全部一致。主题、鱼类档案与提醒开关保留，切缸后恢复原当前缸；仅偏好更新时间随切换改变。未生成检测记录、计时会话或补液周期。
+- 模拟器实际页面：KH 初始 1 / 剩余 0.49 mL 得到 **7.9 dKH**，取消不记录；旧 KH 7–8 范围保留并预填计划目标 **7.5**；PO4/KH 配方均显示 **6 天（5.95 天）**与有限补液日期；现有任务历史、切缸和趋势入口可用。当前 App 进程日志未见 Flutter 未处理异常、数据库错误或布局溢出。完成后已退回 Android 桌面。
+- 功能提交 `09ba29a` 已推送私有仓库 `main`。首轮云端 268 项通过、1 项旧测试将 UTC 时间当成本地 09:00；`6c9c5a5` 只修正测试，以本地到期前 1ms 和到期时刻验证状态，8 项本地相关回归通过。App 业务源码及上述 APK 未改变。
+- `6c9c5a5` 的 [Workspace 云端检查](https://github.com/zhuojun-han/tank/actions/runs/34220394803) 与 [Flutter 云端完整检查](https://github.com/zhuojun-han/tank/actions/runs/34220394828) 均通过，包含锁文件、格式、静态分析、全量测试、Drift 生成代码一致性和 Android debug 编译。
 
 APK：`app/build/app/outputs/flutter-apk/app-debug.apk`，SHA-256：`FCCC68E1F15ED2112D4333742BDE479B6CB142EB857F80C8CC062621CC5B9ACA`。
 

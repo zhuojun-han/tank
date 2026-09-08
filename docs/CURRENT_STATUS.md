@@ -4,7 +4,7 @@
 
 ## 本轮：网页版功能同步到 App
 
-用户已授权 WEB-005–008 与 PARITY-004。App 已实现补液周期与残液续配、KH 无计时查表、目标范围联动、任务延期与实际完成日期；最终验证进行中，见 [本轮交付报告](coordination/app-sync-followup-2026-09-08.md)。平台差异统一在 [同步清单](coordination/app-sync-backlog.md) 维护。
+用户已授权并完成 WEB-005–008 与 PARITY-004 同步：补液周期与残液续配、KH 无计时查表、目标范围联动、任务延期与实际完成日期。269 项全量测试、静态分析和 Android debug 构建通过，模拟器已保留数据覆盖升级；云端结果及设备边界见 [本轮交付报告](coordination/app-sync-followup-2026-09-08.md)。平台差异统一在 [同步清单](coordination/app-sync-backlog.md) 维护。
 
 旧数据通过 v11 迁移保留，备份继续支持旧版本。补液和普通任务共用日期展示与通知重排；未把网页演示数据导入 App，也未同步独立设计任务中的候选立绘。数据合同见 [技术设计](TECHNICAL_DESIGN.md)。
 
