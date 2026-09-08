@@ -24,3 +24,7 @@
 浏览器各场景无页面异常。3000 开发预览已实际加载新界面；390px 手机宽度与 1280px 桌面截图检查，未出现横向溢出，弹窗和鱼只入口正常。截图日期仅在隔离测试中设置，未替用户填写开缸日期。
 
 日志位于忽略目录 `web-demo/artifacts/tank-age-*.log`，视觉证据为同目录 `tank-age-mobile-{card,form,manager}.png` 及 `tank-age-desktop-card.png`。尚未进行 App 日期实现、迁移、备份或设备验收；本地预览不表示公开网站已部署。
+
+## 云端验证
+
+功能提交 `be1a6f9` 已推送至 `main`。[Web checks](https://github.com/zhuojun-han/tank/actions/runs/34224282842) 完整通过：TypeScript、ESLint、162 项单元测试、生产构建、2 项 SSR、20 个浏览器回归；此结果覆盖体积兼容修复后的同一提交。[Workspace checks](https://github.com/zhuojun-han/tank/actions/runs/34224282763) 也通过。未触发或声称本批 App 构建。
