@@ -2,7 +2,14 @@
 
 更新时间：2026-09-08。这里仅维护最新快照和开放项；历史结果按批次报告引用，不自动作为当前修改树的验证证明。
 
-## 本轮工作：网页任务顺延与实际完成日期
+## 本轮工作：Web CI 预览退出修复
+
+截图中的 15 项失败由预览服务提前退出引起连带连接失败。已升级并锁定包含官方修复的 Cloudflare 工具组合，固定原 Worker 兼容日期，并补齐 CI 失败日志，详见 [本轮实证](coordination/web-ci-preview-2026-09-08.md)。
+
+- 本地类型、lint、142 项单元测试、生产构建、2 项 SSR、16 项浏览器流程通过；修复提交 `07e1915` 的 [云端 Web 完整检查](https://github.com/zhuojun-han/tank/actions/runs/34208362526) 和 Workspace checks 均通过。
+- 本地网页已恢复；未改 App、页面业务、用户数据或同步清单。完整依赖审计剩余 `vinext → image-size` 的 2 个 high 包节点。
+
+## 近期功能：网页任务顺延与实际完成日期
 
 已接入自定义延迟、未完成自动顺延、按实际完成日期重排及补液联动，详见 [本轮实证](coordination/task-postponement-web-2026-09-08.md)。通用排期归 WEB-008，补液联动归 WEB-005；App 暂未同步。
 
@@ -42,7 +49,7 @@ KH 无计时滴定查表与一位小数记录见 [KH 检测实证](coordination/
 - iOS：macOS/Xcode 构建、启动、相机/通知和设备验收；Windows 不具备该验证条件。
 - 发布：正式签名、应用标识及商店资料、16 KB 原生库兼容性、隐私公开地址等见 [发布清单](RELEASE_CHECKLIST.md)。
 - NO3 编号 3 的当前候选范围与人工标签不一致，已如实保留在本轮实图审计中；本轮未调整阈值。
-- 依赖维护：image-size 静态素材解析和 Miniflare 锁定 undici 的两条工具依赖链尚待独立兼容处理，见 [剩余依赖](coordination/project-optimization-followup-2026-09-08.md)。不能把生产审计为 0 或本地 CI 配置存在写成全面安全或 CI 已在线运行。
+- 依赖维护：`image-size` 静态素材解析链仍待兼容处理，触发边界见 [此前依赖审计](coordination/project-optimization-followup-2026-09-08.md#剩余依赖与实际使用路径)；原 undici 依赖链已随 [本轮工具升级](coordination/web-ci-preview-2026-09-08.md) 更新并通过审计。生产包审计为 0 不代表全部运行路径无风险。
 
 ## 环境与历史
 
