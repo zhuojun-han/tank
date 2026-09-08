@@ -50,6 +50,8 @@ README 只负责导航，AGENTS 只留协作要求；同步授权在 PROJECT_CON
 
 上传状态：已成功推送至用户指定的私有仓库，首次源码提交为 [`eab147a11460d9cd878a4a52e9aaea97e5955111`](https://github.com/zhuojun-han/tank/commit/eab147a11460d9cd878a4a52e9aaea97e5955111)。14:08（UTC+8）查询：首次 [Web 检查](https://github.com/zhuojun-han/tank/actions/runs/34193035625) 全部通过；[Flutter 检查](https://github.com/zhuojun-han/tank/actions/runs/34193035661) 的依赖安装、格式、分析、测试和生成核对通过，Android 编译仍在运行。后续文档/CI 整理提交的远程结果须按其提交独立核对。上传源码不等于部署网站或发布 App。
 
+文档/CI 整理提交 [`89c3af6`](https://github.com/zhuojun-han/tank/commit/89c3af681b9ea04cdbcb100db887b9c50740d68e) 已推送，远程 main 核对一致。14:14 查询时，[轻量工作区检查](https://github.com/zhuojun-han/tank/actions/runs/34193714360) 已通过；该提交的 [Web](https://github.com/zhuojun-han/tank/actions/runs/34193714319) 和 [Flutter](https://github.com/zhuojun-han/tank/actions/runs/34193714325) 完整流程仍在运行。后续只补充状态文档时，由轻量流程验证文档与结构。
+
 新 APK：201,571,385 字节，SHA256 `29fc173e7c789e8950a46162283afa2e65d530ee723df1a1ac9f65a4264e0430`。覆盖安装后再采样 12.048 秒，宿主 PID 33048 为 0.932%，App PID 4009 为 0.000%，前台为 Android 桌面。本地实证位于忽略目录 `artifacts/android-cpu-2026-09-08/`（采样、AVD 配置备份、截图、数据库对照与日志）以及 `app/build/background-timer-*-2026-09-08.log`，不随源码上传。暂存检查记录为 `artifacts/github-publish-staging-review.json`。
 
 仍未验证真实手机相机、系统后台限制、通知送达、长期功耗和 iOS；剩余依赖链及其他产品开放项见 [当前状态](../CURRENT_STATUS.md)，本轮未据此宣称全面安全或两端完全同步。
