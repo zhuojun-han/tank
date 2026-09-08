@@ -20,6 +20,8 @@ npm start
 
 `npm start` 使用 `tools/preview.mjs` 通过本地 Wrangler 运行 Worker 与静态资源，默认端口 3000；不会发布到远端。此入口避开当前 Windows 下 vinext Node 预览静态资源路径分隔符问题，保持与 Sites 产物一致。
 
+Cloudflare 插件、Wrangler 与 Workers 类型按兼容组合一起更新；Worker 兼容日期在 `vite.config.ts` 显式固定，避免工具升级顺带改变运行语义。CI 保留服务输出与退出信息，失败时将 `artifacts/preview-logs/` 随浏览器报告上传；出现批量连接失败时先检查服务是否提前退出。
+
 ## 验证入口
 
 | 命令 | 范围与前提 |

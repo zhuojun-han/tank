@@ -7,6 +7,8 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
+  // Keep Worker semantics stable when upgrading the local preview runtime.
+  compatibility_date: "2026-07-23",
   compatibility_flags: ["nodejs_compat"],
 
 };
