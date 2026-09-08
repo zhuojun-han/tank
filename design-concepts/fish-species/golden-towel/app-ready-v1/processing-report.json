@@ -1,0 +1,86 @@
+{
+  "id": "golden-towel",
+  "source": "design-concepts/fish-species/golden-towel/raw/golden-towel-v1.png",
+  "source_sha256": "eae88615ea17cf7bb4dcbfa29d97273eecd03a240b351fa1a29f16f89f7f316a",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "parameters": {
+    "chroma_seed_min": 22,
+    "dark_seed_max": 110,
+    "seed_close_kernel": 3,
+    "foreground_erode_kernel": 5,
+    "background_safety_dilate_kernel": 61,
+    "grabcut_iterations": 5,
+    "edge_feather_sigma": 0.6,
+    "edge_color_bleed_sigma": 1.5,
+    "transparent_margin_fraction_per_side": 0.04,
+    "runtime_bounds": [
+      768,
+      480
+    ],
+    "webp_quality": 90,
+    "webp_method": 6,
+    "random_seed": 1729
+  },
+  "versions": {
+    "opencv": "4.12.0",
+    "numpy": "2.3.5",
+    "pillow": "12.3.0"
+  },
+  "seed_pixels": 898006,
+  "foreground_pixels": 897770,
+  "source_foreground_bbox": [
+    74,
+    21,
+    1461,
+    995
+  ],
+  "runtime_size": [
+    683,
+    480
+  ],
+  "alpha": {
+    "transparent": 137221,
+    "partial": 7483,
+    "opaque": 183136,
+    "bbox": [
+      23,
+      16,
+      660,
+      464
+    ]
+  },
+  "webp_bytes": 86460,
+  "webp_sha256": "3219352296016ba7aaf8074b43815b1caf5c92871ebc9121d45932f03493be61",
+  "two_runtime_files_identical": true,
+  "original_unchanged": true,
+  "transparent_png": "design-concepts/fish-species/golden-towel/app-ready-v1/golden-towel-transparent.png",
+  "decoded_webp": {
+    "size": [
+      683,
+      480
+    ],
+    "alpha_bbox": [
+      23,
+      16,
+      660,
+      464
+    ],
+    "transparent_pixels": 137221,
+    "partial_pixels": 7483,
+    "opaque_pixels": 183136
+  },
+  "visual_review": {
+    "backgrounds": [
+      "dark",
+      "light",
+      "reef"
+    ],
+    "full_fins_and_tail": true,
+    "visible_checkerboard_residue": false,
+    "runtime_device_verification": "pending parent integration tests"
+  },
+  "three_webp_files_identical": true
+}

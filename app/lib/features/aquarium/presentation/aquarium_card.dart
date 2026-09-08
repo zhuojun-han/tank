@@ -91,23 +91,24 @@ class AquariumCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: 10,
-                  child: Text(
-                    speciesSummary,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      shadows: const [
-                        Shadow(color: Colors.black54, blurRadius: 5),
-                      ],
+                if (items.isNotEmpty)
+                  Positioned(
+                    left: 14,
+                    right: 14,
+                    bottom: 10,
+                    child: Text(
+                      speciesSummary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        shadows: const [
+                          Shadow(color: Colors.black54, blurRadius: 5),
+                        ],
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

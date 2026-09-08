@@ -20,6 +20,17 @@ enum FishArtworkKind {
   builtinPowderBlueTang,
   builtinMidasBlenny,
   custom,
+  builtinBlueTang,
+  builtinFoxface,
+  builtinLamarck,
+  builtinTomatoClownfish,
+  builtinBannerfish,
+  builtinEmperor,
+  builtinSaddleback,
+  builtinGoldenTowel,
+  builtinBlueface,
+  builtinVioletAnthias,
+  builtinYellowTang,
 }
 
 class BuiltinFishSpecies {
@@ -40,7 +51,7 @@ const builtinFishCatalog = <BuiltinFishSpecies>[
   BuiltinFishSpecies(
     kind: FishArtworkKind.builtinClownfish,
     name: builtinClownfishSpecies,
-    note: 'A1 轻写实立绘',
+    note: '橙白条纹',
     asset: builtinClownfishAsset,
   ),
   BuiltinFishSpecies(
@@ -82,7 +93,7 @@ const builtinFishCatalog = <BuiltinFishSpecies>[
   BuiltinFishSpecies(
     kind: FishArtworkKind.builtinPowderBlueTang,
     name: '粉蓝吊',
-    note: '圆润饱满背鳍版本',
+    note: '浅蓝鱼身与黄色背鳍',
     asset: 'assets/aquarium/acanthurus-leucosternon.webp',
   ),
   BuiltinFishSpecies(
@@ -90,6 +101,72 @@ const builtinFishCatalog = <BuiltinFishSpecies>[
     name: '东非金剪刀',
     note: '金橙体色与剪刀尾',
     asset: 'assets/aquarium/ecsenius-midas.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinBlueTang,
+    name: '蓝吊',
+    note: '蓝色鱼体与黄色尾鳍',
+    asset: 'assets/aquarium/paracanthurus-hepatus.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinFoxface,
+    name: '黄狐狸',
+    note: '黄色鱼体与黑白面罩',
+    asset: 'assets/aquarium/foxface.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinLamarck,
+    name: '拉马克',
+    note: '银白鱼体与黑色线纹',
+    asset: 'assets/aquarium/lamarck.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinTomatoClownfish,
+    name: '番茄小丑',
+    note: '红色鱼体与白色头带',
+    asset: 'assets/aquarium/tomato-clownfish.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinBannerfish,
+    name: '关刀',
+    note: '黑白条纹与延长背鳍',
+    asset: 'assets/aquarium/bannerfish.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinEmperor,
+    name: '皇后',
+    note: '蓝黄色条纹',
+    asset: 'assets/aquarium/emperor.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinSaddleback,
+    name: '马鞍',
+    note: '黑白斑纹与黄色鱼鳍',
+    asset: 'assets/aquarium/saddleback.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinGoldenTowel,
+    name: '金毛巾',
+    note: '金黄鱼体与蓝色细纹',
+    asset: 'assets/aquarium/golden-towel.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinBlueface,
+    name: '蓝面',
+    note: '蓝色面部与黄蓝鱼身',
+    asset: 'assets/aquarium/blueface.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinVioletAnthias,
+    name: '紫罗兰',
+    note: '紫红鱼身与黄色背部',
+    asset: 'assets/aquarium/violet-anthias.webp',
+  ),
+  BuiltinFishSpecies(
+    kind: FishArtworkKind.builtinYellowTang,
+    name: '黄金吊',
+    note: '明黄鱼体与高背鳍',
+    asset: 'assets/aquarium/yellow-tang.webp',
   ),
 ];
 

@@ -686,8 +686,6 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
             Text('记录结果', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             if (photoAllowed) ...[
-              const Text('仅供参考'),
-              const SizedBox(height: 12),
               FilledButton.icon(
                 key: const Key('open-photo-flow'),
                 onPressed: _busy ? null : () => _openPhoto(session, parameter),
@@ -696,12 +694,12 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
               ),
               const SizedBox(height: 8),
             ] else
-              const Text('该参数没有已验证的拍照资料，仅支持手动录入。'),
+              const Text('请手动录入结果。'),
             OutlinedButton.icon(
               key: const Key('use-manual-result'),
               onPressed: _busy ? null : () => _useManualEntry(session),
               icon: const Icon(Icons.edit_outlined),
-              label: const Text('手动录入最终结果'),
+              label: const Text('手动录入'),
             ),
           ],
         ),
@@ -739,7 +737,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('人工复核', style: Theme.of(context).textTheme.titleMedium),
+                Text('修改结果', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -830,7 +828,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
                   key: const Key('save-test-workflow'),
                   onPressed: _busy ? null : () => _save(session),
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text('确认并保存正式记录'),
+                  label: const Text('确认并保存'),
                 ),
               ],
             ),
@@ -1068,7 +1066,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('放弃检测草稿？'),
-        content: const Text('这会删除未保存的数值草稿；旧版本草稿如有关联照片也会尝试清理。此操作无法撤销。'),
+        content: const Text('未保存的结果将被删除，无法撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -1090,7 +1088,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
       if (!photoDeleted) {
         _showMessage('草稿已删除，但旧版本本地照片清理失败。');
       } else {
-        _showMessage('草稿已删除，旧版本本地照片已清理');
+        _showMessage('草稿已删除');
       }
       context.go('/test');
     });

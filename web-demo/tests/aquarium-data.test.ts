@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -42,9 +42,20 @@ test("offers every approved built-in fish with its own artwork", async () => {
       "紫吊",
       "粉蓝吊",
       "东非金剪刀",
+      "蓝吊",
+      "黄狐狸",
+      "拉马克",
+      "番茄小丑",
+      "关刀",
+      "皇后",
+      "马鞍",
+      "金毛巾",
+      "蓝面",
+      "紫罗兰",
+      "黄金吊",
     ],
   );
-  assert.equal(new Set(BUILTIN_FISH_SPECIES.map((species) => species.artworkPath)).size, 9);
+  assert.equal(new Set(BUILTIN_FISH_SPECIES.map((species) => species.artworkPath)).size, 20);
   await Promise.all(BUILTIN_FISH_SPECIES.map((species) =>
     access(new URL(`../public${species.artworkPath}`, import.meta.url))
   ));
@@ -65,6 +76,26 @@ test("preserves a recognized built-in artwork through storage normalization", ()
   }], []);
 
   assert.deepEqual(stock[0].artwork, builtinFishArtwork("zebrasoma-xanthurum"));
+});
+
+test("new fish keep independent artwork through storage and share identical Web and App assets", async () => {
+  const additions = BUILTIN_FISH_SPECIES.slice(9);
+  const restored = normalizeFishStock(additions.map((species, index) => ({
+    id: `new-fish-${index}`, tankId: index % 2 + 1, species: species.name,
+    quantity: index + 1, introducedOn: "2026-09-08", artwork: builtinFishArtwork(species.id),
+  })), []);
+  assert.equal(restored.length, 11);
+  for (const [index, species] of additions.entries()) {
+    assert.deepEqual(restored[index].artwork, builtinFishArtwork(species.id));
+    assert.equal(restored[index].tankId, index % 2 + 1);
+    const [web, app] = await Promise.all([
+      readFile(new URL(`../public${species.artworkPath}`, import.meta.url)),
+      readFile(new URL(`../../app/assets/aquarium/${species.id}.webp`, import.meta.url)),
+    ]);
+    assert.deepEqual(web, app, `${species.id} must use identical artwork on both platforms`);
+    assert.equal(new TextDecoder().decode(web.subarray(0, 4)), "RIFF");
+    assert.equal(new TextDecoder().decode(web.subarray(8, 12)), "WEBP");
+  }
 });
 
 test("keeps exact stock quantity while bounding animated fish", () => {

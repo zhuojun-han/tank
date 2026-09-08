@@ -79,9 +79,7 @@ class _AlkalinityCalculatorPageState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text(
-            '仅适用于未烘焙 NaHCO₃。理论条件计划，不是通用安全剂量；每天先复测 KH/pH 并重算，不能替代专业诊断。',
-          ),
+          const Text('使用未烘焙 NaHCO₃。每天先复测 KH/pH，再计算当天用量。'),
           for (var i = 0; i < _fields.length; i++)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -134,7 +132,7 @@ class _AlkalinityCalculatorPageState
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   '称取 ${plan.solidMassToWeighG.toStringAsFixed(4)} g，溶解后定容至 ${plan.stockFinalVolumeMl} mL。\n'
-                  '浓度 ${plan.stockConcentrationGPerL.toStringAsFixed(3)} g/L；最低温度筛查上限 ${plan.conservativeLimitGPerL.toStringAsFixed(3)} g/L（20% 程序余量，不是精确饱和模型）。\n'
+                  '浓度 ${plan.stockConcentrationGPerL.toStringAsFixed(3)} g/L。\n'
                   '${plan.days} 天，共 ${plan.totalStockRequiredMl.toStringAsFixed(2)} mL，需 ${plan.stockBatchesRequired} 批；缺口 ${plan.stockShortfallMl.toStringAsFixed(2)} mL。',
                 ),
               ),
@@ -158,8 +156,19 @@ class _AlkalinityCalculatorPageState
             ),
           ],
           const SizedBox(height: 12),
-          const Text(
-            '依据：NaHCO₃ 84.007 g/mol，一价碱度当量，1 meq/L = 2.8 dKH；100 L 提升 1 dKH 约需 3.00025 g 纯品。溶解度按 PubChem 的 g/100 g 溶液数据作保守筛查。完全溶解后在强水流处缓慢分次添加，勿与钙镁浓缩液混合。',
+          const Text('完全溶解后，在强水流处缓慢分次添加，勿与钙镁浓缩液混合。达到目标或 KH/pH、生物状态异常时停止。'),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('计算依据'),
+            children: [
+              const Text(
+                'NaHCO₃ 84.007 g/mol；1 meq/L = 2.8 dKH。100 L 提升 1 dKH 约需 3.00025 g 纯品。溶解度按 PubChem 数据保守筛查。',
+              ),
+              if (_plan case final plan?)
+                Text(
+                  '最低温度下的浓度筛查上限：${plan.conservativeLimitGPerL.toStringAsFixed(3)} g/L，已预留 20% 余量。',
+                ),
+            ],
           ),
         ],
       ),

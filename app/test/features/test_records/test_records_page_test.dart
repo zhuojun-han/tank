@@ -181,6 +181,9 @@ void main() {
       );
       await _pumpUntilFound(tester, find.text('算法原始结果（只读）'));
       expect(find.text('最终确认结果'), findsOneWidget);
+      expect(find.text('算法原始估值'), findsNothing);
+      await _scrollToAndTap(tester, find.text('算法原始结果（只读）'));
+      await tester.pumpAndSettle();
       expect(find.text('算法原始估值'), findsOneWidget);
       expect(find.text('10–25 mg/L'), findsOneWidget);
       expect(find.text('原始拍摄时间'), findsOneWidget);

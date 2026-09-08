@@ -1,0 +1,93 @@
+{
+  "species": "tomato-clownfish",
+  "source": "design-concepts/fish-species/tomato-clownfish/raw/tomato-clownfish-v1.png",
+  "source_sha256": "f7928aa830d936f4d330d80b8dafa1e16876de3fc8379898a179243d1ff3dd6d",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "source_mode": "RGB",
+  "source_alpha_bbox": [
+    92,
+    39,
+    1422,
+    974
+  ],
+  "output_size": [
+    683,
+    480
+  ],
+  "output_alpha_bbox": [
+    23,
+    15,
+    660,
+    465
+  ],
+  "transparent_pixels": 160317,
+  "opaque_pixels": 160619,
+  "partial_alpha_pixels": 6904,
+  "webp_bytes": 56882,
+  "webp_sha256": "1942ceee8023286f528963173c291fd7134ef9d68d19a90a6f90ef40ffbbad2b",
+  "png_sha256": "93f9f860d1e7cd008739d42a71579e579a16b9663aab7928b3171b74655fd70c",
+  "app_web_identical": true,
+  "parameters": {
+    "chroma_seed_min": 12,
+    "closing_kernel": 3,
+    "foreground_erosion": 3,
+    "unknown_dilation": 7,
+    "grabcut_iterations": 5,
+    "maximum_dimensions": [
+      768,
+      480
+    ],
+    "edge_defringe_erosion_px": 1,
+    "padding_fraction_per_edge": 0.04,
+    "webp_quality": 90,
+    "webp_method": 6,
+    "foreground_protection_polygons": [
+      [
+        [
+          1138,
+          235
+        ],
+        [
+          1198,
+          273
+        ],
+        [
+          1169,
+          398
+        ],
+        [
+          1177,
+          531
+        ],
+        [
+          1202,
+          655
+        ],
+        [
+          1141,
+          629
+        ],
+        [
+          1099,
+          489
+        ],
+        [
+          1105,
+          331
+        ]
+      ]
+    ]
+  },
+  "validation_note": "Geometry/alpha checks passed; visual contact must also be inspected. Preserves source RGB within mask; opaque checkerboard removal is not recovery of physically true fin translucency.",
+  "master_rgb_matches_raw": true,
+  "webp_alpha_matches_png": true,
+  "visual_review_backgrounds": [
+    "dark #0f1d23",
+    "light #f8f2e7",
+    "project natural coral reef"
+  ],
+  "visual_review": "Inspected full silhouette, face/eye/markings, dorsal/ventral/pectoral fins and tail on three backgrounds; no rectangular checkerboard or detached background fragments seen. One source-pixel matte defringe before proportional resize."
+}

@@ -1,0 +1,244 @@
+{
+  "preparedOn": "2026-09-08",
+  "processingAuthorization": "User explicitly approved local Python background removal in this task.",
+  "existingCatalogPreserved": 9,
+  "added": 11,
+  "webpEncoding": {
+    "quality": 90,
+    "method": 6
+  },
+  "totalRuntimeBytesPerPlatform": 795380,
+  "entries": [
+    {
+      "id": "paracanthurus-hepatus",
+      "name": "蓝吊",
+      "source": "design-concepts/fish-species/paracanthurus-hepatus/raw/blue-tang-v1-checkerboard.png",
+      "sourceSha256": "30f8bcf2384f7dbd10216f8bfd35d7f2ea8a0153eb53451038523317d08264c2",
+      "transparentPng": "design-concepts/fish-species/paracanthurus-hepatus/app-ready-v1/paracanthurus-hepatus-full-resolution.png",
+      "processingScript": "design-concepts/fish-species/paracanthurus-hepatus/processing.py",
+      "webAsset": "web-demo/public/fish-species/paracanthurus-hepatus.webp",
+      "appAsset": "app/assets/aquarium/paracanthurus-hepatus.webp",
+      "size": [
+        768,
+        413
+      ],
+      "webpBytes": 60658,
+      "webpSha256": "6dfeae4a0f90c926a95bdf5ba58c961e0b1cd03a11a3ebee95cf0198cc164db8",
+      "alpha": {
+        "transparent": 143067,
+        "partial": 6287,
+        "opaque": 167830
+      }
+    },
+    {
+      "id": "foxface",
+      "name": "黄狐狸",
+      "source": "design-concepts/fish-species/foxface/raw/foxface-v1-checkerboard.png",
+      "sourceSha256": "365665d940d1ef6ce33eb311a62ac9c1d2de96cd6ae2748258362f6a434419ec",
+      "transparentPng": "design-concepts/fish-species/foxface/app-ready-v1/foxface-full-resolution.png",
+      "processingScript": "design-concepts/fish-species/foxface/processing.py",
+      "webAsset": "web-demo/public/fish-species/foxface.webp",
+      "appAsset": "app/assets/aquarium/foxface.webp",
+      "size": [
+        768,
+        441
+      ],
+      "webpBytes": 64118,
+      "webpSha256": "417f28b118892cd7d1bc2115686c17022f9b4c7db84db55813946dc328fd17e7",
+      "alpha": {
+        "transparent": 171506,
+        "partial": 8681,
+        "opaque": 158501
+      }
+    },
+    {
+      "id": "lamarck",
+      "name": "拉马克",
+      "source": "design-concepts/fish-species/lamarck/raw/lamarck-v1.png",
+      "sourceSha256": "936449f3a321508eb0f402995745c4558fd0bba5495bb91cd5fba195867f4b88",
+      "transparentPng": "design-concepts/fish-species/lamarck/app-ready-v1/lamarck.png",
+      "processingScript": "design-concepts/fish-species/prepare-banner-violet-lamarck.py",
+      "webAsset": "web-demo/public/fish-species/lamarck.webp",
+      "appAsset": "app/assets/aquarium/lamarck.webp",
+      "size": [
+        768,
+        406
+      ],
+      "webpBytes": 85518,
+      "webpSha256": "00d378125a31395490fd7554668f4f49a28ac43a58e2f75040d02f6ec18c9064",
+      "alpha": {
+        "transparent": 168035,
+        "partial": 142388,
+        "opaque": 1385
+      }
+    },
+    {
+      "id": "tomato-clownfish",
+      "name": "番茄小丑",
+      "source": "design-concepts/fish-species/tomato-clownfish/raw/tomato-clownfish-v1.png",
+      "sourceSha256": "f7928aa830d936f4d330d80b8dafa1e16876de3fc8379898a179243d1ff3dd6d",
+      "transparentPng": "design-concepts/fish-species/tomato-clownfish/app-ready-v1/tomato-clownfish-full-resolution.png",
+      "processingScript": "design-concepts/fish-species/tomato-clownfish/processing.py",
+      "webAsset": "web-demo/public/fish-species/tomato-clownfish.webp",
+      "appAsset": "app/assets/aquarium/tomato-clownfish.webp",
+      "size": [
+        683,
+        480
+      ],
+      "webpBytes": 56882,
+      "webpSha256": "1942ceee8023286f528963173c291fd7134ef9d68d19a90a6f90ef40ffbbad2b",
+      "alpha": {
+        "transparent": 160317,
+        "partial": 6904,
+        "opaque": 160619
+      }
+    },
+    {
+      "id": "bannerfish",
+      "name": "关刀",
+      "source": "design-concepts/fish-species/bannerfish/raw/bannerfish-v1.png",
+      "sourceSha256": "dd56b7bfe2c308f854e155a5853ce4c1b6d370d1ecae349c520ea031d74f67e9",
+      "transparentPng": "design-concepts/fish-species/bannerfish/app-ready-v1/bannerfish.png",
+      "processingScript": "design-concepts/fish-species/prepare-banner-violet-lamarck.py",
+      "webAsset": "web-demo/public/fish-species/bannerfish.webp",
+      "appAsset": "app/assets/aquarium/bannerfish.webp",
+      "size": [
+        653,
+        480
+      ],
+      "webpBytes": 39268,
+      "webpSha256": "c025a11e6c20dca21fe87a36a6dc291283996c50211db076bb42d78d05ad6f08",
+      "alpha": {
+        "transparent": 213420,
+        "partial": 7541,
+        "opaque": 92479
+      }
+    },
+    {
+      "id": "emperor",
+      "name": "皇后",
+      "source": "design-concepts/fish-species/emperor/raw/emperor-v1.png",
+      "sourceSha256": "66b35c26e050aab161c7ebeba272f761aefdca9315333905dae287a749a26410",
+      "transparentPng": "design-concepts/fish-species/emperor/app-ready-v1/emperor-transparent.png",
+      "processingScript": "design-concepts/fish-species/blueface/processing.py",
+      "webAsset": "web-demo/public/fish-species/emperor.webp",
+      "appAsset": "app/assets/aquarium/emperor.webp",
+      "size": [
+        732,
+        480
+      ],
+      "webpBytes": 97662,
+      "webpSha256": "35a968aa1af970e19f99ad3cacc9583e16bbc956d2bae85c06e95a8ac68e3433",
+      "alpha": {
+        "transparent": 156048,
+        "partial": 8328,
+        "opaque": 186984
+      }
+    },
+    {
+      "id": "saddleback",
+      "name": "马鞍",
+      "source": "design-concepts/fish-species/saddleback/raw/saddleback-v1.png",
+      "sourceSha256": "2ad270d050a3df241e82e3f48e5a6ec864d4b38505fa604634c922f04466de2e",
+      "transparentPng": "design-concepts/fish-species/saddleback/app-ready-v1/saddleback-transparent.png",
+      "processingScript": "design-concepts/fish-species/blueface/processing.py",
+      "webAsset": "web-demo/public/fish-species/saddleback.webp",
+      "appAsset": "app/assets/aquarium/saddleback.webp",
+      "size": [
+        659,
+        480
+      ],
+      "webpBytes": 83432,
+      "webpSha256": "d5c6cfe86cac02cf823643e60b3ad7057c6298fc56c3785f6b0e7f491d72625f",
+      "alpha": {
+        "transparent": 145554,
+        "partial": 7226,
+        "opaque": 163540
+      }
+    },
+    {
+      "id": "golden-towel",
+      "name": "金毛巾",
+      "source": "design-concepts/fish-species/golden-towel/raw/golden-towel-v1.png",
+      "sourceSha256": "eae88615ea17cf7bb4dcbfa29d97273eecd03a240b351fa1a29f16f89f7f316a",
+      "transparentPng": "design-concepts/fish-species/golden-towel/app-ready-v1/golden-towel-transparent.png",
+      "processingScript": "design-concepts/fish-species/blueface/processing.py",
+      "webAsset": "web-demo/public/fish-species/golden-towel.webp",
+      "appAsset": "app/assets/aquarium/golden-towel.webp",
+      "size": [
+        683,
+        480
+      ],
+      "webpBytes": 86460,
+      "webpSha256": "3219352296016ba7aaf8074b43815b1caf5c92871ebc9121d45932f03493be61",
+      "alpha": {
+        "transparent": 137221,
+        "partial": 7483,
+        "opaque": 183136
+      }
+    },
+    {
+      "id": "blueface",
+      "name": "蓝面",
+      "source": "design-concepts/fish-species/blueface/raw/blueface-v1.png",
+      "sourceSha256": "41397f80b09068f495c57f69833c71bc4e3f1a18da7c9dc72e96a31b26dce59c",
+      "transparentPng": "design-concepts/fish-species/blueface/app-ready-v1/blueface-transparent.png",
+      "processingScript": "design-concepts/fish-species/blueface/processing.py",
+      "webAsset": "web-demo/public/fish-species/blueface.webp",
+      "appAsset": "app/assets/aquarium/blueface.webp",
+      "size": [
+        768,
+        464
+      ],
+      "webpBytes": 112182,
+      "webpSha256": "64e25d05a9bd9de5689d94e6399adf109a9f4021214b025849be806fc58f29e9",
+      "alpha": {
+        "transparent": 141627,
+        "partial": 7068,
+        "opaque": 207657
+      }
+    },
+    {
+      "id": "violet-anthias",
+      "name": "紫罗兰",
+      "source": "design-concepts/fish-species/violet-anthias/raw/violet-v1.png",
+      "sourceSha256": "f11da8c9bf6f2554c9b481f4186c3593e4762507736bb3815bc4246c32f45793",
+      "transparentPng": "design-concepts/fish-species/violet-anthias/app-ready-v1/violet-anthias.png",
+      "processingScript": "design-concepts/fish-species/prepare-banner-violet-lamarck.py",
+      "webAsset": "web-demo/public/fish-species/violet-anthias.webp",
+      "appAsset": "app/assets/aquarium/violet-anthias.webp",
+      "size": [
+        768,
+        414
+      ],
+      "webpBytes": 63724,
+      "webpSha256": "d4fb6ed1e73c0154cb61a7b832651afb42b11eda63bd4b9da20a7d5a2b35dd70",
+      "alpha": {
+        "transparent": 200906,
+        "partial": 10521,
+        "opaque": 106525
+      }
+    },
+    {
+      "id": "yellow-tang",
+      "name": "黄金吊",
+      "source": "design-concepts/fish-species/yellow-tang/raw/yellow-tang-v1.png",
+      "sourceSha256": "a8232e7477dcc0dc78b010a24b4e2aeb1a8961f33d05b7e99a52c5543457959e",
+      "transparentPng": "design-concepts/fish-species/yellow-tang/app-ready-v1/yellow-tang-full-resolution.png",
+      "processingScript": "design-concepts/fish-species/yellow-tang/processing.py",
+      "webAsset": "web-demo/public/fish-species/yellow-tang.webp",
+      "appAsset": "app/assets/aquarium/yellow-tang.webp",
+      "size": [
+        630,
+        480
+      ],
+      "webpBytes": 45476,
+      "webpSha256": "52925eec0ce256d5dcca36ab826072e38e36d6c976e0753c42cb70917e5f0d10",
+      "alpha": {
+        "transparent": 151406,
+        "partial": 6042,
+        "opaque": 144952
+      }
+    }
+  ]
+}

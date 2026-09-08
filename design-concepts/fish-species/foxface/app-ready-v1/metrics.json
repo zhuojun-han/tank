@@ -1,0 +1,132 @@
+{
+  "species": "foxface",
+  "source": "design-concepts/fish-species/foxface/raw/foxface-v1-checkerboard.png",
+  "source_sha256": "365665d940d1ef6ce33eb311a62ac9c1d2de96cd6ae2748258362f6a434419ec",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "source_mode": "RGB",
+  "source_alpha_bbox": [
+    46,
+    75,
+    1485,
+    901
+  ],
+  "output_size": [
+    768,
+    441
+  ],
+  "output_alpha_bbox": [
+    26,
+    14,
+    742,
+    427
+  ],
+  "transparent_pixels": 171506,
+  "opaque_pixels": 158501,
+  "partial_alpha_pixels": 8681,
+  "webp_bytes": 64118,
+  "webp_sha256": "417f28b118892cd7d1bc2115686c17022f9b4c7db84db55813946dc328fd17e7",
+  "png_sha256": "b405e4f43fabca94455365fb2dfdfef1fde22061ec08f3dc98d22f14da1e861a",
+  "app_web_identical": true,
+  "parameters": {
+    "chroma_seed_min": 12,
+    "closing_kernel": 3,
+    "foreground_erosion": 3,
+    "unknown_dilation": 7,
+    "grabcut_iterations": 5,
+    "maximum_dimensions": [
+      768,
+      480
+    ],
+    "edge_defringe_erosion_px": 1,
+    "padding_fraction_per_edge": 0.04,
+    "webp_quality": 90,
+    "webp_method": 6,
+    "foreground_protection_polygons": [
+      [
+        [
+          985,
+          275
+        ],
+        [
+          1117,
+          222
+        ],
+        [
+          1196,
+          245
+        ],
+        [
+          1243,
+          277
+        ],
+        [
+          1294,
+          318
+        ],
+        [
+          1360,
+          376
+        ],
+        [
+          1455,
+          419
+        ],
+        [
+          1478,
+          440
+        ],
+        [
+          1456,
+          470
+        ],
+        [
+          1330,
+          493
+        ],
+        [
+          1213,
+          526
+        ],
+        [
+          1160,
+          596
+        ],
+        [
+          1090,
+          690
+        ],
+        [
+          990,
+          708
+        ],
+        [
+          1025,
+          563
+        ],
+        [
+          974,
+          381
+        ]
+      ]
+    ],
+    "dark_foreground_roi": [
+      1080,
+      190,
+      1500,
+      720
+    ],
+    "dark_luma_max": 95
+  },
+  "validation_note": "Geometry/alpha checks passed; visual contact must also be inspected. Preserves source RGB within mask; opaque checkerboard removal is not recovery of physically true fin translucency.",
+  "master_rgb_matches_raw": true,
+  "webp_alpha_matches_png": true,
+  "visual_review_backgrounds": [
+    "dark #0f1d23",
+    "light #f8f2e7",
+    "project natural coral reef"
+  ],
+  "visual_review": "Inspected full silhouette, face/eye/markings, dorsal/ventral/pectoral fins and tail on three backgrounds; no rectangular checkerboard or detached background fragments seen. One source-pixel matte defringe before proportional resize."
+}

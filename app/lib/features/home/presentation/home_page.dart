@@ -164,7 +164,7 @@ class _HomeContent extends ConsumerWidget {
           child: ListTile(
             leading: const CircleAvatar(child: Icon(Icons.set_meal_outlined)),
             title: Text(tank.name),
-            subtitle: Text(tank.notes ?? '当前海缸 · 数据仅保存在本机'),
+            subtitle: Text(tank.notes ?? '当前海缸'),
             trailing: const Icon(Icons.settings_outlined),
             onTap: () => context.push('/settings'),
           ),
@@ -530,12 +530,12 @@ class _LatestRecordCard extends ConsumerWidget {
                   const Icon(Icons.show_chart),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                item == null
-                    ? '尚无历史记录 · 尚未设置可比较的最近值'
-                    : '${_dateTime(item.measuredAt)} · ${_targetDescription(item, target)}',
-              ),
+              if (item != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '${_dateTime(item.measuredAt)} · ${_targetDescription(item, target)}',
+                ),
+              ],
               const SizedBox(height: 12),
               if (item == null)
                 Container(

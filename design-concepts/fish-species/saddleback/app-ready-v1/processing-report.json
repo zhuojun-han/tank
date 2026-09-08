@@ -1,0 +1,86 @@
+{
+  "id": "saddleback",
+  "source": "design-concepts/fish-species/saddleback/raw/saddleback-v1.png",
+  "source_sha256": "2ad270d050a3df241e82e3f48e5a6ec864d4b38505fa604634c922f04466de2e",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "parameters": {
+    "chroma_seed_min": 22,
+    "dark_seed_max": 110,
+    "seed_close_kernel": 3,
+    "foreground_erode_kernel": 5,
+    "background_safety_dilate_kernel": 61,
+    "grabcut_iterations": 5,
+    "edge_feather_sigma": 0.6,
+    "edge_color_bleed_sigma": 1.5,
+    "transparent_margin_fraction_per_side": 0.04,
+    "runtime_bounds": [
+      768,
+      480
+    ],
+    "webp_quality": 90,
+    "webp_method": 6,
+    "random_seed": 1729
+  },
+  "versions": {
+    "opencv": "4.12.0",
+    "numpy": "2.3.5",
+    "pillow": "12.3.0"
+  },
+  "seed_pixels": 813762,
+  "foreground_pixels": 813515,
+  "source_foreground_bbox": [
+    81,
+    15,
+    1427,
+    996
+  ],
+  "runtime_size": [
+    659,
+    480
+  ],
+  "alpha": {
+    "transparent": 145554,
+    "partial": 7226,
+    "opaque": 163540,
+    "bbox": [
+      23,
+      16,
+      636,
+      464
+    ]
+  },
+  "webp_bytes": 83432,
+  "webp_sha256": "d5c6cfe86cac02cf823643e60b3ad7057c6298fc56c3785f6b0e7f491d72625f",
+  "two_runtime_files_identical": true,
+  "original_unchanged": true,
+  "transparent_png": "design-concepts/fish-species/saddleback/app-ready-v1/saddleback-transparent.png",
+  "decoded_webp": {
+    "size": [
+      659,
+      480
+    ],
+    "alpha_bbox": [
+      23,
+      16,
+      636,
+      464
+    ],
+    "transparent_pixels": 145554,
+    "partial_pixels": 7226,
+    "opaque_pixels": 163540
+  },
+  "visual_review": {
+    "backgrounds": [
+      "dark",
+      "light",
+      "reef"
+    ],
+    "full_fins_and_tail": true,
+    "visible_checkerboard_residue": false,
+    "runtime_device_verification": "pending parent integration tests"
+  },
+  "three_webp_files_identical": true
+}

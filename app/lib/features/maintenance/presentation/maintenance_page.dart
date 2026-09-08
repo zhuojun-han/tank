@@ -761,7 +761,6 @@ class _TaskList extends StatelessWidget {
               SizedBox(height: 8),
               Text('当前筛选没有维护任务'),
               SizedBox(height: 4),
-              Text('新增任务后会按当前海缸独立保存。'),
             ],
           ),
         ),

@@ -1,0 +1,58 @@
+{
+  "species": "paracanthurus-hepatus",
+  "source": "design-concepts/fish-species/paracanthurus-hepatus/raw/blue-tang-v1-checkerboard.png",
+  "source_sha256": "30f8bcf2384f7dbd10216f8bfd35d7f2ea8a0153eb53451038523317d08264c2",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "source_mode": "RGB",
+  "source_alpha_bbox": [
+    52,
+    94,
+    1490,
+    868
+  ],
+  "output_size": [
+    768,
+    413
+  ],
+  "output_alpha_bbox": [
+    26,
+    13,
+    742,
+    400
+  ],
+  "transparent_pixels": 143067,
+  "opaque_pixels": 167830,
+  "partial_alpha_pixels": 6287,
+  "webp_bytes": 60658,
+  "webp_sha256": "6dfeae4a0f90c926a95bdf5ba58c961e0b1cd03a11a3ebee95cf0198cc164db8",
+  "png_sha256": "236a8c486b9b8686af0d1c21b86b05d42002a25060d73235e4213664a3f348aa",
+  "app_web_identical": true,
+  "parameters": {
+    "chroma_seed_min": 12,
+    "closing_kernel": 3,
+    "foreground_erosion": 3,
+    "unknown_dilation": 7,
+    "grabcut_iterations": 5,
+    "maximum_dimensions": [
+      768,
+      480
+    ],
+    "edge_defringe_erosion_px": 1,
+    "padding_fraction_per_edge": 0.04,
+    "webp_quality": 90,
+    "webp_method": 6,
+    "foreground_protection_polygons": []
+  },
+  "validation_note": "Geometry/alpha checks passed; visual contact must also be inspected. Preserves source RGB within mask; opaque checkerboard removal is not recovery of physically true fin translucency.",
+  "master_rgb_matches_raw": true,
+  "webp_alpha_matches_png": true,
+  "visual_review_backgrounds": [
+    "dark #0f1d23",
+    "light #f8f2e7",
+    "project natural coral reef"
+  ],
+  "visual_review": "Inspected full silhouette, face/eye/markings, dorsal/ventral/pectoral fins and tail on three backgrounds; no rectangular checkerboard or detached background fragments seen. One source-pixel matte defringe before proportional resize."
+}

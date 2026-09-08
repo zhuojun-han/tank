@@ -12,7 +12,7 @@ import 'package:lanjiao_water_quality/features/tanks/data/tank_repository.dart';
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
-  test('内置鱼种目录包含 9 种独立立绘', () {
+  test('内置鱼种目录包含 20 种独立立绘', () {
     expect(builtinFishCatalog.map((species) => species.name), [
       '小丑鱼',
       '双斑宝石海金鱼（公）',
@@ -23,10 +23,21 @@ void main() {
       '紫吊',
       '粉蓝吊',
       '东非金剪刀',
+      '蓝吊',
+      '黄狐狸',
+      '拉马克',
+      '番茄小丑',
+      '关刀',
+      '皇后',
+      '马鞍',
+      '金毛巾',
+      '蓝面',
+      '紫罗兰',
+      '黄金吊',
     ]);
     expect(
       builtinFishCatalog.map((species) => species.asset).toSet(),
-      hasLength(9),
+      hasLength(20),
     );
     expect(
       builtinFishSpeciesFor(FishArtworkKind.builtinPowderBlueTang).name,
@@ -138,6 +149,40 @@ void main() {
     ).watchForTank(AppDatabase.defaultTankId).first;
     expect(restored.single.artworkBase64, firstArtwork);
     expect(restored.single.customArtworkBytes, [10, 20, 30, 40]);
+  });
+
+  test('所有新增内置鱼种通过整库备份恢复并保留海缸归属', () async {
+    final source = AppDatabase(NativeDatabase.memory());
+    final destination = AppDatabase(NativeDatabase.memory());
+    addTearDown(source.close);
+    addTearDown(destination.close);
+    final added = builtinFishCatalog.skip(9).toList();
+    final items = [
+      for (var index = 0; index < added.length; index++)
+        FishStockItem(
+          id: 'added-fish-$index',
+          tankId: AppDatabase.defaultTankId,
+          species: added[index].name,
+          quantity: index + 1,
+          introducedOn: DateTime.utc(2026, 9, 8),
+          artworkKind: added[index].kind,
+        ),
+    ];
+    await FishStockRepository(
+      source,
+    ).replaceForTank(tankId: AppDatabase.defaultTankId, items: items);
+    await LocalBackupService(
+      destination,
+    ).restoreReplace(await LocalBackupService(source).exportJson());
+    final restored = await FishStockRepository(
+      destination,
+    ).watchForTank(AppDatabase.defaultTankId).first;
+    expect(restored, hasLength(11));
+    for (final item in items) {
+      final actual = restored.singleWhere((row) => row.id == item.id);
+      expect(actual.toJson(), item.toJson());
+      expect(builtinFishSpeciesFor(actual.artworkKind).name, item.species);
+    }
   });
 
   test('v7 备份恢复时鱼类档案默认为空', () async {

@@ -16,7 +16,7 @@ import 'package:lanjiao_water_quality/features/maintenance/application/maintenan
 import 'package:lanjiao_water_quality/features/test_records/application/test_record_providers.dart';
 
 void main() {
-  testWidgets('首页建议卡展示触发记录、用户目标、规则来源和安全边界', (tester) async {
+  testWidgets('首页建议卡展示确认记录、用户目标，展开后可查看来源和复测提醒', (tester) async {
     final now = DateTime.utc(2026, 8, 10, 8, 30);
     await tester.pumpWidget(
       _testApp(
@@ -68,8 +68,7 @@ void main() {
       find.textContaining('Red Sea · Algae Management Program'),
       findsOneWidget,
     );
-    expect(find.textContaining('不能替代规范复测、专业诊断'), findsOneWidget);
-    expect(find.textContaining('不会自动控制设备'), findsOneWidget);
+    expect(find.textContaining('异常时先复测'), findsOneWidget);
     await _disposeApp(tester);
   });
 

@@ -1,0 +1,86 @@
+{
+  "id": "blueface",
+  "source": "design-concepts/fish-species/blueface/raw/blueface-v1.png",
+  "source_sha256": "41397f80b09068f495c57f69833c71bc4e3f1a18da7c9dc72e96a31b26dce59c",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "parameters": {
+    "chroma_seed_min": 22,
+    "dark_seed_max": 110,
+    "seed_close_kernel": 3,
+    "foreground_erode_kernel": 5,
+    "background_safety_dilate_kernel": 61,
+    "grabcut_iterations": 5,
+    "edge_feather_sigma": 0.6,
+    "edge_color_bleed_sigma": 1.5,
+    "transparent_margin_fraction_per_side": 0.04,
+    "runtime_bounds": [
+      768,
+      480
+    ],
+    "webp_quality": 90,
+    "webp_method": 6,
+    "random_seed": 1729
+  },
+  "versions": {
+    "opencv": "4.12.0",
+    "numpy": "2.3.5",
+    "pillow": "12.3.0"
+  },
+  "seed_pixels": 846170,
+  "foreground_pixels": 846280,
+  "source_foreground_bbox": [
+    50,
+    35,
+    1473,
+    896
+  ],
+  "runtime_size": [
+    768,
+    464
+  ],
+  "alpha": {
+    "transparent": 141627,
+    "partial": 7068,
+    "opaque": 207657,
+    "bbox": [
+      27,
+      15,
+      741,
+      449
+    ]
+  },
+  "webp_bytes": 112182,
+  "webp_sha256": "64e25d05a9bd9de5689d94e6399adf109a9f4021214b025849be806fc58f29e9",
+  "two_runtime_files_identical": true,
+  "original_unchanged": true,
+  "transparent_png": "design-concepts/fish-species/blueface/app-ready-v1/blueface-transparent.png",
+  "decoded_webp": {
+    "size": [
+      768,
+      464
+    ],
+    "alpha_bbox": [
+      27,
+      15,
+      741,
+      449
+    ],
+    "transparent_pixels": 141627,
+    "partial_pixels": 7068,
+    "opaque_pixels": 207657
+  },
+  "visual_review": {
+    "backgrounds": [
+      "dark",
+      "light",
+      "reef"
+    ],
+    "full_fins_and_tail": true,
+    "visible_checkerboard_residue": false,
+    "runtime_device_verification": "pending parent integration tests"
+  },
+  "three_webp_files_identical": true
+}

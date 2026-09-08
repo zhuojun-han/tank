@@ -1,0 +1,58 @@
+{
+  "species": "yellow-tang",
+  "source": "design-concepts/fish-species/yellow-tang/raw/yellow-tang-v1.png",
+  "source_sha256": "a8232e7477dcc0dc78b010a24b4e2aeb1a8961f33d05b7e99a52c5543457959e",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "source_mode": "RGB",
+  "source_alpha_bbox": [
+    141,
+    22,
+    1388,
+    972
+  ],
+  "output_size": [
+    630,
+    480
+  ],
+  "output_alpha_bbox": [
+    21,
+    15,
+    609,
+    465
+  ],
+  "transparent_pixels": 151406,
+  "opaque_pixels": 144952,
+  "partial_alpha_pixels": 6042,
+  "webp_bytes": 45476,
+  "webp_sha256": "52925eec0ce256d5dcca36ab826072e38e36d6c976e0753c42cb70917e5f0d10",
+  "png_sha256": "0cf850fa7ae2241fbf98524a6f2550896d5c6ac13021ca52d1921a88554eb8cb",
+  "app_web_identical": true,
+  "parameters": {
+    "chroma_seed_min": 12,
+    "closing_kernel": 3,
+    "foreground_erosion": 3,
+    "unknown_dilation": 7,
+    "grabcut_iterations": 5,
+    "maximum_dimensions": [
+      768,
+      480
+    ],
+    "edge_defringe_erosion_px": 1,
+    "padding_fraction_per_edge": 0.04,
+    "webp_quality": 90,
+    "webp_method": 6,
+    "foreground_protection_polygons": []
+  },
+  "validation_note": "Geometry/alpha checks passed; visual contact must also be inspected. Preserves source RGB within mask; opaque checkerboard removal is not recovery of physically true fin translucency.",
+  "master_rgb_matches_raw": true,
+  "webp_alpha_matches_png": true,
+  "visual_review_backgrounds": [
+    "dark #0f1d23",
+    "light #f8f2e7",
+    "project natural coral reef"
+  ],
+  "visual_review": "Inspected full silhouette, face/eye/markings, dorsal/ventral/pectoral fins and tail on three backgrounds; no rectangular checkerboard or detached background fragments seen. One source-pixel matte defringe before proportional resize."
+}

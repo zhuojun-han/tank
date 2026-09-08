@@ -99,17 +99,11 @@ class _FishManagerSheetState extends ConsumerState<FishManagerSheet> {
                   key: const Key('fish-manager-list'),
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   children: [
-                    Text(
-                      '每条档案都保存鱼种、真实数量、入缸日期和立绘。鱼缸最多同时渲染 $maximumAnimatedFish 条，但不会截断库存数据。',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
                     if (_draft.isEmpty)
                       const Card(
                         child: ListTile(
                           leading: Icon(Icons.set_meal_outlined),
                           title: Text('当前还没有鱼'),
-                          subtitle: Text('可从下方选择内置鱼种，或上传其他鱼种立绘。'),
                         ),
                       ),
                     for (final item in _draft) _existingItemCard(item),

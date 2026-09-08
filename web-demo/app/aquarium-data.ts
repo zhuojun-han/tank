@@ -2,7 +2,7 @@ export const BUILTIN_FISH_SPECIES = [
   {
     id: "clownfish",
     name: "小丑鱼",
-    note: "已选定 A1 轻写实立绘",
+    note: "橙白条纹",
     artworkPath: "/fish-species/clownfish.webp",
   },
   {
@@ -44,7 +44,7 @@ export const BUILTIN_FISH_SPECIES = [
   {
     id: "acanthurus-leucosternon",
     name: "粉蓝吊",
-    note: "采用圆润饱满背鳍版本",
+    note: "浅蓝鱼身与黄色背鳍",
     artworkPath: "/fish-species/acanthurus-leucosternon.webp",
   },
   {
@@ -52,6 +52,72 @@ export const BUILTIN_FISH_SPECIES = [
     name: "东非金剪刀",
     note: "金橙细长体型与剪刀尾",
     artworkPath: "/fish-species/ecsenius-midas.webp",
+  },
+  {
+    id: "paracanthurus-hepatus",
+    name: "蓝吊",
+    note: "蓝色鱼体与黄色尾鳍",
+    artworkPath: "/fish-species/paracanthurus-hepatus.webp",
+  },
+  {
+    id: "foxface",
+    name: "黄狐狸",
+    note: "黄色鱼体与黑白面罩",
+    artworkPath: "/fish-species/foxface.webp",
+  },
+  {
+    id: "lamarck",
+    name: "拉马克",
+    note: "银白鱼体与黑色线纹",
+    artworkPath: "/fish-species/lamarck.webp",
+  },
+  {
+    id: "tomato-clownfish",
+    name: "番茄小丑",
+    note: "红色鱼体与白色头带",
+    artworkPath: "/fish-species/tomato-clownfish.webp",
+  },
+  {
+    id: "bannerfish",
+    name: "关刀",
+    note: "黑白条纹与延长背鳍",
+    artworkPath: "/fish-species/bannerfish.webp",
+  },
+  {
+    id: "emperor",
+    name: "皇后",
+    note: "蓝黄色条纹",
+    artworkPath: "/fish-species/emperor.webp",
+  },
+  {
+    id: "saddleback",
+    name: "马鞍",
+    note: "黑白斑纹与黄色鱼鳍",
+    artworkPath: "/fish-species/saddleback.webp",
+  },
+  {
+    id: "golden-towel",
+    name: "金毛巾",
+    note: "金黄鱼体与蓝色细纹",
+    artworkPath: "/fish-species/golden-towel.webp",
+  },
+  {
+    id: "blueface",
+    name: "蓝面",
+    note: "蓝色面部与黄蓝鱼身",
+    artworkPath: "/fish-species/blueface.webp",
+  },
+  {
+    id: "violet-anthias",
+    name: "紫罗兰",
+    note: "紫红鱼身与黄色背部",
+    artworkPath: "/fish-species/violet-anthias.webp",
+  },
+  {
+    id: "yellow-tang",
+    name: "黄金吊",
+    note: "明黄鱼体与高背鳍",
+    artworkPath: "/fish-species/yellow-tang.webp",
   },
 ] as const;
 

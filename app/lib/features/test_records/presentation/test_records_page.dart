@@ -195,7 +195,6 @@ class _Content extends ConsumerWidget {
                   SizedBox(height: 8),
                   Text('还没有检测记录'),
                   SizedBox(height: 4),
-                  Text('添加第一条手动检测结果后会显示在这里。'),
                 ],
               ),
             ),
@@ -582,41 +581,51 @@ Future<_RecordDetailsAction?> _showRecordDetailsDialog(
                     ),
                   ),
                   _DetailRow(label: '备注', value: record.notes ?? '无'),
-                  const Divider(height: 28),
-                  Text(
-                    '算法原始结果（只读）',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  _DetailRow(label: '算法原始估值', value: _estimatedValue(record)),
-                  _DetailRow(
-                    label: '原始拍摄时间',
-                    value: record.capturedAt == null
-                        ? '无拍摄记录'
-                        : _dateTime(record.capturedAt!),
-                  ),
-                  _DetailRow(label: '置信度', value: record.confidence ?? '未提供'),
-                  _DetailRow(
-                    label: '图像质量分',
-                    value: record.qualityScore == null
-                        ? '未提供'
-                        : _number(record.qualityScore!),
-                  ),
-                  _DetailRow(
-                    label: '估值方法',
-                    value:
-                        [
-                          record.estimationMethod,
-                          record.estimationVersion,
-                        ].whereType<String>().join(' · ').trim().isEmpty
-                        ? '未提供'
-                        : [
-                            record.estimationMethod,
-                            record.estimationVersion,
-                          ].whereType<String>().join(' · '),
-                  ),
-                  if (record.failureReason != null)
-                    _DetailRow(label: '估值失败原因', value: record.failureReason!),
+                  if (_hasAlgorithmDetails(record))
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('算法原始结果（只读）'),
+                      children: [
+                        _DetailRow(
+                          label: '算法原始估值',
+                          value: _estimatedValue(record),
+                        ),
+                        _DetailRow(
+                          label: '原始拍摄时间',
+                          value: record.capturedAt == null
+                              ? '无拍摄记录'
+                              : _dateTime(record.capturedAt!),
+                        ),
+                        _DetailRow(
+                          label: '置信度',
+                          value: record.confidence ?? '未提供',
+                        ),
+                        _DetailRow(
+                          label: '图像质量分',
+                          value: record.qualityScore == null
+                              ? '未提供'
+                              : _number(record.qualityScore!),
+                        ),
+                        _DetailRow(
+                          label: '估值方法',
+                          value:
+                              [
+                                record.estimationMethod,
+                                record.estimationVersion,
+                              ].whereType<String>().join(' · ').trim().isEmpty
+                              ? '未提供'
+                              : [
+                                  record.estimationMethod,
+                                  record.estimationVersion,
+                                ].whereType<String>().join(' · '),
+                        ),
+                        if (record.failureReason != null)
+                          _DetailRow(
+                            label: '估值失败原因',
+                            value: record.failureReason!,
+                          ),
+                      ],
+                    ),
                   const Divider(height: 28),
                   _DetailRow(
                     label: '编辑状态',
@@ -626,10 +635,8 @@ Future<_RecordDetailsAction?> _showRecordDetailsDialog(
                     label: '最后修改时间',
                     value: _dateTime(record.updatedAt),
                   ),
-                  _DetailRow(
-                    label: '旧版本本机照片',
-                    value: record.photoPath == null ? '无' : '旧版本曾保存（应用私有目录）',
-                  ),
+                  if (record.photoPath != null)
+                    _DetailRow(label: '旧版本本机照片', value: '已保存在本机'),
                 ],
               ),
             ),
@@ -1039,7 +1046,7 @@ class _RecordEditorDialogState extends ConsumerState<_RecordEditorDialog> {
                 key: const Key('record-confirmed-at'),
                 contentPadding: EdgeInsets.zero,
                 title: const Text('检测时间'),
-                subtitle: Text('最终确认：${_dateTime(_draft.confirmedAt)}'),
+                subtitle: Text(_dateTime(_draft.confirmedAt)),
                 trailing: const Icon(Icons.schedule),
                 onTap: _pickConfirmedAt,
               ),
@@ -1052,7 +1059,8 @@ class _RecordEditorDialogState extends ConsumerState<_RecordEditorDialog> {
                 onChanged: (value) =>
                     _update(_draft.copyWith(notes: value), rebuild: false),
               ),
-              if (widget.record != null) ...[
+              if (widget.record != null &&
+                  _hasAlgorithmDetails(widget.record!)) ...[
                 const SizedBox(height: 8),
                 _AlgorithmReadOnlyCard(record: widget.record!),
               ],
@@ -1191,6 +1199,18 @@ class _RecordEditorDialogState extends ConsumerState<_RecordEditorDialog> {
   }
 }
 
+bool _hasAlgorithmDetails(TestRecord record) =>
+    record.estimatedMinValue != null ||
+    record.estimatedMaxValue != null ||
+    record.estimatedInterpolation != null ||
+    record.estimationMethod != null ||
+    record.estimationVersion != null ||
+    record.confidence != null ||
+    record.qualityScore != null ||
+    record.failureReason != null ||
+    record.capturedAt != null ||
+    record.photoPath != null;
+
 class _AlgorithmReadOnlyCard extends StatelessWidget {
   const _AlgorithmReadOnlyCard({required this.record});
 
@@ -1199,28 +1219,18 @@ class _AlgorithmReadOnlyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card.outlined(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.lock_outline, size: 18),
-                SizedBox(width: 6),
-                Text('算法与拍摄原始信息（只读）'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('算法原始估值：${_estimatedValue(record)}'),
-            Text(
-              '原始拍摄时间：${record.capturedAt == null ? '无拍摄记录' : _dateTime(record.capturedAt!)}',
-            ),
-            Text('置信度：${record.confidence ?? '未提供'}'),
-            const SizedBox(height: 4),
-            const Text('这些字段不会被本次人工编辑覆盖。'),
-          ],
-        ),
+      child: ExpansionTile(
+        title: const Text('算法与拍摄原始信息（只读）'),
+        leading: const Icon(Icons.lock_outline, size: 18),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        children: [
+          Text('算法原始估值：${_estimatedValue(record)}'),
+          Text(
+            '原始拍摄时间：${record.capturedAt == null ? '无拍摄记录' : _dateTime(record.capturedAt!)}',
+          ),
+          Text('置信度：${record.confidence ?? '未提供'}'),
+        ],
       ),
     );
   }

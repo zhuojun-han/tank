@@ -10,6 +10,8 @@ import 'package:lanjiao_water_quality/app/router.dart';
 import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/aquarium/application/aquarium_providers.dart';
 import 'package:lanjiao_water_quality/features/aquarium/domain/fish_stock.dart';
+import 'package:lanjiao_water_quality/features/aquarium/presentation/aquarium_card.dart';
+import 'package:lanjiao_water_quality/features/aquarium/presentation/fish_artwork_view.dart';
 import 'package:lanjiao_water_quality/features/calculators/application/maintenance_cycle_providers.dart';
 import 'package:lanjiao_water_quality/features/tanks/application/tank_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_providers.dart';
@@ -39,7 +41,7 @@ void main() {
     await _disposeApp(tester);
   });
 
-  testWidgets('首页鱼缸可选择内置鱼种、数量和入缸日期并保存', (tester) async {
+  testWidgets('鱼种目录横滑至末尾选择黄金吊，切换自定义后仍保存正确数量与立绘', (tester) async {
     await tester.pumpWidget(_testApp(enableRealFishStock: true));
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
 
@@ -47,11 +49,37 @@ void main() {
     await _pumpUntilFound(tester, find.text('鱼类档案'));
     await tester.pumpAndSettle();
     expect(find.text('小丑鱼'), findsOneWidget);
-    expect(find.text('9 个内置鱼种 · 点击立绘选择'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const Key('builtin-fish-builtinBimaculatusMale')),
+    expect(find.text('20 个内置鱼种 · 点击立绘选择'), findsOneWidget);
+    final catalog = find.byKey(const Key('builtin-fish-catalog'));
+    final catalogScrollable = find.descendant(
+      of: catalog,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.right,
+      ),
     );
+    final yellowTang = find.byKey(const Key('builtin-fish-builtinYellowTang'));
+    expect(yellowTang.hitTestable(), findsNothing);
+    await tester.ensureVisible(catalog);
+    await tester.scrollUntilVisible(
+      yellowTang,
+      400,
+      scrollable: catalogScrollable,
+      maxScrolls: 20,
+    );
+    expect(
+      tester.state<ScrollableState>(catalogScrollable).position.pixels,
+      greaterThan(0),
+    );
+    await tester.tap(yellowTang.hitTestable());
     await tester.pump();
+    expect(
+      find.descendant(
+        of: yellowTang,
+        matching: find.byIcon(Icons.check_circle),
+      ),
+      findsOneWidget,
+    );
     final managerScrollable = find.descendant(
       of: find.byKey(const Key('fish-manager-list')),
       matching: find.byWidgetPredicate(
@@ -62,7 +90,7 @@ void main() {
     expect(managerScrollable, findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('其他鱼种'),
-      250,
+      -250,
       scrollable: managerScrollable,
     );
     await tester.tap(find.text('其他鱼种'));
@@ -71,6 +99,9 @@ void main() {
     expect(find.byKey(const Key('pick-custom-fish-artwork')), findsOneWidget);
     await tester.tap(find.text('内置鱼种'));
     await tester.pump();
+    final quantity = find.byKey(const Key('new-fish-quantity-field'));
+    await tester.ensureVisible(quantity);
+    await tester.enterText(quantity, '3');
     await tester.scrollUntilVisible(
       find.byKey(const Key('add-fish-stock-item')),
       250,
@@ -83,9 +114,27 @@ void main() {
     await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('save-fish-stock')));
     await tester.tap(find.byKey(const Key('save-fish-stock')));
-    await _pumpUntilFound(tester, find.text('1 条鱼在游动'));
+    await _pumpUntilFound(tester, find.text('3 条鱼在游动'));
 
-    expect(find.text('双斑宝石海金鱼（公） × 1'), findsOneWidget);
+    expect(find.text('黄金吊 × 3'), findsOneWidget);
+    final saved = tester
+        .widget<AquariumCard>(find.byType(AquariumCard))
+        .items
+        .single;
+    expect(saved.species, '黄金吊');
+    expect(saved.quantity, 3);
+    expect(saved.artworkKind, FishArtworkKind.builtinYellowTang);
+    final artwork = tester.widgetList<FishArtworkView>(
+      find.descendant(
+        of: find.byKey(const Key('home-aquarium-card')),
+        matching: find.byType(FishArtworkView),
+      ),
+    );
+    expect(artwork, hasLength(3));
+    expect(
+      artwork.every((view) => view.kind == FishArtworkKind.builtinYellowTang),
+      isTrue,
+    );
     expect(tester.takeException(), isNull);
     await _disposeApp(tester);
   });
@@ -193,8 +242,15 @@ void main() {
     final editButton = find.byKey(const Key('edit-test-record')).hitTestable();
     expect(editButton, findsOneWidget);
     await tester.tap(editButton);
-    await _pumpUntilFound(tester, find.text('算法与拍摄原始信息（只读）'));
-    expect(find.text('5'), findsOneWidget);
+    await _pumpUntilFound(tester, find.byKey(const Key('record-min-value')));
+    expect(find.text('算法与拍摄原始信息（只读）'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('record-min-value')))
+          .controller!
+          .text,
+      '5',
+    );
     expect(find.text('检测时间'), findsOneWidget);
     await _disposeApp(tester);
   });
@@ -426,6 +482,10 @@ void main() {
     await _pumpUntilFound(tester, find.text('NO3 检测详情'));
 
     expect(find.text('应打开这一条'), findsOneWidget);
+    expect(find.text('10–25 mg/L'), findsNothing);
+    await tester.ensureVisible(find.text('算法原始结果（只读）'));
+    await tester.tap(find.text('算法原始结果（只读）'));
+    await tester.pumpAndSettle();
     expect(find.text('10–25 mg/L'), findsOneWidget);
     final editButton = find.byKey(const Key('edit-test-record')).hitTestable();
     expect(editButton, findsOneWidget);

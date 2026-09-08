@@ -439,7 +439,7 @@ class _MaintenanceDosingPageState extends State<_MaintenanceDosingForm> {
                     : '已配好，${previous == null ? '添加每日平衡' : '开始新周期'}',
               ),
             ),
-            const Text('配好后确认；平时显示在已完成，最后一天提醒补液。'),
+            const Text('最后一天提醒补液。'),
           ],
           ExpansionTile(
             key: const Key('dosing-details'),
@@ -449,16 +449,16 @@ class _MaintenanceDosingPageState extends State<_MaintenanceDosingForm> {
               if (kh) ...[
                 _field('dosing-purity', _purity, '母液原料纯度（%）'),
                 _field('dosing-temperature', _temperature, '最低保存温度（°C）'),
-                const Text('请填写实际最低保存温度（0–40°C），避免浓度过高析出。'),
+                const Text('最低保存温度 0–40°C，用于检查析出风险。'),
                 if (result?.khConcentrationGPerL case final concentration?)
                   Text(
                     '此母液每 500 ml 称取 ${_fmt(concentration / 2)} g NaHCO₃ 后定容。',
                   ),
               ] else
                 const Text(
-                  '氯化镧母液：99.9% LaCl₃·7H₂O，19.571329 g 定容至 500 ml；每 ml 理论处理 10 mg PO₄。每日上升默认 0.02 仅为示例，请填未补偿时实测变化。',
+                  '氯化镧母液：99.9% LaCl₃·7H₂O，19.571329 g 定容至 500 ml；每 ml 理论处理 10 mg PO₄。0.02 为示例，请填未补偿时的每日实测变化。',
                 ),
-              const Text('按实际泵出量和溶液体积配制。两种药剂分别配制、独立容器与泵管，不混合。'),
+              const Text('两种药剂分别配制，使用独立容器与泵管，不混合。'),
               const Text(
                 '每日复测 PO₄、KH/pH；PO₄ ≤ 0.03 mg/L、浑浊或生物异常时停止氯化镧，并通过机械过滤/蛋分捕获沉淀。',
               ),

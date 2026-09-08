@@ -35,26 +35,6 @@ class _SalinityCalculatorPageState extends State<SalinityCalculatorPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            child: const Padding(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '这里的 1.025 是比重 SG',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    '初始值 0 表示 RO/DI 无盐水，计算时按 SG 1.000 起点处理。不同海盐品牌所需克数不同，请按包装修改校准值。',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -143,16 +123,11 @@ class _SalinityCalculatorPageState extends State<SalinityCalculatorPage> {
               child: Padding(
                 padding: EdgeInsets.all(16),
                 child: Text(
-                  '先量取 RO/DI 水，再把盐逐步加入水中并持续循环。达到产品标注温度后，用校准的盐度计或折射仪复测；不要在有鱼或珊瑚的展示缸中直接混盐。',
+                  '将盐逐步加入 RO/DI 水并循环溶解。达到包装标注温度后，用校准的盐度计或折射仪复测。勿在有鱼或珊瑚的缸中直接混盐。',
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          const Text(
-            '结果按比重差作比例估算，不是跨品牌精确保证；以实际海盐包装和校准量具读数为准。',
-            textAlign: TextAlign.center,
-          ),
         ],
       ),
     );

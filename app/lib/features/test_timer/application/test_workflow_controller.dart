@@ -316,7 +316,7 @@ class TestWorkflowController {
 
   static String _photoFailureReason(PhotoEstimationDraft draft) {
     if (draft.manualSelection != null) {
-      return '算法尚未通过真实样本验证；本次数值来自人工比色';
+      return '本次数值来自人工比色';
     }
     return switch (draft.fallbackReason) {
       PhotoFallbackReason.userChoseManual => '用户选择手动录入',

@@ -1,0 +1,86 @@
+{
+  "id": "emperor",
+  "source": "design-concepts/fish-species/emperor/raw/emperor-v1.png",
+  "source_sha256": "66b35c26e050aab161c7ebeba272f761aefdca9315333905dae287a749a26410",
+  "source_size": [
+    1536,
+    1024
+  ],
+  "parameters": {
+    "chroma_seed_min": 22,
+    "dark_seed_max": 110,
+    "seed_close_kernel": 3,
+    "foreground_erode_kernel": 5,
+    "background_safety_dilate_kernel": 61,
+    "grabcut_iterations": 5,
+    "edge_feather_sigma": 0.6,
+    "edge_color_bleed_sigma": 1.5,
+    "transparent_margin_fraction_per_side": 0.04,
+    "runtime_bounds": [
+      768,
+      480
+    ],
+    "webp_quality": 90,
+    "webp_method": 6,
+    "random_seed": 1729
+  },
+  "versions": {
+    "opencv": "4.12.0",
+    "numpy": "2.3.5",
+    "pillow": "12.3.0"
+  },
+  "seed_pixels": 857938,
+  "foreground_pixels": 857982,
+  "source_foreground_bbox": [
+    50,
+    49,
+    1487,
+    990
+  ],
+  "runtime_size": [
+    732,
+    480
+  ],
+  "alpha": {
+    "transparent": 156048,
+    "partial": 8328,
+    "opaque": 186984,
+    "bbox": [
+      25,
+      16,
+      707,
+      464
+    ]
+  },
+  "webp_bytes": 97662,
+  "webp_sha256": "35a968aa1af970e19f99ad3cacc9583e16bbc956d2bae85c06e95a8ac68e3433",
+  "two_runtime_files_identical": true,
+  "original_unchanged": true,
+  "transparent_png": "design-concepts/fish-species/emperor/app-ready-v1/emperor-transparent.png",
+  "decoded_webp": {
+    "size": [
+      732,
+      480
+    ],
+    "alpha_bbox": [
+      25,
+      16,
+      707,
+      464
+    ],
+    "transparent_pixels": 156048,
+    "partial_pixels": 8328,
+    "opaque_pixels": 186984
+  },
+  "visual_review": {
+    "backgrounds": [
+      "dark",
+      "light",
+      "reef"
+    ],
+    "full_fins_and_tail": true,
+    "visible_checkerboard_residue": false,
+    "runtime_device_verification": "pending parent integration tests"
+  },
+  "three_webp_files_identical": true
+}

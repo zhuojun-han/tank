@@ -80,14 +80,9 @@ class _LanthanumCalculatorPageState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '理论化学计量，不是安全承诺',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  Text('每日先复测', style: TextStyle(fontWeight: FontWeight.bold)),
                   SizedBox(height: 6),
-                  Text(
-                    '固定使用纯度 99.9% 的七水合氯化镧 LaCl₃·7H₂O。海水副反应、过滤效率和生物反应都会让实际结果偏离，必须每日先复测再决定是否执行。',
-                  ),
+                  Text('使用 99.9% 七水合氯化镧 LaCl₃·7H₂O。按当天复测结果决定用量。'),
                 ],
               ),
             ),
@@ -165,7 +160,7 @@ class _LanthanumCalculatorPageState
               title: '全部理论计划',
               value: '${plan.days} 天',
               detail:
-                  '理论共需母液 ${plan.totalStockRequiredMl.toStringAsFixed(2)} mL，需 ${plan.stockBatchesRequired} 批；每日事项会分别加入系统任务和通知。',
+                  '共需母液 ${plan.totalStockRequiredMl.toStringAsFixed(2)} mL，需 ${plan.stockBatchesRequired} 批。',
             ),
             const SizedBox(height: 10),
             for (final day in plan.dailyPlan)
@@ -195,7 +190,7 @@ class _LanthanumCalculatorPageState
           ],
           const SizedBox(height: 16),
           const Text(
-            '达到目标、读数异常、持续浑浊或鱼和珊瑚出现异常时，应停止当天及全部后续计划。任务只是条件提醒，不会自动投药。',
+            '达到目标、读数异常、持续浑浊或生物异常时，停止当天及后续计划。',
             textAlign: TextAlign.center,
           ),
         ],

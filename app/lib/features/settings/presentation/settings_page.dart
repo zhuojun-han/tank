@@ -91,7 +91,7 @@ class SettingsPage extends ConsumerWidget {
                 key: const Key('open-maintenance-dosing'),
                 leading: const Icon(Icons.opacity),
                 title: const Text('稳定滴定'),
-                subtitle: const Text('PO₄ / KH · 500 ml 理论配方'),
+                subtitle: const Text('PO₄ / KH 每日平衡与补液'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/maintenance-dosing'),
               ),
@@ -105,7 +105,7 @@ class SettingsPage extends ConsumerWidget {
               ),
               ListTile(
                 title: const Text('碳酸氢钠补 KH'),
-                subtitle: const Text('理论母液与每日条件计划'),
+                subtitle: const Text('母液配制与分日计划'),
                 leading: const Icon(Icons.science_outlined),
                 onTap: () => context.push('/alkalinity-calculator'),
               ),
@@ -113,7 +113,7 @@ class SettingsPage extends ConsumerWidget {
                 key: const Key('open-lanthanum-calculator'),
                 leading: const Icon(Icons.science_outlined),
                 title: const Text('PO4 氯化镧理论计划'),
-                subtitle: const Text('计算固定母液，并把全部分日事项加入任务'),
+                subtitle: const Text('母液配制与分日计划'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/lanthanum-calculator'),
               ),
@@ -123,7 +123,7 @@ class SettingsPage extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.backup_outlined),
                 title: const Text('导出完整数据备份'),
-                subtitle: const Text('同步海缸、参数、目标、主题、试剂/计时、检测趋势、每日任务和历史；不含照片'),
+                subtitle: const Text('保存本机全部数据，不含检测照片'),
                 onTap: () async {
                   try {
                     final report = await ref
@@ -138,7 +138,7 @@ class SettingsPage extends ConsumerWidget {
                           content: Text(
                             _shareResultMessage(
                               status,
-                              success: '完整数据备份已交给系统分享面板（不含照片）',
+                              success: '完整数据备份已交给系统分享面板',
                               privatePath: report.file.path,
                             ),
                           ),
@@ -153,16 +153,14 @@ class SettingsPage extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.restore),
                 title: const Text('导入完整数据备份'),
-                subtitle: const Text('完整校验后以备份为准恢复业务数据；提醒按本机权限重新安排'),
+                subtitle: const Text('以备份替换本机数据'),
                 onTap: () => _pickAndConfirmRestore(context, ref),
               ),
               ListTile(
                 leading: const Icon(Icons.table_view_outlined),
                 title: const Text('导出当前海缸检测记录 CSV'),
                 subtitle: Text(
-                  currentTank == null
-                      ? '请先选择海缸'
-                      : '${currentTank.name} · UTF-8 · 只含人工确认结果',
+                  currentTank == null ? '请先选择海缸' : currentTank.name,
                 ),
                 onTap: currentTank == null
                     ? null
@@ -172,7 +170,7 @@ class SettingsPage extends ConsumerWidget {
                 key: const Key('privacy-and-limits'),
                 leading: const Icon(Icons.privacy_tip_outlined),
                 title: const Text('隐私与已知限制'),
-                subtitle: const Text('本地数据、拍照辅助、通知及平台验证边界'),
+                subtitle: const Text('本地数据与权限'),
                 onTap: () => context.push('/privacy-and-limits'),
               ),
               const Divider(),
@@ -248,9 +246,7 @@ final class _NotificationPermissionSectionState
           key: const Key('maintenance-notification-toggle'),
           secondary: const Icon(Icons.notifications_active_outlined),
           title: const Text('维护任务弹窗提醒'),
-          subtitle: Text(
-            notificationsEnabled ? '已开启；按系统权限安排到期和逾期提醒' : '已关闭；任务仍会保存在日历中',
-          ),
+          subtitle: Text(notificationsEnabled ? '到期及未完成提醒' : '已关闭提醒'),
           value: notificationsEnabled,
           onChanged: enabledPreference.isLoading
               ? null
@@ -274,7 +270,7 @@ final class _NotificationPermissionSectionState
           title: const Text('维护任务通知'),
           subtitle: Text(
             '${_notificationPermissionLabel(notificationPermission)}\n'
-            '${_notificationSyncLabel(notificationSync)}；权限拒绝或通知异常不会影响任务保存',
+            '${_notificationSyncLabel(notificationSync)}',
           ),
           isThreeLine: true,
           trailing: const Icon(Icons.chevron_right),
@@ -407,11 +403,9 @@ Future<void> _confirmRestore(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text('以备份替换本机业务数据？'),
-      content: Text(
-        '备份已通过完整性校验（数据格式 v${preview.databaseFormatVersion}）。'
-        '继续后，本机的海缸、配置、检测趋势、每日任务及任务历史将以该备份为准。'
-        '鱼类档案和自定义立绘会一并恢复；水质检测照片不会导入。'
-        '系统通知权限不变，任务提醒会在后台重新安排。',
+      content: const Text(
+        '本机海缸、设置、检测记录、任务及历史将被备份替换，鱼类档案和自定义图片一并恢复。'
+        '不导入检测照片；提醒按本机权限重新安排。',
       ),
       actions: [
         TextButton(
@@ -513,7 +507,7 @@ class ParameterSettingsPage extends ConsumerWidget {
                   '${state.parameter.code} · ${state.parameter.displayName}',
                 ),
                 subtitle: Text(
-                  '${state.parameter.unit}${state.parameter.photoSupported ? ' · 临时拍照辅助待验证' : ' · 仅手动记录'}',
+                  '${state.parameter.unit}${state.parameter.photoSupported ? ' · 支持拍照辅助' : ''}',
                 ),
                 value: state.isEnabled,
                 onChanged: (enabled) => _run(

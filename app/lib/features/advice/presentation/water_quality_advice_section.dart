@@ -16,11 +16,6 @@ class WaterQualityAdviceSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('水质维护建议', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          '只依据最近一次人工确认结果和你的目标范围生成',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
         const SizedBox(height: 8),
         advice.when(
           data: (items) => Column(
@@ -92,9 +87,8 @@ class _AdviceCard extends StatelessWidget {
             const SizedBox(height: 12),
             _FactRow(label: '触发记录', value: _recordText(advice)),
             _FactRow(label: '用户目标', value: _targetText(advice)),
-            _FactRow(label: '触发条件', value: advice.trigger),
             const SizedBox(height: 12),
-            Text('可选检查项', style: Theme.of(context).textTheme.labelLarge),
+            Text('建议检查', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 4),
             for (final action in advice.actions)
               Padding(
@@ -102,10 +96,13 @@ class _AdviceCard extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.check_box_outline_blank,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
+                    Padding(
+                      padding: const EdgeInsets.only(top: 7),
+                      child: Icon(
+                        Icons.circle,
+                        size: 6,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(child: Text(action)),
@@ -117,12 +114,14 @@ class _AdviceCard extends StatelessWidget {
               key: Key('advice-basis-${advice.parameterCode}'),
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(bottom: 8),
-              title: const Text('规则来源与安全边界'),
+              title: const Text('建议依据'),
               children: [
+                _FactRow(label: '判断依据', value: advice.trigger),
+                const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    advice.sources.isEmpty ? '当前暂无已确认的专用规则来源。' : '规则来源',
+                    advice.sources.isEmpty ? '暂无专用规则来源' : '规则来源',
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                 ),
@@ -138,10 +137,7 @@ class _AdviceCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    '${WaterQualityAdviceEngine.safetyBoundary}'
-                    '建议不会自动控制设备。',
-                  ),
+                  child: const Text('异常时先复测，并观察生物状态；需要时咨询专业人士。'),
                 ),
               ],
             ),
