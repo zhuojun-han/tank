@@ -41,4 +41,14 @@ Android 模拟器 `emulator-5554` 已实际启动本轮包（`com.lanjiao.lanjia
 
 本地最终 APK 为 `app/build/app/outputs/flutter-apk/app-debug.apk`，SHA-256：`dd10cc06d365604b9fcc2ff159832377880b90e0b68b2f14a2fe673cbeb6d402`。
 
+最终包的鱼管理页已再次确认不含渲染说明，仍显示 20 个选项。按 App PID 8185 保存的日志未匹配 Flutter 异常、资源加载错误、RenderFlex 溢出或进程崩溃；取消草稿后所有数据库表内容与安装前相同，证据为 `artifacts/fish-device/final-check.json`、`final-logcat.txt` 和 `fish-final-editor.png/xml`。检查结束已停止 App，避免模拟器继续运行鱼动画。
+
+## GitHub
+
+实现提交 `c4d67db` 已推送至 `origin/main`。同一提交的三组检查均成功：
+
+- [工作区检查](https://github.com/zhuojun-han/tank/actions/runs/34243022936)：文档、数据集、合同与工具测试通过。
+- [Web 完整检查](https://github.com/zhuojun-han/tank/actions/runs/34243022819)：163 项单元、2 项 SSR、21 项浏览器回归及构建通过。
+- [Flutter 检查](https://github.com/zhuojun-han/tank/actions/runs/34243022812)：格式、分析、全量测试、数据库生成代码一致性及 Android debug 完整编译通过。此云端任务覆盖最终源码；后续提交仅补充本文设备及 CI 实证和当前快照。
+
 本轮不证明 Android 真机性能、真实相机与后台通知、iOS 构建或商店发布。平台待同步项统一见 [同步清单](app-sync-backlog.md)，源码推送也不代表公开网页已发布。
