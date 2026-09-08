@@ -32,4 +32,16 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('细长立绘按最长边缩小，不因固定宽度放大成超长图片', () async {
+    final source = image.Image(width: 2, height: 4000, numChannels: 4);
+    image.fill(source, color: image.ColorRgba8(255, 120, 30, 180));
+    final result = await const FishArtworkProcessor().prepare(
+      image.encodePng(source),
+    );
+    final decoded = image.decodeWebP(base64Decode(result.base64Data))!;
+    expect(decoded.width, 1);
+    expect(decoded.height, lessThanOrEqualTo(512));
+    expect(decoded.getPixel(0, 0).a, closeTo(180, 1));
+  });
 }

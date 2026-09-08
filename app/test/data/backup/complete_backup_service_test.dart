@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -45,6 +46,100 @@ void main() {
         documentsDirectory: () async => documents,
         supportDirectory: () async => support,
       );
+
+  test('伪造小尺寸的 ZIP 在解压输出越界时立即拒绝', () async {
+    final archive = Archive()
+      ..add(ArchiveFile.bytes('database.json', Uint8List(8192)));
+    final bytes = Uint8List.fromList(ZipEncoder().encodeBytes(archive));
+    final data = ByteData.sublistView(bytes);
+    for (var offset = 0; offset <= bytes.length - 30; offset++) {
+      final signature = data.getUint32(offset, Endian.little);
+      if (signature == 0x04034b50) {
+        data.setUint32(offset + 22, 8, Endian.little);
+      } else if (signature == 0x02014b50) {
+        data.setUint32(offset + 24, 8, Endian.little);
+      }
+    }
+    final file = File('${root.path}/undersized-header.zip');
+    await file.writeAsBytes(bytes);
+    await expectLater(
+      serviceFor(database).validateFile(file),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('解压输出'),
+        ),
+      ),
+    );
+    expect(await database.select(database.testRecords).get(), isEmpty);
+  });
+
+  test('链接条目在解压其无效内容之前拒绝', () async {
+    final archive = Archive()
+      ..add(ArchiveFile.bytes('database.json', Uint8List.fromList([0xff])));
+    final bytes = Uint8List.fromList(ZipEncoder().encodeBytes(archive));
+    final data = ByteData.sublistView(bytes);
+    for (var offset = 0; offset <= bytes.length - 46; offset++) {
+      if (data.getUint32(offset, Endian.little) == 0x02014b50) {
+        data.setUint16(offset + 4, (3 << 8) | 20, Endian.little);
+        data.setUint32(offset + 38, 0xa000 << 16, Endian.little);
+        break;
+      }
+    }
+    final file = File('${root.path}/symlink.zip');
+    await file.writeAsBytes(bytes);
+    await expectLater(
+      serviceFor(database).validateFile(file),
+      throwsA(
+        isA<FormatException>().having(
+          (error) => error.message,
+          'message',
+          contains('目录或链接'),
+        ),
+      ),
+    );
+  });
+
+  test('合法的小型 ZIP64 完整备份继续兼容', () async {
+    final report = await serviceFor(database).exportToPrivateFile();
+    final original = await report.file.readAsBytes();
+    final footer = original.length - 22;
+    final originalData = ByteData.sublistView(original);
+    final count = originalData.getUint16(footer + 10, Endian.little);
+    final directorySize = originalData.getUint32(footer + 12, Endian.little);
+    final directoryOffset = originalData.getUint32(footer + 16, Endian.little);
+    final zip64 = ByteData(56)
+      ..setUint32(0, 0x06064b50, Endian.little)
+      ..setUint64(4, 44, Endian.little)
+      ..setUint16(12, 45, Endian.little)
+      ..setUint16(14, 45, Endian.little)
+      ..setUint64(24, count, Endian.little)
+      ..setUint64(32, count, Endian.little)
+      ..setUint64(40, directorySize, Endian.little)
+      ..setUint64(48, directoryOffset, Endian.little);
+    final locator = ByteData(20)
+      ..setUint32(0, 0x07064b50, Endian.little)
+      ..setUint64(8, footer, Endian.little)
+      ..setUint32(16, 1, Endian.little);
+    final end = Uint8List.fromList(original.sublist(footer));
+    ByteData.sublistView(end)
+      ..setUint16(6, 0xffff, Endian.little)
+      ..setUint16(8, 0xffff, Endian.little)
+      ..setUint16(10, 0xffff, Endian.little)
+      ..setUint32(12, 0xffffffff, Endian.little)
+      ..setUint32(16, 0xffffffff, Endian.little);
+    final file = File('${root.path}/compatible-zip64.zip');
+    await file.writeAsBytes([
+      ...original.sublist(0, footer),
+      ...zip64.buffer.asUint8List(),
+      ...locator.buffer.asUint8List(),
+      ...end,
+    ]);
+    final preview = await serviceFor(database).validateFile(file);
+    expect(preview.databaseFormatVersion, LocalBackupService.formatVersion);
+    expect(preview.photoCount, 0);
+  });
 
   test('新完整 ZIP 只包含结构化数据，恢复记录但不导出或复制照片', () async {
     final photo = File(

@@ -1,18 +1,18 @@
-import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:image/image.dart' as img;
+import '../../../core/images/bounded_image.dart';
 import '../domain/card_color_match.dart';
 
 (img.Image, Uint8List) _decodePhoto((Uint8List, int) input) {
-  final decoded = img.decodeImage(input.$1);
-  if (decoded == null) throw const FormatException('无法读取图片');
+  final decoded = decodeBoundedImage(input.$1);
   final upright = img.bakeOrientation(decoded);
   final rotated = input.$2 == 0
       ? upright
       : img.copyRotate(upright, angle: input.$2);
-  return (rotated, Uint8List.fromList(img.encodePng(rotated)));
+  return (rotated, img.encodePng(rotated));
 }
 
 (List<ColorPatch>, ColorMatchResult) _analyze(
@@ -44,10 +44,12 @@ class PhotoColorMatchEditor extends StatefulWidget {
 }
 
 class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
-  Uint8List? _original, _display;
+  Uint8List? _original;
+  MemoryImage? _preview;
   img.Image? _pixels;
   int _rotation = 0, _selection = -2;
   bool _busy = true;
+  bool _workActive = false;
   SampleRect? _card, _liquid, _drag;
   Offset? _start;
   List<ColorPatch> _patches = [];
@@ -61,7 +63,9 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
 
   Future<void> _load() async {
     try {
-      _original = await File(widget.path).readAsBytes();
+      final original = await readBoundedImageFile(widget.path);
+      if (!mounted) return;
+      _original = original;
       await _rotate(0);
     } catch (e) {
       if (mounted) {
@@ -74,7 +78,8 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
   }
 
   Future<void> _rotate(int delta) async {
-    if (_original == null) return;
+    if (_original == null || _workActive || !mounted) return;
+    _workActive = true;
     setState(() {
       _busy = true;
       _error = null;
@@ -83,25 +88,35 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
       final angle = (_rotation + delta) % 360;
       final decoded = await compute(_decodePhoto, (_original!, angle));
       if (!mounted) return;
+      final previousPreview = _preview;
       setState(() {
         _rotation = angle;
         _pixels = decoded.$1;
-        _display = decoded.$2;
+        _preview = MemoryImage(decoded.$2);
         _card = null;
         _liquid = null;
         _patches = [];
         _result = null;
         _selection = -2;
       });
+      if (previousPreview != null) unawaited(previousPreview.evict());
     } catch (e) {
       if (mounted) setState(() => _error = '旋转失败：$e');
     } finally {
+      _workActive = false;
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _calculate() async {
-    if (_pixels == null || _card == null || _liquid == null) return;
+    if (_workActive ||
+        !mounted ||
+        _pixels == null ||
+        _card == null ||
+        _liquid == null) {
+      return;
+    }
+    _workActive = true;
     setState(() {
       _busy = true;
       _error = null;
@@ -128,6 +143,7 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
         );
       }
     } finally {
+      _workActive = false;
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -246,7 +262,7 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
               ),
           ],
         ),
-        if (_display != null)
+        if (_preview != null)
           LayoutBuilder(
             builder: (context, constraints) {
               final size = Size(
@@ -277,8 +293,8 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.memory(
-                          _display!,
+                        Image(
+                          image: _preview!,
                           fit: BoxFit.fill,
                           gaplessPlayback: true,
                         ),
@@ -356,6 +372,16 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
         ),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    final preview = _preview;
+    _preview = null;
+    _original = null;
+    _pixels = null;
+    if (preview != null) unawaited(preview.evict());
+    super.dispose();
   }
 }
 

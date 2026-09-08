@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/images/bounded_image.dart';
 
 import '../application/aquarium_providers.dart';
 import '../data/fish_artwork_processor.dart';
@@ -480,7 +481,10 @@ class _FishManagerSheetState extends ConsumerState<FishManagerSheet> {
     });
     try {
       final prepared = await _artworkProcessor.prepare(
-        await file.readAsBytes(),
+        await readBoundedImageFile(
+          file.path,
+          maximumBytes: maximumFishArtworkInputBytes,
+        ),
       );
       if (!mounted) return;
       if (itemId == null) {

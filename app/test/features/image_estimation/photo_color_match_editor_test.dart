@@ -50,6 +50,8 @@ void main() {
           ),
         );
         await finishWork(tester);
+        final initialPreview =
+            tester.widget<Image>(find.byType(Image)).image as MemoryImage;
         final finder = find.byKey(const Key('color-match-image'));
         final bounds = tester.getRect(finder);
         await tester.dragFrom(
@@ -76,6 +78,13 @@ void main() {
         );
         await tester.tap(find.text('顺时针90°'));
         await finishWork(tester);
+        await tester.runAsync(() async {
+          final status = await initialPreview.obtainCacheStatus(
+            configuration: ImageConfiguration.empty,
+          );
+          expect(status?.keepAlive, isFalse);
+          expect(status?.live, isFalse);
+        });
         final memory =
             tester.widget<Image>(find.byType(Image)).image as MemoryImage;
         final rotated = img.decodePng(memory.bytes)!;
@@ -98,7 +107,16 @@ void main() {
         expect(restored.height, 200);
         expect(restored.getPixel(0, 0).g, 80);
         expect(tester.takeException(), isNull);
+        final currentPreview =
+            tester.widget<Image>(find.byType(Image)).image as MemoryImage;
         await tester.pumpWidget(const SizedBox());
+        await tester.runAsync(() async {
+          final status = await currentPreview.obtainCacheStatus(
+            configuration: ImageConfiguration.empty,
+          );
+          expect(status?.keepAlive, isFalse);
+          expect(status?.live, isFalse);
+        });
         dir.deleteSync(recursive: true);
       },
     );

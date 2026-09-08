@@ -332,56 +332,69 @@ class CompleteBackupService {
     if (archiveSize <= 0 || archiveSize > maximumArchiveBytes) {
       throw const FormatException('备份文件大小无效');
     }
-    late final Archive archive;
-    late final ZipDecoder decoder;
+    late final ZipDirectory directory;
     try {
-      decoder = ZipDecoder();
-      archive = decoder.decodeBytes(await source.readAsBytes(), verify: true);
+      final input = BytesBuilder(copy: false);
+      await for (final chunk in source.openRead()) {
+        if (input.length + chunk.length > maximumArchiveBytes) {
+          throw const FormatException('备份文件大小无效');
+        }
+        input.add(chunk);
+      }
+      final bytes = input.takeBytes();
+      _guardDirectoryEntryCount(bytes, maximumEntries);
+      // ZipDecoder resolves symlink contents before callers can reject links.
+      // Read metadata only, then bound every individual decompression below.
+      directory = ZipDirectory()..read(InputMemoryStream(bytes));
     } on Object {
-      throw const FormatException('ZIP 备份无法解析或 CRC 校验失败');
+      throw const FormatException('ZIP 备份无法解析或条目数无效');
     }
-    if (archive.isEmpty || archive.length > maximumEntries) {
+    if (directory.fileHeaders.isEmpty ||
+        directory.fileHeaders.length > maximumEntries) {
       throw const FormatException('ZIP 备份条目数无效');
-    }
-    if (decoder.directory.fileHeaders.length != archive.length) {
-      throw const FormatException('ZIP 内含重复路径');
     }
     final entries = <String, Uint8List>{};
     var totalBytes = 0;
-    for (var index = 0; index < archive.length; index++) {
-      final entry = archive[index];
-      final header = decoder.directory.fileHeaders[index];
-      if (!entry.isFile || entry.isSymbolicLink) {
+    for (final header in directory.fileHeaders) {
+      final entry = header.file!;
+      final mode = (header.externalFileAttributes >> 16) & 0xf000;
+      if (entry.filename.endsWith('/') ||
+          entry.filename.endsWith('\\') ||
+          mode == 0xa000 ||
+          mode == 0x4000) {
         throw const FormatException('ZIP 不允许目录或链接条目');
       }
-      final name = _safeArchivePath(entry.name);
+      final name = _safeArchivePath(entry.filename);
       if (entries.containsKey(name)) {
         throw const FormatException('ZIP 内含重复路径');
       }
       if (header.diskNumberStart != 0 ||
           (header.generalPurposeBitFlag & 0x0001) != 0 ||
+          (entry.flags & 0x0001) != 0 ||
           (header.compressionMethod != 0 && header.compressionMethod != 8)) {
         throw const FormatException('ZIP 条目使用了不支持或不安全的格式');
       }
-      if (entry.size < 0 ||
-          entry.size != header.uncompressedSize ||
-          entry.size > maximumEntryBytes) {
+      if (entry.uncompressedSize < 0 ||
+          entry.uncompressedSize != header.uncompressedSize ||
+          entry.compressedSize != header.compressedSize ||
+          entry.uncompressedSize > maximumEntryBytes) {
         throw const FormatException('备份中的单个文件过大');
       }
-      if (entry.size > 0 &&
+      if (entry.uncompressedSize > 0 &&
           (header.compressedSize <= 0 ||
-              entry.size > header.compressedSize * maximumCompressionRatio)) {
+              entry.uncompressedSize >
+                  header.compressedSize * maximumCompressionRatio)) {
         throw const FormatException('ZIP 压缩比异常');
       }
-      totalBytes += entry.size;
+      totalBytes += entry.uncompressedSize;
       if (totalBytes > maximumTotalUncompressedBytes) {
         throw const FormatException('备份解压后体积过大');
       }
-      final bytes = entry.readBytes();
-      if (bytes == null || bytes.length != entry.size) {
+      final bytes = _readBoundedZipEntry(entry, header.compressionMethod);
+      if (bytes.length != entry.uncompressedSize) {
         throw FormatException('ZIP 条目大小校验失败：$name');
       }
-      if (entry.crc32 != null && getCrc32(bytes) != entry.crc32) {
+      if (getCrc32(bytes) != entry.crc32 || entry.crc32 != header.crc32) {
         throw FormatException('ZIP 条目 CRC 校验失败：$name');
       }
       entries[name] = bytes;
@@ -615,6 +628,108 @@ String _safeArchivePath(String value) {
     throw const FormatException('ZIP 内含不安全路径');
   }
   return value;
+}
+
+/// Validate count before ZipDirectory allocates a file/header object per entry.
+void _guardDirectoryEntryCount(Uint8List bytes, int maximumEntries) {
+  final data = ByteData.sublistView(bytes);
+  var footer = -1;
+  final first = bytes.length > 65557 ? bytes.length - 65557 : 0;
+  for (var offset = bytes.length - 22; offset >= first; offset--) {
+    if (data.getUint32(offset, Endian.little) == 0x06054b50 &&
+        offset + 22 + data.getUint16(offset + 20, Endian.little) ==
+            bytes.length) {
+      footer = offset;
+      break;
+    }
+  }
+  if (footer < 0) throw const FormatException('ZIP 缺少目录');
+  var count = data.getUint16(footer + 10, Endian.little);
+  var size = data.getUint32(footer + 12, Endian.little);
+  var start = data.getUint32(footer + 16, Endian.little);
+  var currentDisk = data.getUint16(footer + 4, Endian.little);
+  var startDisk = data.getUint16(footer + 6, Endian.little);
+  if (count == 0xffff || size == 0xffffffff || start == 0xffffffff) {
+    if (footer < 20 ||
+        data.getUint32(footer - 20, Endian.little) != 0x07064b50 ||
+        data.getUint32(footer - 16, Endian.little) != 0 ||
+        data.getUint32(footer - 4, Endian.little) != 1) {
+      throw const FormatException('ZIP64 目录无效');
+    }
+    final zip64 = data.getUint64(footer - 12, Endian.little);
+    if (zip64 < 0 ||
+        zip64 + 56 > footer ||
+        data.getUint32(zip64, Endian.little) != 0x06064b50 ||
+        data.getUint32(zip64 + 16, Endian.little) != 0 ||
+        data.getUint32(zip64 + 20, Endian.little) != 0) {
+      throw const FormatException('ZIP64 目录无效');
+    }
+    count = data.getUint64(zip64 + 32, Endian.little);
+    size = data.getUint64(zip64 + 40, Endian.little);
+    start = data.getUint64(zip64 + 48, Endian.little);
+    currentDisk = data.getUint32(zip64 + 16, Endian.little);
+    startDisk = data.getUint32(zip64 + 20, Endian.little);
+  }
+  if (currentDisk != 0 || startDisk != 0) {
+    throw const FormatException('不支持分卷 ZIP');
+  }
+  if (count < 1 ||
+      count > maximumEntries ||
+      start < 0 ||
+      size < 0 ||
+      start + size > footer) {
+    throw const FormatException('ZIP 备份条目数无效');
+  }
+  var actual = 0;
+  var offset = start;
+  final end = start + size;
+  while (offset + 46 <= end &&
+      data.getUint32(offset, Endian.little) == 0x02014b50) {
+    if (++actual > maximumEntries) throw const FormatException('ZIP 备份条目数无效');
+    offset +=
+        46 +
+        data.getUint16(offset + 28, Endian.little) +
+        data.getUint16(offset + 30, Endian.little) +
+        data.getUint16(offset + 32, Endian.little);
+    if (offset > end) throw const FormatException('ZIP 目录无效');
+  }
+  if (actual != count) throw const FormatException('ZIP 备份条目数无效');
+}
+
+Uint8List _readBoundedZipEntry(ZipFile entry, int compressionMethod) {
+  final raw = entry.getRawContent();
+  final output = _BoundedZipSink(entry.uncompressedSize);
+  if (compressionMethod == 0) {
+    output.add(raw);
+  } else {
+    final conversion = ZLibCodec(
+      raw: true,
+    ).decoder.startChunkedConversion(output);
+    // Small compressed chunks also bound native zlib's temporary output chunk.
+    for (var offset = 0; offset < raw.length; offset += 1024) {
+      final end = offset + 1024 < raw.length ? offset + 1024 : raw.length;
+      conversion.add(Uint8List.sublistView(raw, offset, end));
+    }
+    conversion.close();
+  }
+  return output.bytes.takeBytes();
+}
+
+class _BoundedZipSink implements Sink<List<int>> {
+  _BoundedZipSink(this.maximumBytes);
+  final int maximumBytes;
+  final bytes = BytesBuilder(copy: false);
+
+  @override
+  void add(List<int> chunk) {
+    if (bytes.length + chunk.length > maximumBytes) {
+      throw const FormatException('ZIP 解压输出超出文件大小限制');
+    }
+    bytes.add(chunk);
+  }
+
+  @override
+  void close() {}
 }
 
 String _decodeUtf8(Uint8List bytes, String label) {

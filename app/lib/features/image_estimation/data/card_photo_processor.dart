@@ -3,30 +3,24 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import '../../../core/images/bounded_image.dart';
 import 'captured_photo_processor.dart';
 import '../domain/photo_capture_models.dart';
 
-(Uint8List, int, int, PhotoQualityReport) _prepare(Uint8List bytes) {
-  final image = img.decodeImage(bytes);
-  if (image == null) throw const FormatException('无法读取照片');
+Future<(Uint8List, int, int, PhotoQualityReport)> _prepare(String path) async {
+  final image = decodeBoundedImage(await readBoundedImageFile(path));
   final oriented = img.bakeOrientation(image);
-  // Lossless working image: quality is judged per selected region by the matcher.
-  return (
-    Uint8List.fromList(img.encodePng(oriented)),
-    oriented.width,
-    oriented.height,
-    const PhotoQualityInspector().inspect(oriented),
-  );
+  final quality = const PhotoQualityInspector().inspect(oriented);
+  // Bound every later pixel copy/rotation; PNG adds no further encoding loss.
+  final working = fitImageWithin(oriented, maximumWorkingPhotoEdge);
+  return (img.encodePng(working), working.width, working.height, quality);
 }
 
 class CardPhotoProcessor implements CapturedPhotoProcessor {
   @override
   Future<PhotoProcessingResult> process(String sourcePath) async {
     try {
-      final prepared = await compute(
-        _prepare,
-        await File(sourcePath).readAsBytes(),
-      );
+      final prepared = await compute(_prepare, sourcePath);
       final root = await getTemporaryDirectory();
       final folder = Directory('${root.path}/lanjiao_photo_work');
       await folder.create(recursive: true);
@@ -45,9 +39,11 @@ class CardPhotoProcessor implements CapturedPhotoProcessor {
           qualityReport: prepared.$4,
         ),
       );
-    } catch (_) {
+    } catch (error) {
       return PhotoProcessingResult.failed(
-        message: '无法读取照片，请重新拍摄或选择图片。',
+        message: error is FormatException
+            ? error.message
+            : '无法读取照片，请重新拍摄或选择图片。',
         retainedSourcePath: sourcePath,
       );
     }
