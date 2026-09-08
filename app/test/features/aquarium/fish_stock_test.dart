@@ -140,7 +140,7 @@ void main() {
     );
 
     final json = await LocalBackupService(database).exportJson();
-    expect((jsonDecode(json) as Map<String, dynamic>)['formatVersion'], 11);
+    expect((jsonDecode(json) as Map<String, dynamic>)['formatVersion'], 12);
     final restoredDatabase = AppDatabase(NativeDatabase.memory());
     addTearDown(restoredDatabase.close);
     await LocalBackupService(restoredDatabase).restoreReplace(json);

@@ -47,6 +47,8 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   String? _selectedParameterId;
   String? _selectedReagentId;
   String? _hydratedSessionId;
+  ActiveTestSession? _hydratedReview;
+  bool _reviewEdited = false;
   ActiveTestSession? _visibleSession;
   DateTime _confirmedAt = DateTime.now();
   bool _rangeResult = false;
@@ -972,8 +974,13 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   }
 
   void _hydrateReview(ActiveTestSession session) {
-    if (_hydratedSessionId == session.id) return;
+    if (_hydratedSessionId == session.id) {
+      if (_reviewEdited || _hydratedReview == session) return;
+    } else {
+      _reviewEdited = false;
+    }
     _hydratedSessionId = session.id;
+    _hydratedReview = session;
     _minimumController.text = _numberInput(session.draftConfirmedMinValue);
     _maximumController.text = _numberInput(session.draftConfirmedMaxValue);
     _interpolationController.text = _numberInput(
@@ -989,9 +996,13 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   }
 
   void _queueReviewPersistence(ActiveTestSession session) {
+    // Even temporarily invalid input belongs to the user until they leave this
+    // draft; an older autosave must not replace it when its stream arrives.
+    _reviewEdited = true;
     final values = _readReviewValues(requireMinimum: false);
     if (values == null) return;
     final notes = _notesController.text;
+    final confirmedAt = _confirmedAt;
     final point = _rangeResult
         ? double.tryParse(_interpolationController.text)
         : null;
@@ -1003,7 +1014,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
           confirmedMinValue: values.minimum,
           confirmedMaxValue: values.maximum,
           confirmedInterpolation: point,
-          confirmedAt: _confirmedAt,
+          confirmedAt: confirmedAt,
           notes: notes,
         );
       } catch (_) {
@@ -1029,32 +1040,30 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
       _showMessage('插值必须在范围内');
       return;
     }
+    // A queued write can outlive the visible draft. Keep the confirmed inputs
+    // together even if another tank/session is opened while persistence waits.
+    final interpolation = _rangeResult ? point : null;
+    final confirmedAt = _confirmedAt;
+    final notes = _notesController.text;
+    final controller = ref.read(testWorkflowControllerProvider);
     await _guarded(() async {
       await _reviewSaveChain;
-      await ref
-          .read(testWorkflowControllerProvider)
-          .persistReview(
-            session: session,
-            confirmedMinValue: values.minimum,
-            confirmedMaxValue: values.maximum,
-            confirmedInterpolation: _rangeResult
-                ? double.tryParse(_interpolationController.text)
-                : null,
-            confirmedAt: _confirmedAt,
-            notes: _notesController.text,
-          );
-      await ref
-          .read(testWorkflowControllerProvider)
-          .save(
-            session: session,
-            confirmedMinValue: values.minimum!,
-            confirmedMaxValue: values.maximum,
-            confirmedInterpolation: _rangeResult
-                ? double.tryParse(_interpolationController.text)
-                : null,
-            confirmedAt: _confirmedAt,
-            notes: _notesController.text,
-          );
+      await controller.persistReview(
+        session: session,
+        confirmedMinValue: values.minimum,
+        confirmedMaxValue: values.maximum,
+        confirmedInterpolation: interpolation,
+        confirmedAt: confirmedAt,
+        notes: notes,
+      );
+      await controller.save(
+        session: session,
+        confirmedMinValue: values.minimum!,
+        confirmedMaxValue: values.maximum,
+        confirmedInterpolation: interpolation,
+        confirmedAt: confirmedAt,
+        notes: notes,
+      );
       if (!mounted) return;
       _showMessage('检测记录已保存');
       context.go('/test');

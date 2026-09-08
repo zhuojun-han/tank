@@ -15,9 +15,12 @@ import '../../maintenance/presentation/task_schedule_dialogs.dart';
 import '../../calculators/application/maintenance_cycle_providers.dart';
 import '../../calculators/domain/maintenance_cycle.dart';
 import '../../tanks/application/tank_providers.dart';
+import '../../tanks/domain/tank_age.dart';
+import '../../settings/presentation/settings_entry_dialog.dart';
 import '../../test_records/application/test_record_providers.dart';
 import '../../trends/data/record_history_source.dart';
 import '../../trends/presentation/database_record_history_widgets.dart';
+import '../../trends/presentation/record_history_widgets.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -133,6 +136,8 @@ class _HomeContent extends ConsumerWidget {
               ),
               data: (items) => AquariumCard(
                 tankName: tank.name,
+                runningDays: tankAgeDays(tank.startedOn, now),
+                onManageTank: () => showTankEditor(context, tank: tank),
                 items: items,
                 onTap: () async {
                   final saved = await showModalBottomSheet<bool>(
@@ -597,9 +602,7 @@ String _targetDescription(TestRecord record, WaterQualityTarget? target) {
   return '$status · 目标 $bounds ${target.unit}';
 }
 
-String _recordValue(TestRecord record) => record.confirmedMaxValue == null
-    ? _number(record.confirmedMinValue)
-    : '${_number(record.confirmedMinValue)}–${_number(record.confirmedMaxValue!)}';
+String _recordValue(TestRecord record) => recordTrendValue(record);
 
 String _number(double value) => value == value.roundToDouble()
     ? value.toInt().toString()

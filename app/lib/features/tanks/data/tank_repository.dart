@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/database/app_database.dart';
+import '../domain/tank_age.dart';
 
 class TankParameterState {
   const TankParameterState({
@@ -157,9 +158,17 @@ class TankRepository {
     return query.watch();
   }
 
-  Future<String> createTank({required String name, String? notes}) async {
+  Future<String> createTank({
+    required String name,
+    String? notes,
+    String? startedOn,
+    double? volumeLiters,
+    bool makeCurrent = false,
+  }) async {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) throw ArgumentError('海缸名称不能为空');
+    final startDate = validateTankStartDate(startedOn, DateTime.now());
+    _validateVolume(volumeLiters);
     final id = _uuid.v4();
     final now = DateTime.now().toUtc();
     await _database.transaction(() async {
@@ -170,6 +179,8 @@ class TankRepository {
               id: id,
               name: trimmedName,
               notes: Value(_trimToNull(notes)),
+              startedOn: Value(startDate),
+              volumeLiters: Value(volumeLiters),
               createdAt: now,
               updatedAt: now,
             ),
@@ -188,6 +199,7 @@ class TankRepository {
           ),
         ]);
       });
+      if (makeCurrent) await switchTank(id);
     });
     return id;
   }
@@ -196,9 +208,15 @@ class TankRepository {
     required String tankId,
     required String name,
     String? notes,
+    Value<String?> startedOn = const Value.absent(),
+    Value<double?> volumeLiters = const Value.absent(),
   }) async {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) throw ArgumentError('海缸名称不能为空');
+    final startDate = startedOn.present
+        ? Value(validateTankStartDate(startedOn.value, DateTime.now()))
+        : const Value<String?>.absent();
+    if (volumeLiters.present) _validateVolume(volumeLiters.value);
     final count =
         await (_database.update(
           _database.tanks,
@@ -206,10 +224,18 @@ class TankRepository {
           TanksCompanion(
             name: Value(trimmedName),
             notes: Value(_trimToNull(notes)),
+            startedOn: startDate,
+            volumeLiters: volumeLiters,
             updatedAt: Value(DateTime.now().toUtc()),
           ),
         );
     if (count != 1) throw StateError('海缸不存在');
+  }
+
+  static void _validateVolume(double? value) {
+    if (value != null && (!value.isFinite || value <= 0)) {
+      throw const FormatException('水体积必须是大于 0 的有效数值。');
+    }
   }
 
   Future<void> switchTank(String tankId) async {

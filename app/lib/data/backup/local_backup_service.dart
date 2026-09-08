@@ -14,6 +14,7 @@ import '../../features/test_timer/domain/kh_titration.dart';
 import '../../features/calculators/data/maintenance_cycle_repository.dart';
 import '../../features/calculators/domain/maintenance_cycle.dart';
 import '../../features/calculators/domain/maintenance_dosing.dart';
+import '../../features/tanks/domain/tank_age.dart';
 
 const _backupValueSerializer = _UtcBackupValueSerializer();
 
@@ -24,7 +25,7 @@ class LocalBackupService {
   final AppDatabase _database;
   final String Function() _idGenerator;
 
-  static const formatVersion = 11;
+  static const formatVersion = 12;
 
   Future<File> exportToPrivateFile() async {
     final root = await getApplicationSupportDirectory();
@@ -950,6 +951,8 @@ ActiveTestSession _sessionWithMappedPhoto(
 bool _sameTankContent(Tank first, Tank second) {
   return first.name == second.name &&
       first.notes == second.notes &&
+      first.startedOn == second.startedOn &&
+      first.volumeLiters == second.volumeLiters &&
       first.isArchived == second.isArchived;
 }
 
@@ -1026,9 +1029,22 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
   late final List<TestTimerDefault> testTimerDefaults;
   late final List<ActiveTestSession> activeTestSessions;
   try {
-    tanks = _list(decoded, 'tanks')
-        .map((item) => Tank.fromJson(item, serializer: _backupValueSerializer))
-        .toList();
+    tanks = _list(decoded, 'tanks').map((item) {
+      final startedOn = item['startedOn'] == '' ? null : item['startedOn'];
+      if (startedOn != null &&
+          (startedOn is! String || !isTankCalendarDate(startedOn))) {
+        throw const FormatException('备份中的开缸日期无效');
+      }
+      final volume = item['volumeLiters'];
+      if (volume != null &&
+          (volume is! num || !volume.isFinite || volume <= 0)) {
+        throw const FormatException('备份中的海缸水体积无效');
+      }
+      return Tank.fromJson({
+        ...item,
+        'startedOn': startedOn,
+      }, serializer: _backupValueSerializer);
+    }).toList();
     parameters = _list(decoded, 'waterParameters')
         .map(
           (item) =>

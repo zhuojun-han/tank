@@ -39,6 +39,28 @@ class $TanksTable extends Tanks with TableInfo<$TanksTable, Tank> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _startedOnMeta = const VerificationMeta(
+    'startedOn',
+  );
+  @override
+  late final GeneratedColumn<String> startedOn = GeneratedColumn<String>(
+    'started_on',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _volumeLitersMeta = const VerificationMeta(
+    'volumeLiters',
+  );
+  @override
+  late final GeneratedColumn<double> volumeLiters = GeneratedColumn<double>(
+    'volume_liters',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isArchivedMeta = const VerificationMeta(
     'isArchived',
   );
@@ -81,6 +103,8 @@ class $TanksTable extends Tanks with TableInfo<$TanksTable, Tank> {
     id,
     name,
     notes,
+    startedOn,
+    volumeLiters,
     isArchived,
     createdAt,
     updatedAt,
@@ -114,6 +138,21 @@ class $TanksTable extends Tanks with TableInfo<$TanksTable, Tank> {
       context.handle(
         _notesMeta,
         notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('started_on')) {
+      context.handle(
+        _startedOnMeta,
+        startedOn.isAcceptableOrUnknown(data['started_on']!, _startedOnMeta),
+      );
+    }
+    if (data.containsKey('volume_liters')) {
+      context.handle(
+        _volumeLitersMeta,
+        volumeLiters.isAcceptableOrUnknown(
+          data['volume_liters']!,
+          _volumeLitersMeta,
+        ),
       );
     }
     if (data.containsKey('is_archived')) {
@@ -159,6 +198,14 @@ class $TanksTable extends Tanks with TableInfo<$TanksTable, Tank> {
         DriftSqlType.string,
         data['${effectivePrefix}notes'],
       ),
+      startedOn: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}started_on'],
+      ),
+      volumeLiters: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}volume_liters'],
+      ),
       isArchived: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_archived'],
@@ -184,6 +231,8 @@ class Tank extends DataClass implements Insertable<Tank> {
   final String id;
   final String name;
   final String? notes;
+  final String? startedOn;
+  final double? volumeLiters;
   final bool isArchived;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -191,6 +240,8 @@ class Tank extends DataClass implements Insertable<Tank> {
     required this.id,
     required this.name,
     this.notes,
+    this.startedOn,
+    this.volumeLiters,
     required this.isArchived,
     required this.createdAt,
     required this.updatedAt,
@@ -202,6 +253,12 @@ class Tank extends DataClass implements Insertable<Tank> {
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || startedOn != null) {
+      map['started_on'] = Variable<String>(startedOn);
+    }
+    if (!nullToAbsent || volumeLiters != null) {
+      map['volume_liters'] = Variable<double>(volumeLiters);
     }
     map['is_archived'] = Variable<bool>(isArchived);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -216,6 +273,12 @@ class Tank extends DataClass implements Insertable<Tank> {
       notes: notes == null && nullToAbsent
           ? const Value.absent()
           : Value(notes),
+      startedOn: startedOn == null && nullToAbsent
+          ? const Value.absent()
+          : Value(startedOn),
+      volumeLiters: volumeLiters == null && nullToAbsent
+          ? const Value.absent()
+          : Value(volumeLiters),
       isArchived: Value(isArchived),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -231,6 +294,8 @@ class Tank extends DataClass implements Insertable<Tank> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       notes: serializer.fromJson<String?>(json['notes']),
+      startedOn: serializer.fromJson<String?>(json['startedOn']),
+      volumeLiters: serializer.fromJson<double?>(json['volumeLiters']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -243,6 +308,8 @@ class Tank extends DataClass implements Insertable<Tank> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'notes': serializer.toJson<String?>(notes),
+      'startedOn': serializer.toJson<String?>(startedOn),
+      'volumeLiters': serializer.toJson<double?>(volumeLiters),
       'isArchived': serializer.toJson<bool>(isArchived),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -253,6 +320,8 @@ class Tank extends DataClass implements Insertable<Tank> {
     String? id,
     String? name,
     Value<String?> notes = const Value.absent(),
+    Value<String?> startedOn = const Value.absent(),
+    Value<double?> volumeLiters = const Value.absent(),
     bool? isArchived,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -260,6 +329,8 @@ class Tank extends DataClass implements Insertable<Tank> {
     id: id ?? this.id,
     name: name ?? this.name,
     notes: notes.present ? notes.value : this.notes,
+    startedOn: startedOn.present ? startedOn.value : this.startedOn,
+    volumeLiters: volumeLiters.present ? volumeLiters.value : this.volumeLiters,
     isArchived: isArchived ?? this.isArchived,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -269,6 +340,10 @@ class Tank extends DataClass implements Insertable<Tank> {
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       notes: data.notes.present ? data.notes.value : this.notes,
+      startedOn: data.startedOn.present ? data.startedOn.value : this.startedOn,
+      volumeLiters: data.volumeLiters.present
+          ? data.volumeLiters.value
+          : this.volumeLiters,
       isArchived: data.isArchived.present
           ? data.isArchived.value
           : this.isArchived,
@@ -283,6 +358,8 @@ class Tank extends DataClass implements Insertable<Tank> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('notes: $notes, ')
+          ..write('startedOn: $startedOn, ')
+          ..write('volumeLiters: $volumeLiters, ')
           ..write('isArchived: $isArchived, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -291,8 +368,16 @@ class Tank extends DataClass implements Insertable<Tank> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, notes, isArchived, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    notes,
+    startedOn,
+    volumeLiters,
+    isArchived,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -300,6 +385,8 @@ class Tank extends DataClass implements Insertable<Tank> {
           other.id == this.id &&
           other.name == this.name &&
           other.notes == this.notes &&
+          other.startedOn == this.startedOn &&
+          other.volumeLiters == this.volumeLiters &&
           other.isArchived == this.isArchived &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -309,6 +396,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
   final Value<String> id;
   final Value<String> name;
   final Value<String?> notes;
+  final Value<String?> startedOn;
+  final Value<double?> volumeLiters;
   final Value<bool> isArchived;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -317,6 +406,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.notes = const Value.absent(),
+    this.startedOn = const Value.absent(),
+    this.volumeLiters = const Value.absent(),
     this.isArchived = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -326,6 +417,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
     required String id,
     required String name,
     this.notes = const Value.absent(),
+    this.startedOn = const Value.absent(),
+    this.volumeLiters = const Value.absent(),
     this.isArchived = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -338,6 +431,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? notes,
+    Expression<String>? startedOn,
+    Expression<double>? volumeLiters,
     Expression<bool>? isArchived,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -347,6 +442,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (notes != null) 'notes': notes,
+      if (startedOn != null) 'started_on': startedOn,
+      if (volumeLiters != null) 'volume_liters': volumeLiters,
       if (isArchived != null) 'is_archived': isArchived,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -358,6 +455,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
     Value<String>? id,
     Value<String>? name,
     Value<String?>? notes,
+    Value<String?>? startedOn,
+    Value<double?>? volumeLiters,
     Value<bool>? isArchived,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -367,6 +466,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
       id: id ?? this.id,
       name: name ?? this.name,
       notes: notes ?? this.notes,
+      startedOn: startedOn ?? this.startedOn,
+      volumeLiters: volumeLiters ?? this.volumeLiters,
       isArchived: isArchived ?? this.isArchived,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -385,6 +486,12 @@ class TanksCompanion extends UpdateCompanion<Tank> {
     }
     if (notes.present) {
       map['notes'] = Variable<String>(notes.value);
+    }
+    if (startedOn.present) {
+      map['started_on'] = Variable<String>(startedOn.value);
+    }
+    if (volumeLiters.present) {
+      map['volume_liters'] = Variable<double>(volumeLiters.value);
     }
     if (isArchived.present) {
       map['is_archived'] = Variable<bool>(isArchived.value);
@@ -407,6 +514,8 @@ class TanksCompanion extends UpdateCompanion<Tank> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('notes: $notes, ')
+          ..write('startedOn: $startedOn, ')
+          ..write('volumeLiters: $volumeLiters, ')
           ..write('isArchived: $isArchived, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -8881,6 +8990,8 @@ typedef $$TanksTableCreateCompanionBuilder =
       required String id,
       required String name,
       Value<String?> notes,
+      Value<String?> startedOn,
+      Value<double?> volumeLiters,
       Value<bool> isArchived,
       required DateTime createdAt,
       required DateTime updatedAt,
@@ -8891,6 +9002,8 @@ typedef $$TanksTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> name,
       Value<String?> notes,
+      Value<String?> startedOn,
+      Value<double?> volumeLiters,
       Value<bool> isArchived,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -9083,6 +9196,16 @@ class $$TanksTableFilterComposer extends Composer<_$AppDatabase, $TanksTable> {
 
   ColumnFilters<String> get notes => $composableBuilder(
     column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startedOn => $composableBuilder(
+    column: $table.startedOn,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get volumeLiters => $composableBuilder(
+    column: $table.volumeLiters,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9326,6 +9449,16 @@ class $$TanksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get startedOn => $composableBuilder(
+    column: $table.startedOn,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get volumeLiters => $composableBuilder(
+    column: $table.volumeLiters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isArchived => $composableBuilder(
     column: $table.isArchived,
     builder: (column) => ColumnOrderings(column),
@@ -9359,6 +9492,14 @@ class $$TanksTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get startedOn =>
+      $composableBuilder(column: $table.startedOn, builder: (column) => column);
+
+  GeneratedColumn<double> get volumeLiters => $composableBuilder(
+    column: $table.volumeLiters,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get isArchived => $composableBuilder(
     column: $table.isArchived,
@@ -9616,6 +9757,8 @@ class $$TanksTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
+                Value<String?> startedOn = const Value.absent(),
+                Value<double?> volumeLiters = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -9624,6 +9767,8 @@ class $$TanksTableTableManager
                 id: id,
                 name: name,
                 notes: notes,
+                startedOn: startedOn,
+                volumeLiters: volumeLiters,
                 isArchived: isArchived,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -9634,6 +9779,8 @@ class $$TanksTableTableManager
                 required String id,
                 required String name,
                 Value<String?> notes = const Value.absent(),
+                Value<String?> startedOn = const Value.absent(),
+                Value<double?> volumeLiters = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
@@ -9642,6 +9789,8 @@ class $$TanksTableTableManager
                 id: id,
                 name: name,
                 notes: notes,
+                startedOn: startedOn,
+                volumeLiters: volumeLiters,
                 isArchived: isArchived,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

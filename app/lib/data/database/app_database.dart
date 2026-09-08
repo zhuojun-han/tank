@@ -12,6 +12,8 @@ class Tanks extends Table {
   TextColumn get id => text()();
   TextColumn get name => text().withLength(min: 1, max: 80)();
   TextColumn get notes => text().nullable()();
+  TextColumn get startedOn => text().nullable()();
+  RealColumn get volumeLiters => real().nullable()();
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -274,7 +276,7 @@ class AppDatabase extends _$AppDatabase {
   static const ealNo3ReagentId = '00000000-0000-4000-8000-000000000201';
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -455,6 +457,18 @@ class AppDatabase extends _$AppDatabase {
             maintenanceTasks,
             maintenanceTasks.rollingJson,
           );
+        }
+      }
+      if (from < 12) {
+        // Some incomplete historical databases lack the base table entirely.
+        if (!await _tableExists('tanks')) {
+          await migrator.createTable(tanks);
+        }
+        if (!await _columnExists('tanks', 'started_on')) {
+          await migrator.addColumn(tanks, tanks.startedOn);
+        }
+        if (!await _columnExists('tanks', 'volume_liters')) {
+          await migrator.addColumn(tanks, tanks.volumeLiters);
         }
       }
     },

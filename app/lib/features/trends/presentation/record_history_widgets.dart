@@ -5,6 +5,27 @@ import '../domain/trend_series.dart';
 
 String trendNumber(double value) =>
     value.toStringAsFixed(3).replaceFirst(RegExp(r'\.?0+$'), '');
+
+/// Format the confirmed value, never the original calculation's display string.
+String recordTrendNumber(double value, TestRecord record) {
+  final single =
+      record.confirmedMaxValue == null ||
+      record.confirmedMaxValue == record.confirmedMinValue;
+  return record.parameterId == AppDatabase.khId &&
+          record.khTitrationJson != null &&
+          single
+      ? value.toStringAsFixed(1)
+      : trendNumber(value);
+}
+
+String recordTrendValue(TestRecord record) {
+  final minimum = recordTrendNumber(record.confirmedMinValue, record);
+  final maximum = record.confirmedMaxValue;
+  return maximum == null || maximum == record.confirmedMinValue
+      ? minimum
+      : '$minimum–${recordTrendNumber(maximum, record)}';
+}
+
 String recordDate(DateTime value) {
   final d = value.toLocal();
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -269,7 +290,7 @@ class _HistoryPainter extends CustomPainter {
           canvas.drawCircle(location, 4, line);
         }
         text(
-          trendNumber(point),
+          recordTrendNumber(point, datum.record),
           x,
           location.dy - (datum.lower != datum.upper && !bars ? 32 : 18),
           colors.primary,
@@ -395,9 +416,7 @@ class _PagedRecordHistoryState extends State<PagedRecordHistory> {
                         (range ? null : r.confirmedMinValue);
                     return ListTile(
                       key: Key('trend-record-${r.id}'),
-                      title: Text(
-                        '${trendNumber(r.confirmedMinValue)}${range ? '–${trendNumber(r.confirmedMaxValue!)}' : ''} ${r.unit}',
-                      ),
+                      title: Text('${recordTrendValue(r)} ${r.unit}'),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

@@ -14,16 +14,19 @@ class AquariumCard extends StatelessWidget {
     required this.tankName,
     required this.items,
     required this.onTap,
+    this.runningDays,
+    this.onManageTank,
     super.key,
   });
 
   final String tankName;
   final List<FishStockItem> items;
   final VoidCallback onTap;
+  final int? runningDays;
+  final VoidCallback? onManageTank;
 
   @override
   Widget build(BuildContext context) {
-    final total = items.fold<int>(0, (sum, item) => sum + item.quantity);
     final speciesSummary = items.isEmpty
         ? '点击添加第一条鱼'
         : items.map((item) => '${item.species} × ${item.quantity}').join(' · ');
@@ -68,26 +71,40 @@ class AquariumCard extends StatelessWidget {
                   child: Row(
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '我的鱼缸 · $tankName',
-                              style: Theme.of(context).textTheme.labelMedium
-                                  ?.copyWith(color: Colors.white70),
-                            ),
-                            Text(
-                              total == 0 ? '还没有鱼' : '$total 条鱼在游动',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ],
+                        child: InkWell(
+                          key: const Key('edit-tank-start-date'),
+                          onTap: onManageTank,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '我的鱼缸 · $tankName',
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(color: Colors.white70),
+                              ),
+                              Text(
+                                runningDays == null
+                                    ? '设置开缸日期'
+                                    : '已运行 $runningDays 天',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      const Icon(Icons.edit_outlined, color: Colors.white),
+                      IconButton(
+                        key: const Key('edit-fish-stock'),
+                        tooltip: '编辑鱼类档案',
+                        onPressed: onTap,
+                        icon: const Icon(
+                          Icons.edit_outlined,
+                          color: Colors.white,
+                        ),
+                      ),
                     ],
                   ),
                 ),

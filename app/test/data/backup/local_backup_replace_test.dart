@@ -119,7 +119,7 @@ void main() {
     final service = LocalBackupService(source);
     final sourceJson = await service.exportJson();
     final sourceMap = jsonDecode(sourceJson) as Map<String, dynamic>;
-    expect(sourceMap['formatVersion'], 11);
+    expect(sourceMap['formatVersion'], 12);
     expect(
       sourceMap.keys.toSet(),
       containsAll(<String>{

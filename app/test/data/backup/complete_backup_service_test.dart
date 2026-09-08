@@ -180,6 +180,14 @@ void main() {
         ),
       ],
     );
+    await database
+        .update(database.tanks)
+        .write(
+          const TanksCompanion(
+            startedOn: Value('2000-02-29'),
+            volumeLiters: Value(120.5),
+          ),
+        );
 
     final report = await serviceFor(database).exportToPrivateFile();
     expect(report.photoCount, 0);
@@ -196,6 +204,9 @@ void main() {
     final restored = AppDatabase(NativeDatabase.memory());
     addTearDown(restored.close);
     await serviceFor(restored).restoreReplaceFromFile(report.file);
+    final tank = await restored.select(restored.tanks).getSingle();
+    expect(tank.startedOn, '2000-02-29');
+    expect(tank.volumeLiters, 120.5);
     final record = (await restored.select(restored.testRecords).get()).single;
     expect(record.id, 'photo-record');
     expect(record.photoPath, isNull);

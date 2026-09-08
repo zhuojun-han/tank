@@ -33,7 +33,7 @@ void main() {
         .customSelect('PRAGMA user_version')
         .getSingle();
 
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(tanks, hasLength(1));
     expect(tanks.single.name, '我的海缸');
     expect(
@@ -185,7 +185,7 @@ void main() {
         .customSelect('PRAGMA table_info(task_events)')
         .get();
 
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(
       columns.map((row) => row.read<String>('name')),
       containsAll(['estimated_min_value', 'confirmed_min_value']),
@@ -243,7 +243,7 @@ void main() {
         .get();
 
     expect(marker.read<String>('value'), 'from-v2');
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(
       tables.map((row) => row.read<String>('name')),
       containsAll(['maintenance_tasks', 'task_events']),
@@ -294,7 +294,7 @@ CREATE TABLE test_records (
     final version = await migrated
         .customSelect('PRAGMA user_version')
         .getSingle();
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(record.read<int>('confirmed_at'), microseconds);
     expect(record.read<int>('was_manually_edited'), 0);
     expect(record.data['captured_at'], isNull);
@@ -325,7 +325,7 @@ CREATE TABLE active_test_sessions (
         .customSelect('PRAGMA table_info(active_test_sessions)')
         .get();
 
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(
       columns.map((row) => row.read<String>('name')),
       contains('draft_confirmed_at'),
@@ -364,7 +364,7 @@ CREATE TABLE app_preferences (
         .select(migrated.appPreferences)
         .getSingle();
 
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(preference.themeMode, 'system');
     expect(preference.maintenanceNotificationsEnabled, isTrue);
     expect(preference.fishStockJson, '[]');
@@ -465,7 +465,7 @@ CREATE TABLE app_preferences (
         .customSelect('PRAGMA user_version')
         .getSingle();
 
-    expect(version.read<int>('user_version'), 11);
+    expect(version.read<int>('user_version'), 12);
     expect(preference.themeMode, 'dark');
     expect(preference.maintenanceNotificationsEnabled, isFalse);
     expect(preference.fishStockJson, '[]');

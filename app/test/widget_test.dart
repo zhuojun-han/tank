@@ -114,7 +114,7 @@ void main() {
     await tester.pump();
     await tester.ensureVisible(find.byKey(const Key('save-fish-stock')));
     await tester.tap(find.byKey(const Key('save-fish-stock')));
-    await _pumpUntilFound(tester, find.text('3 条鱼在游动'));
+    await _pumpUntilFound(tester, find.text('黄金吊 × 3'));
 
     expect(find.text('黄金吊 × 3'), findsOneWidget);
     final saved = tester

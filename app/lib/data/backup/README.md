@@ -1,8 +1,10 @@
 # App 备份层
 
-当前 JSON wire format 为 **v11**，支持读取 v1–v10；版本与字段以 [local_backup_service.dart](local_backup_service.dart) 和 [技术设计](../../../../docs/TECHNICAL_DESIGN.md) 为准。
+当前 JSON wire format 为 **v12**，支持读取 v1–v11；版本与字段以 [local_backup_service.dart](local_backup_service.dart) 和 [技术设计](../../../../docs/TECHNICAL_DESIGN.md) 为准。
 
 - `LocalBackupService` 导出业务 JSON；v11 包含补液周期/配方、任务滚动排期、KH 原始滴定元数据、可空目标与一次初始化标记；v10 的确认/原始插值及草稿继续保留。旧范围不补插值；检测照片引用和设备派生通知 ID 在新旧格式读取/写出时清空。
+- v12 海缸新增可空 `startedOn`（`YYYY-MM-DD` 日历日期）；旧备份缺省为未设置，不从创建时间推算。读取允许合法未来日期以兼容设备日期回拨，新增或显式修改时才拒绝未来日期；不转换为 UTC 时间戳。
+- v12 的可空 `volumeLiters` 仅保存海缸水体积；非空时须为有限正数，旧档缺省为空，不自动改写计算器输入。
 - `CompleteBackupService` 将 JSON 与 SHA-256 清单打包 ZIP。新包仅包含 `database.json` 与 `manifest.json`；历史照片文件参与完整性检查，但不复制到新设备。
 - `TestRecordCsvExportService` 按缸导出检测 CSV，含范围和插值，防公式注入；CSV 不用于恢复。
 

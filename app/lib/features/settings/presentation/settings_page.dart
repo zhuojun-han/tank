@@ -16,7 +16,9 @@ import '../../../data/backup/complete_backup_service.dart';
 import '../../../data/database/app_database.dart';
 import '../../maintenance/application/maintenance_notification_coordinator.dart';
 import '../../maintenance/application/maintenance_notification_providers.dart';
+import '../../maintenance/application/maintenance_providers.dart';
 import '../../tanks/application/tank_providers.dart';
+import '../../tanks/domain/tank_age.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -25,13 +27,14 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tanks = ref.watch(activeTanksProvider);
     final currentTank = ref.watch(currentTankProvider).value;
+    final today = ref.watch(maintenanceDateProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('设置'),
         actions: [
           IconButton(
             tooltip: '添加海缸',
-            onPressed: () => _showTankDialog(context, ref),
+            onPressed: () => showTankEditor(context),
             icon: const Icon(Icons.add),
           ),
         ],
@@ -59,11 +62,19 @@ class SettingsPage extends ConsumerWidget {
                 RadioListTile<String>(
                   value: tank.id,
                   title: Text(tank.name),
-                  subtitle: Text(tank.notes ?? '无备注'),
+                  subtitle: Text(
+                    [
+                      if (tank.notes?.isNotEmpty ?? false) tank.notes!,
+                      if (tank.volumeLiters != null)
+                        '${tank.volumeLiters.toString().replaceFirst(RegExp(r'\.0$'), '')} L',
+                      formatTankAge(tank.startedOn, today),
+                      if (tank.startedOn != null) '开缸 ${tank.startedOn}',
+                    ].join(' · '),
+                  ),
                   secondary: PopupMenuButton<String>(
                     onSelected: (action) async {
                       if (action == 'edit') {
-                        await _showTankDialog(context, ref, tank: tank);
+                        await showTankEditor(context, tank: tank);
                       } else if (action == 'parameters') {
                         await Navigator.of(context).push(
                           MaterialPageRoute<void>(
@@ -527,15 +538,6 @@ class ParameterSettingsPage extends ConsumerWidget {
     );
   }
 }
-
-Future<void> _showTankDialog(
-  BuildContext context,
-  WidgetRef ref, {
-  Tank? tank,
-}) => showDialog<void>(
-  context: context,
-  builder: (_) => SettingsEntryDialog.tank(tank: tank),
-);
 
 Future<void> _showParameterDialog(
   BuildContext context,
