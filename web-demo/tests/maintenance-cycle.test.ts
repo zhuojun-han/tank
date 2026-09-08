@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMaintenanceCycle, currentMaintenanceCycle, cycleRemainingMl, maintenanceTasksOnDate, prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
+import { addMaintenanceCycle, currentMaintenanceCycle, cycleRemainingDays, cycleRemainingMl, maintenanceTasksOnDate, overdueMaintenanceTasks, prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
 import { pendingTasksOnDate, completedTasksOnDate } from '../app/task-calendar.ts';
 import type { MaintenanceInput } from '../app/maintenance-dosing.ts';
 
@@ -31,14 +31,85 @@ test('fractional duration uses final run day, not displayed rounded days; one-da
   assert.equal(prepareMaintenanceCycle(input, 'po4', 1, '2028-02-27').refillDate, '2028-03-02');
 });
 
-test('overdue refill remains pending each day until a replacement; no items before start', () => {
+test('calendar stops at the last day while a separate overdue reminder remains pending today', () => {
   const c = prepare();
   assert.deepEqual(maintenanceTasksOnDate([c], 1, '2026-09-07', start), []);
-  for (const date of ['2026-09-12', '2026-09-15', '2026-10-01']) {
-    assert.equal(maintenanceTasksOnDate([c], 1, date, date)[0].state, 'due');
+  assert.equal(maintenanceTasksOnDate([c], 1, c.refillDate, c.refillDate)[0].state, 'due');
+  assert.deepEqual(overdueMaintenanceTasks([c], 1, c.refillDate), []);
+  for (const date of ['2026-09-13', '2026-09-15', '2026-10-01']) {
+    assert.deepEqual(maintenanceTasksOnDate([c], 1, date, start), []);
+    assert.deepEqual(maintenanceTasksOnDate([c], 1, date, date), []);
+    const overdue = overdueMaintenanceTasks([c], 1, date);
+    assert.equal(overdue.length, 1);
+    assert.equal(overdue[0].state, 'due');
+    assert.equal(overdue[0].scheduledDate, date);
+    assert.equal(overdue[0].maintenanceCycleId, c.id);
+    assert.equal(pendingTasksOnDate(overdue, date).length, 1);
+    assert.match(overdue[0].cycle, /预计还可用 0 天/);
+    assert.match(overdue[0].detail, /剩余 0 mL.*逾期/);
   }
   near(cycleRemainingMl(c, '2026-09-10'), 300);
   near(cycleRemainingMl(c, '2026-10-01'), 0);
+});
+
+test('500 mL at 84 mL per day shows six dates with decreasing days and volume for both chemicals', () => {
+  for (const chemical of ['po4', 'kh'] as const) {
+    const c = prepareMaintenanceCycle({ ...input, po4Flow: 84, khFlow: 84 }, chemical, 1, start, undefined, 0, 301);
+    const snapshot = structuredClone(c);
+    assert.equal(c.refillDate, '2026-09-13');
+    near(cycleRemainingDays(c, start), 500 / 84);
+    near(cycleRemainingDays(c, '2026-09-09'), 500 / 84 - 1);
+    near(cycleRemainingDays(c, '2026-09-07'), 500 / 84);
+    const dates = ['2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13'];
+    const volumes = [500, 416, 332, 248, 164, 80];
+    const dayLabels = ['5.95', '4.95', '3.95', '2.95', '1.95', '0.952'];
+    for (const [index, date] of dates.entries()) {
+      const tasks = maintenanceTasksOnDate([c], 1, date, date);
+      assert.equal(tasks.length, 1);
+      near(cycleRemainingDays(c, date), 500 / 84 - index);
+      near(cycleRemainingMl(c, date), volumes[index]);
+      assert.ok(tasks[0].cycle.includes(`（${dayLabels[index]} 天）`));
+      assert.ok(tasks[0].detail.includes(`剩余 ${volumes[index]} mL`));
+      assert.equal(tasks[0].state, index < 5 ? 'done' : 'due');
+    }
+    const futureRefill = maintenanceTasksOnDate([c], 1, c.refillDate, start)[0];
+    assert.equal(futureRefill.state, 'soon');
+    assert.match(futureRefill.cycle, /0\.952 天/);
+    assert.match(futureRefill.detail, /80 mL.*2026-09-13 需配液/);
+    assert.deepEqual(maintenanceTasksOnDate([c], 1, '2026-09-14', start), []);
+    assert.deepEqual(maintenanceTasksOnDate([c], 1, '2027-01-01', '2027-01-02'), []);
+    assert.equal(cycleRemainingDays(c, '2026-09-14'), 0);
+    assert.equal(cycleRemainingMl(c, '2026-09-14'), 0);
+    assert.deepEqual(c, snapshot);
+  }
+});
+
+test('sub-day and exact-day durations have finite calendar windows and retain final-day volume', () => {
+  for (const [volume, count] of [[50, 1], [100, 1], [500, 5]]) {
+    const c = prepareMaintenanceCycle({ ...input, solutionMl: volume }, 'po4', 1, start);
+    const dates = Array.from({ length: 7 }, (_, index) => `2026-09-${String(8 + index).padStart(2, '0')}`);
+    assert.equal(dates.flatMap(date => maintenanceTasksOnDate([c], 1, date, start)).length, count);
+    const last = maintenanceTasksOnDate([c], 1, c.refillDate, c.refillDate)[0];
+    assert.equal(last.state, 'due');
+    near(cycleRemainingDays(c, c.refillDate), volume < 100 ? 0.5 : 1);
+    near(cycleRemainingMl(c, c.refillDate), volume < 100 ? 50 : 100);
+    assert.match(last.detail, /需配液/);
+  }
+});
+
+test('remaining days count calendar dates across month, year, leap day and daylight-saving transitions', () => {
+  for (const [first, second, last] of [
+    ['2026-09-29', '2026-09-30', '2026-10-03'],
+    ['2026-12-29', '2026-12-30', '2027-01-02'],
+    ['2028-02-27', '2028-02-28', '2028-03-02'],
+    ['2026-03-07', '2026-03-08', '2026-03-11'],
+  ]) {
+    const c = prepareMaintenanceCycle(input, 'po4', 1, first);
+    assert.equal(c.refillDate, last);
+    near(cycleRemainingDays(c, second), 4);
+    near(cycleRemainingDays(c, last), 1);
+    assert.equal(maintenanceTasksOnDate([c], 1, last, last).length, 1);
+  }
 });
 
 test('PO4 residual subtracts its existing solute and liquid volume', () => {
@@ -96,6 +167,31 @@ test('early replacement preserves history, cancels old future refill, and isolat
   assert.ok(!maintenanceTasksOnDate(cycles, 1, '2026-09-12', '2026-09-12').some(t => t.maintenanceCycleId === 100));
   assert.equal(maintenanceTasksOnDate(cycles, 1, '2026-09-12', '2026-09-12').find(t => t.maintenanceCycleId === 200)?.state, 'done');
   assert.deepEqual(maintenanceTasksOnDate(JSON.parse(JSON.stringify(cycles)), 1, '2026-09-12', '2026-09-12'), maintenanceTasksOnDate(cycles, 1, '2026-09-12', '2026-09-12'));
+});
+
+test('late replacement resolves the original final-day history and removes only its overdue reminder', () => {
+  const old = prepare();
+  const kh = prepare('kh');
+  const tank2 = { ...old, id: 102, tankId: 2 };
+  const original = [old, kh, tank2];
+  const snapshot = structuredClone(original);
+  const today = '2026-09-16';
+  assert.equal(overdueMaintenanceTasks(original, 1, today).length, 2);
+  assert.equal(overdueMaintenanceTasks(original, 2, today).length, 1);
+  const next = prepareMaintenanceCycle(input, 'po4', 1, today, old, 0, 200);
+  const cycles = addMaintenanceCycle(original, next);
+  const reminders = overdueMaintenanceTasks(cycles, 1, today);
+  assert.equal(reminders.length, 1);
+  assert.equal(reminders[0].maintenanceCycleId, kh.id);
+  assert.equal(overdueMaintenanceTasks(cycles, 2, today)[0].maintenanceCycleId, tank2.id);
+  const previousLastDay = maintenanceTasksOnDate(cycles, 1, old.refillDate, today).find(task => task.maintenanceCycleId === old.id)!;
+  assert.equal(previousLastDay.state, 'done');
+  assert.match(previousLastDay.detail, /2026-09-16 续配/);
+  for (const date of ['2026-09-13', '2026-09-15', today]) {
+    assert.ok(!maintenanceTasksOnDate(cycles, 1, date, today).some(task => task.maintenanceCycleId === old.id));
+  }
+  assert.deepEqual(original, snapshot);
+  assert.deepEqual(overdueMaintenanceTasks(JSON.parse(JSON.stringify(cycles)), 1, today), reminders);
 });
 
 test('zero demand, invalid dates, and unrepresentable refill dates cannot be saved', () => {

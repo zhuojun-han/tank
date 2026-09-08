@@ -23,6 +23,10 @@ export function cycleRemainingMl(cycle: MaintenanceCycle, date: string) {
   // Completed calendar days only: the user confirms the actual remaining volume.
   return Math.max(0, cycle.solutionMl - Math.max(0, ordinal(date) - ordinal(cycle.startDate)) * cycle.dailyLiquidMl);
 }
+export function cycleRemainingDays(cycle: MaintenanceCycle, date: string) {
+  const elapsedDays = Math.max(0, ordinal(date) - ordinal(cycle.startDate));
+  return Math.max(0, cycle.solutionMl / cycle.dailyLiquidMl - elapsedDays);
+}
 export function currentMaintenanceCycle(cycles: MaintenanceCycle[], tankId: number, chemical: MaintenanceChemical) {
   return cycles.filter(c => c.tankId === tankId && c.chemical === chemical && !c.closedOnDate).at(-1);
 }
@@ -60,18 +64,33 @@ export function addMaintenanceCycle(cycles: MaintenanceCycle[], next: Maintenanc
   return [...cycles.map(c => c.id === current?.id ? { ...c, closedOnDate: next.startDate } : c), next];
 }
 
-/** Virtual daily occurrences, never persisted as daily to-dos. */
+function makeTask(cycle: MaintenanceCycle, date: string, today: string, overdue = false) {
+  const refill = overdue || date === cycle.refillDate;
+  const days = cycleRemainingDays(cycle, date);
+  const remainingMl = cycleRemainingMl(cycle, date);
+  const volume = remainingMl > 0 && remainingMl < 0.001
+    ? remainingMl.toExponential(3) : String(Number(remainingMl.toFixed(3)));
+  const remaining = `预计剩余 ${volume} mL`;
+  const name = cycle.chemical === 'po4' ? 'PO₄' : 'KH';
+  const state: 'done' | 'due' | 'soon' = !refill || cycle.closedOnDate ? 'done' : date <= today ? 'due' : 'soon';
+  const detail = cycle.closedOnDate ? `${remaining} · 已于 ${cycle.closedOnDate} 续配`
+    : overdue ? `${remaining} · 补液已逾期，请添加滴定液`
+      : refill ? `${remaining} · ${cycle.refillDate} 需配液` : `${remaining} · ${cycle.refillDate} 补液`;
+  return { id: -cycle.id, tankId: cycle.tankId, source: 'maintenance-cycle' as const, maintenanceCycleId: cycle.id,
+    title: `${name} 每日平衡${refill ? ' · 添加滴定液' : ''}`,
+    cycle: `预计还可用 ${Math.round(days)} 天（${days.toPrecision(3)} 天）`,
+    due: `${cycle.refillDate} 补液`, scheduledDate: date, oneOff: true, state, detail,
+  };
+}
+
+/** Finite calendar occurrences; overdue reminders are projected separately. */
 export function maintenanceTasksOnDate(cycles: MaintenanceCycle[], tankId: number, date: string, today: string) {
-  return cycles.filter(c => c.tankId === tankId && date >= c.startDate && (!c.closedOnDate || date < c.closedOnDate)).map(c => {
-    const refill = date >= c.refillDate;
-    const days = cycleRemainingMl(c, date) / c.dailyLiquidMl;
-    const name = c.chemical === 'po4' ? 'PO₄' : 'KH';
-    const state: 'done' | 'due' | 'soon' = !refill || c.closedOnDate ? 'done' : date <= today ? 'due' : 'soon';
-    return { id: -c.id, tankId, source: 'maintenance-cycle' as const, maintenanceCycleId: c.id,
-      title: `${name} 每日平衡${refill ? ' · 添加滴定液' : ''}`,
-      cycle: refill ? c.closedOnDate ? `已于 ${c.closedOnDate} 续配` : `补液日 ${c.refillDate}` : `预计还可用 ${Math.round(days)} 天（${days.toPrecision(3)} 天）`,
-      due: `${c.refillDate} 补液`, scheduledDate: date, oneOff: true, state,
-      detail: refill ? c.closedOnDate ? '已续配新一瓶滴定液。' : '请添加滴定液，确认配方后开始新周期。' : `自动滴定中 · ${c.refillDate} 补液`,
-    };
-  });
+  return cycles.filter(c => c.tankId === tankId && date >= c.startDate && date <= c.refillDate
+    && (!c.closedOnDate || date < c.closedOnDate)).map(c => makeTask(c, date, today));
+}
+
+/** One reminder per overdue active cycle, for today's pending views, never the calendar. */
+export function overdueMaintenanceTasks(cycles: MaintenanceCycle[], tankId: number, today: string) {
+  return cycles.filter(c => c.tankId === tankId && !c.closedOnDate && today > c.refillDate)
+    .map(c => makeTask(c, today, today, true));
 }

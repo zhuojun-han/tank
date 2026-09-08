@@ -14,7 +14,8 @@ import { readRecordValues, recordPoint, recordValueText } from "./record-values"
 import { PagedRecordList } from "./paged-record-list";
 import { historyDate, recordDateLabel } from "./history-date";
 import { RecordTrend } from "./record-trend";
-import { addMaintenanceCycle, maintenanceTasksOnDate, type MaintenanceCycle, type MaintenanceChemical } from "./maintenance-cycle";
+import { addMaintenanceCycle, maintenanceTasksOnDate, overdueMaintenanceTasks, type MaintenanceCycle, type MaintenanceChemical } from "./maintenance-cycle";
+import { useLocalDate } from "./use-local-date";
 import { MaintenanceDosingPanel } from "./maintenance-dosing-panel";
 import {
   calculateLanthanumPlan,
@@ -159,7 +160,13 @@ export default function Home() {
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("pending");
   const [chemicalPlanDetails, setChemicalPlanDetails] = useState<ChemicalPlanDetails | null>(null);
-  const [todayKey, setTodayKey] = useState(() => dateKey(new Date()));
+  const todayKey = useLocalDate((next, previous) => {
+    setSelectedCalendarDate(selected => selected === previous ? next : selected);
+    if (selectedCalendarDate === previous) setCalendarMonth(month =>
+      dateKey(month).slice(0, 7) === previous.slice(0, 7)
+        ? new Date(Number(next.slice(0, 4)), Number(next.slice(5, 7)) - 1, 1) : month);
+    setTodayLabel(`${new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(new Date(`${next}T12:00:00`))} · 水质概览`);
+  });
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -294,7 +301,8 @@ export default function Home() {
     ...tasks.filter((item) => item.tankId === tankId),
     ...maintenanceTasksOnDate(maintenanceCycles, tankId, date, todayKey),
   ];
-  const allTankTasks = tankTasksForDate(todayKey);
+  const allTankTasks: TaskItem[] = [...tankTasksForDate(todayKey), ...overdueMaintenanceTasks(maintenanceCycles, tankId, todayKey)];
+  const homeDosingTasks = allTankTasks.filter(task => task.source === "maintenance-cycle" && task.state === "done");
   const chemicalPlanDetailTasks = chemicalPlanDetails ? allTankTasks
     .filter((item) => item.planId === chemicalPlanDetails.planId && item.source === chemicalPlanDetails.source)
     .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "")) : [];
@@ -335,22 +343,12 @@ export default function Home() {
     }))
     .filter((item) => item.state !== "skipped");
   const selectedDateTasks = calendarOccurrencesForDate(selectedCalendarDate);
-  const todayReminderTasks = calendarOccurrencesForDate(todayKey).filter(
-    (item) => item.state !== "done" && item.state !== "skipped",
-  );
+  const todayReminderTasks = allTankTasks.filter(task => taskOccursOnDate(task, todayKey))
+    .map(task => ({ task, occurrenceDate: todayKey, state: taskStateOnDate(task, todayKey, todayKey) }))
+    .filter(item => item.state !== "done" && item.state !== "skipped");
   const selectedDateLabel = calendarDateLabel(
     new Date(`${selectedCalendarDate}T12:00:00`),
   );
-  useEffect(() => {
-    const refreshDate = () => {
-      const now = new Date();
-      setTodayKey(dateKey(now));
-      setTodayLabel(`${new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "short" }).format(now)} · 水质概览`);
-    };
-    const id = window.setInterval(refreshDate, 30_000);
-    window.addEventListener("focus", refreshDate);
-    return () => { window.clearInterval(id); window.removeEventListener("focus", refreshDate); };
-  }, []);
   useEffect(() => {
     if (!ready || !notificationEnabled || reminderDismissedDate === todayKey || todayReminderTasks.length === 0) return;
     const id = window.setTimeout(() => setReminderOpen(true), 0);
@@ -809,6 +807,10 @@ export default function Home() {
           <div className="metric-grid dynamic-metrics">{enabledParameters.slice(0, 4).map((parameter, index) => { const latest = latestOf(parameter.id); return <button key={parameter.id} className={`metric-card ${index % 2 ? "aqua" : "coral"}`} onClick={() => { setTrendParameterId(parameter.id); switchTab("trend"); }}><span className="metric-label">{parameter.name}<i>最近</i></span><strong>{latest ? (latest.low === latest.high ? recordValueText(latest.low, latest) : `${recordValueText(latest.low, latest)}–${recordValueText(latest.high, latest)}`) : "--"}</strong><small>{parameter.unit}</small><p>{resultStatus(parameter.id)}</p></button>; })}</div>
           <section className="advice-section"><div className="home-section-title"><div><p className="eyebrow">根据最近检测</p><h2>建议先做这些</h2></div></div><div className="advice-list">{enabledParameters.map((parameter) => { const advice = adviceFor(parameter.id); return <article key={parameter.id} className={`advice-card ${advice.status}`}><div className="advice-head"><span>{advice.status === "good" ? "✓" : advice.status === "high" ? "↑" : advice.status === "low" ? "↓" : "i"}</span><div><small>{parameter.name} · 目标 {targetText(parameter.id)}</small><h3>{advice.title}</h3></div></div><p>{advice.summary}</p><ul>{advice.actions.map((action) => <li key={action}>{action}</li>)}</ul></article>; })}</div><details className="advice-basis"><summary>查看建议依据</summary><p>建议依据用户自定目标范围和最近一次人工确认结果生成。NO3/PO4 的营养输入、换水、过滤与吸附材料规则参考 Red Sea、Tropic Marin 和 Hanna 的公开资料；不同生物配置差异较大，请小幅调整并复测。</p><div><a href="https://redseafish.com/wp-content/uploads/2013/12/Algae-management-Program_Multilanguage-Manual_GB_DE_FR_SE_NL_SP_PT_JP_CH_17A.pdf" target="_blank" rel="noreferrer">Red Sea 营养盐管理</a><a href="https://www.tropic-marin.com/naehrstoffkontrolle?lang=en" target="_blank" rel="noreferrer">Tropic Marin 营养控制</a><a href="https://pages.hannainst.com/hubfs/006-finished-content/Aquarium/Saltwater-Aquarium-Water-Parameters-Guidelines-1.pdf" target="_blank" rel="noreferrer">Hanna 海水参数指南</a></div></details></section>
           <button className="manage-parameters" onClick={() => setParameterModal(true)}>＋ 管理 {tank?.name} 的关注指标</button>
+          {homeDosingTasks.length > 0 && <section className="home-dosing-status">
+            <div className="home-section-title"><div><p className="eyebrow">今日状态</p><h2>每日平衡</h2></div></div>
+            <div className="home-task-list">{homeDosingTasks.map(maintenanceTaskCard)}</div>
+          </section>}
           <section className="home-todos">
             <div className="home-section-title"><div><p className="eyebrow">仅今天 · {homeTaskGroups.length} 项</p><h2>今日待办</h2></div><button onClick={() => switchTab("tasks")}>查看任务</button></div>
             {homeTaskGroups.length ? <div className="home-task-list">{homeTaskGroups.map(({ key, task, isChemicalPlan }) => task.source === "maintenance-cycle" ? maintenanceTaskCard(task) : <article key={key} className={`panel next-task ${task.state}`}>
@@ -959,7 +961,7 @@ export default function Home() {
 
     {tankModal && <div className="modal-backdrop"><form className="sheet" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const id = Date.now(); setTanks((items) => [...items, { id, name: String(data.get("name")), volume: `${data.get("volume") || "--"} L` }]); setTargets((items) => [...items, { tankId: id, parameterId: "no3", min: null, max: null }, { tankId: id, parameterId: "po4", min: null, max: null }]); setTankId(id); setSelectedParameterId("no3"); setTrendParameterId("no3"); setTankModal(false); announceSaved("新海缸已创建，可继续添加关注指标"); }}><div className="sheet-handle" /><div className="section-head"><div><p className="eyebrow">多海缸</p><h2>添加海缸</h2></div><button type="button" className="icon-button" onClick={() => setTankModal(false)}>×</button></div><label className="field">海缸名称<input name="name" required placeholder="例如：书房珊瑚缸" /></label><label className="field">水体体积（可选）<input name="volume" inputMode="decimal" placeholder="例如：120" /></label><button className="primary-button wide" type="submit">创建海缸</button></form></div>}
 
-    {maintenanceModal && <MaintenanceDosingPanel tankId={tankId} cycles={maintenanceCycles} initialChemical={maintenanceChemical} onSave={saveMaintenanceCycle} tankName={tank?.name ?? "当前海缸"} previousKh={alkalinityPlan?.calculatedTankId === tankId ? alkalinityPlan : null} onClose={() => setMaintenanceModal(false)} />}
+    {maintenanceModal && <MaintenanceDosingPanel tankId={tankId} today={todayKey} cycles={maintenanceCycles} initialChemical={maintenanceChemical} onSave={saveMaintenanceCycle} tankName={tank?.name ?? "当前海缸"} previousKh={alkalinityPlan?.calculatedTankId === tankId ? alkalinityPlan : null} onClose={() => setMaintenanceModal(false)} />}
     {alkalinityModal && <div className="modal-backdrop">
       <section className="sheet alkalinity-sheet">
         <div className="sheet-handle" />
