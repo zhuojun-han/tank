@@ -3,9 +3,11 @@ import { pruneSupersededChemicalPlanOverlaps } from './task-calendar.ts';
 import type { MaintenanceCycle } from './maintenance-cycle.ts';
 import type { MaintenanceInput } from './maintenance-dosing.ts';
 import type { Tank, Parameter, Target, RecordItem, TaskItem, TimerDefaults } from './demo-state.ts';
+import { initializeKhTargetRanges } from './target-range.ts';
 
 export type DemoState = {
   schemaVersion?: number;
+  khTargetDefaultsApplied?: true;
   tanks: Tank[]; tankId: number; parameters: Parameter[]; targets: Target[];
   records: RecordItem[]; tasks: TaskItem[]; maintenanceCycles: MaintenanceCycle[];
   fishStock: FishStockItem[]; timerDefaults: TimerDefaults;
@@ -75,6 +77,7 @@ export function normalizeTask(task: TaskItem, index: number, now = new Date()): 
 export function validateDemoState(state: unknown): asserts state is DemoState {
   requireValid(object(state), '根对象');
   requireValid(state.schemaVersion === undefined || state.schemaVersion === 1, '版本（可能来自更新的应用）');
+  requireValid(optional(state, 'khTargetDefaultsApplied', v => v === true), 'KH 默认目标标记');
   rows(state.tanks, '海缸', r => finite(r.id) && string(r.name) && string(r.volume));
   requireValid((state.tanks as Tank[]).length > 0 && (state.tanks as Tank[]).some(t => t.id === state.tankId), '当前海缸');
   rows(state.parameters, '参数', r => string(r.id) && string(r.name) && string(r.label) && string(r.unit) && typeof r.builtIn === 'boolean' && typeof r.photoSupported === 'boolean');
@@ -96,7 +99,8 @@ export function validateDemoState(state: unknown): asserts state is DemoState {
 }
 
 export function loadDemoState(access: StorageAccess, defaults: DemoState, now = new Date()) {
-  const fallback = { ...defaults, tasks: defaults.tasks.map((t, i) => normalizeTask(t, i, now)) };
+  const fallback: DemoState = { ...defaults, khTargetDefaultsApplied: true,
+    targets: initializeKhTargetRanges(defaults.targets), tasks: defaults.tasks.map((t, i) => normalizeTask(t, i, now)) };
   try {
     const storage = access();
     const raw = keys.map(key => storage.getItem(key)).find(value => value !== null);
@@ -112,7 +116,9 @@ export function loadDemoState(access: StorageAccess, defaults: DemoState, now = 
     // Missing fields in v4-v10 are a known migration, not malformed values.
     const migrated = { ...fallback, ...parsed, fishStock: parsed.fishStock === undefined ? [] : parsed.fishStock, maintenanceCycles: parsed.maintenanceCycles === undefined ? [] : parsed.maintenanceCycles };
     validateDemoState(migrated);
-    return { state: { ...migrated, schemaVersion: 1,
+    return { state: { ...migrated, schemaVersion: 1, khTargetDefaultsApplied: true as const,
+      // Fill previously empty KH ranges once. Later intentional blanks stay blank.
+      targets: parsed.khTargetDefaultsApplied === true ? migrated.targets : initializeKhTargetRanges(migrated.targets),
       parameters: migrated.parameters.map(p => ['no3', 'po4'].includes(p.id) ? { ...p, photoSupported: true } : p),
       tasks: pruneSupersededChemicalPlanOverlaps(migrated.tasks.map((t, i) => normalizeTask(t, i, now))),
       maintenanceCycles: migrated.maintenanceCycles.map(compatibleCycle),
@@ -125,7 +131,7 @@ export function loadDemoState(access: StorageAccess, defaults: DemoState, now = 
 export function saveDemoState(access: StorageAccess, state: DemoState): { ok: true } | { ok: false; message: string } {
   try {
     validateDemoState(state);
-    access().setItem(STORAGE_KEY, JSON.stringify({ ...state, schemaVersion: 1, maintenanceCycles: state.maintenanceCycles.map(compatibleCycle) }));
+    access().setItem(STORAGE_KEY, JSON.stringify({ ...state, schemaVersion: 1, khTargetDefaultsApplied: true, maintenanceCycles: state.maintenanceCycles.map(compatibleCycle) }));
     return { ok: true };
   } catch (e) {
     return { ok: false, message: `未能保存本次更改：${e instanceof Error ? e.message : '浏览器存储不可用'}。原有存档仍保留，请勿关闭页面，释放存储空间后重试。` };

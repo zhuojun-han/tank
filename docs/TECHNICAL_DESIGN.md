@@ -52,11 +52,15 @@ v10 增加确认/原始插值和对应草稿字段，并为已有 PO4 参数启�
 
 当前浏览器业务状态保存在 `reef-demo-state-v10`。保留旧状态兼容；新增字段提供安全默认值，不把演示记录自动当用户实测。`maintenanceCycles` 保存配方快照和残液当量，日历发生项即时生成，普通 tasks 不被物化为每日自动完成事件。补液数据合同见 [滴定规范](MAINTENANCE_DOSING_CALCULATOR.md)；此新增结构尚未同步 App。
 
+KH 目标默认值使用一次初始化标记 `khTargetDefaultsApplied: true`，沿用现有存储键。读取旧存档时，仅给已有且上下限均为 `null` 的 KH 目标补 `7–9 dKH`，不新增目标行或启用未启用的 KH；既有自定义值和单边目标保持原样。初始化成功后随状态保存标记，用户随后清空目标再加载时保持为空，不重复填回。新建 KH 目标或用户主动启用 KH 时使用默认范围。
+
 KH 滴定确认值按 `low = high = Number(displayDkh)` 保存一位小数的单值。可选 `khTitration` 保留 `initialMl`、`remainingMl`、`usedMl`、`tableReadingMl`、未按展示精度取整的 `dkh`，以及 `displayDkh`、`interpolated`、`tableId`；人工编辑确认值时保留这份原始计算信息。无此字段的旧记录继续兼容，沿用现有存储键。
 
 网页 localStorage 与 App JSON/ZIP 不是兼容格式；同步功能不得顺带导入演示历史。网页只在打开时提醒，系统通知由 Flutter 独立实现和验证。
 
 ## 计算与算法
+
+网页计划的目标预填遵循 [产品规则](MVP_SPEC.md#计算与通知)。完整有效范围指两端均为非负有限数且下限不大于上限；中点保留输入精度，KH 目标输入使用 `step="any"`，例如 `7.8–7.81` 预填 `7.805`，不能套用 KH 检测结果的一位小数展示规则。预填不放宽计算器及保存时的既有校验。
 
 公式、单位、数值限制由 [PO4](LANTHANUM_CHLORIDE_CALCULATOR.md)、[KH](SODIUM_BICARBONATE_KH_CALCULATOR.md)、[海盐](SALINITY_CALCULATOR.md)、[稳定滴定](MAINTENANCE_DOSING_CALCULATOR.md) 维护。颜色比较合同在 [拍照规范](IMAGE_ESTIMATION.md)。两端使用共同的参考数据验证行为一致，不由此推定真实化学效果或浓度准确率。稳定滴定的同输入/输出样例只维护根 [contracts/maintenance-dosing.json](../contracts/maintenance-dosing.json)，App 与 Web 测试直接读取此文件。变更合同须审阅期望值并运行两端相关测试，不从某端实现临时生成期望而跳过审阅。
 

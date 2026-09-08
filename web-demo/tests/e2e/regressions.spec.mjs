@@ -9,7 +9,7 @@ for (const script of [
   'photo-record-browser.mjs', 'unified-photo-rotation.mjs', 'photo-timer-routing.mjs',
   'po4-integration-history.mjs', 'line-history.mjs', 'paged-record-list.mjs',
   'maintenance-volume.mjs', 'maintenance-browser.mjs', 'maintenance-cycle-browser.mjs',
-  'kh-titration-browser.mjs',
+  'kh-titration-browser.mjs', 'target-linkage-browser.mjs',
 ]) {
   test(script, async ({}, info) => {
     const { stdout, stderr } = await run(process.execPath, [`tests/${script}`], {

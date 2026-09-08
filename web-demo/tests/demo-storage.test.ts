@@ -92,3 +92,39 @@ test('KH titration rounded records and original inputs round-trip without changi
     assert.equal(badStorage.getItem(STORAGE_KEY), raw);
   }
 });
+
+test('KH defaults fill only old enabled empty ranges; custom bounds and disabled tanks stay untouched', () => {
+  const oldTargets = [...defaultTargets,
+    { tankId: 1, parameterId: 'kh', min: null, max: null },
+    { tankId: 2, parameterId: 'kh', min: 7.8, max: 8.6 },
+    { tankId: 3, parameterId: 'kh', min: null, max: 9.5 },
+  ];
+  const original = JSON.stringify({ ...defaults, targets: oldTargets });
+  const storage = store({ [STORAGE_KEY]: original });
+  const result = loadDemoState(() => storage, defaults, now);
+  assert.equal(result.blocked, false);
+  assert.equal(result.state.khTargetDefaultsApplied, true);
+  assert.deepEqual(result.state.targets, oldTargets.map(t => t.tankId === 1 && t.parameterId === 'kh' ? { ...t, min: 7, max: 9 } : t));
+  assert.equal(storage.getItem(STORAGE_KEY), original, 'loading does not directly overwrite the snapshot');
+  assert.deepEqual(result.state.records, defaults.records);
+  const withoutKh = loadDemoState(() => store({ [STORAGE_KEY]: JSON.stringify(defaults) }), defaults, now);
+  assert.deepEqual(withoutKh.state.targets, defaultTargets, 'disabled KH is not enabled by migration');
+});
+
+test('intentional empty KH range stays empty after initialization, save and refresh', () => {
+  const storage = store({ [STORAGE_KEY]: JSON.stringify({ ...defaults, targets: [...defaultTargets, { tankId: 1, parameterId: 'kh', min: null, max: null }] }) });
+  const loaded = loadDemoState(() => storage, defaults, now).state;
+  const cleared = { ...loaded, targets: loaded.targets.map(t => t.parameterId === 'kh' ? { ...t, min: null, max: null } : t) };
+  assert.equal(saveDemoState(() => storage, cleared).ok, true);
+  const restored = loadDemoState(() => storage, defaults, now);
+  assert.equal(restored.blocked, false);
+  assert.equal(restored.state.khTargetDefaultsApplied, true);
+  assert.deepEqual(restored.state.targets, cleared.targets);
+});
+
+test('malformed KH initialization markers block loading without touching the original', () => {
+  const original = JSON.stringify({ ...defaults, khTargetDefaultsApplied: 'true' });
+  const storage = store({ [STORAGE_KEY]: original });
+  assert.equal(loadDemoState(() => storage, defaults, now).blocked, true);
+  assert.equal(storage.getItem(STORAGE_KEY), original);
+});

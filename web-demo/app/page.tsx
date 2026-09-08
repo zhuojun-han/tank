@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { defaultTanks, defaultParameters, defaultTargets, defaultRecords, defaultTasks, type Tank, type Parameter, type Target, type RecordItem, type TaskItem, type TimerDefaults } from "./demo-state";
 import { loadDemoState, saveDemoState, type DemoState } from "./demo-storage";
+import { calculatorTargetDefault, createParameterTarget } from "./target-range";
 import { TimerRing, useDetectionTimer } from "./detection-timer";
 import { KhTitrationPanel } from "./kh-titration-panel";
 import { calculateKhTitration, KH_TITRATION_TABLE_ID, type KhTitrationResult } from "./kh-titration";
@@ -778,9 +779,13 @@ export default function Home() {
       setTargets((items) => items.filter((item) => !(item.tankId === tankId && item.parameterId === parameterId)));
       if (selectedParameterId === parameterId) selectTestParameter(enabledParameters.find((item) => item.id !== parameterId)?.id ?? "no3");
       if (trendParameterId === parameterId) setTrendParameterId(enabledParameters.find((item) => item.id !== parameterId)?.id ?? "no3");
-    } else setTargets((items) => [...items, { tankId, parameterId, min: null, max: null }]);
+    } else setTargets((items) => [...items, createParameterTarget(tankId, parameterId)]);
   }
 
+  const defaultCalculatorTargets = useMemo(() => ({
+    po4: calculatorTargetDefault("po4", po4Target),
+    kh: calculatorTargetDefault("kh", khTarget),
+  }), [po4Target, khTarget]);
   const PhotoPanel = selectedParameterId === "po4" ? Po4ColorMatchPanel : ColorMatchPanel;
   if (photoMatchOpen) return <PhotoPanel onClose={() => { setPhotoMatchOpen(false); resetDetection(); }} onReview={review => { setPhotoMatchOpen(false); setPhotoEstimate(review); setResultLow(String(review.low)); setResultHigh(String(review.high)); setResultInterpolation(review.interpolation === null ? "" : String(review.interpolation)); setRecordError(""); setTestStage("result"); }} />;
   return <main className="site-shell" aria-busy={!ready}>
@@ -915,7 +920,7 @@ export default function Home() {
         {!lanthanumPlan ? <form className="lanthanum-form" onSubmit={submitLanthanumCalculation}>
           <div className="theory-warning"><strong>母液强度</strong><p>每1 mL母液对应100 L水体降低0.1 mg/L PO4；改变体积不改变浓度。</p></div>
           {latestPo4Record && latestPo4Record.low !== latestPo4Record.high && <p className="calculation-error">最近 PO4 是 {latestPo4Record.low}–{latestPo4Record.high} mg/L 的范围，请输入复测单值。</p>}
-          <div className="field-row"><label>当前 PO4（按 PO4 计）<input name="currentPo4MgL" type="number" step="any" min="0.030001" required defaultValue={exactLatestPo4} placeholder="当前单值 mg/L" /></label><label>精确目标 PO4<input name="targetPo4MgL" type="number" step="any" min="0.03" required defaultValue={Math.max(po4Target?.min ?? 0.03, 0.03)} placeholder="最低 0.03 mg/L" /></label></div>
+          <div className="field-row"><label>当前 PO4（按 PO4 计）<input name="currentPo4MgL" type="number" step="any" min="0.030001" required defaultValue={exactLatestPo4} placeholder="当前单值 mg/L" /></label><label>精确目标 PO4<input name="targetPo4MgL" type="number" step="any" min="0.03" required defaultValue={defaultCalculatorTargets.po4} placeholder="最低 0.03 mg/L" /><small className="field-note">默认取目标范围中值，可修改</small></label></div>
           <div className="field-row"><label>实际净水量<input name="netWaterVolumeL" type="number" step="any" min="0.1" required defaultValue={200} placeholder="扣除活石底砂后的 L" /></label><label>母液最终体积<input name="stockFinalVolumeMl" type="number" step="1" min="1" required defaultValue={DEFAULT_PLAN_STOCK_FINAL_VOLUME_ML} /><small className="field-note">mL · 溶解后定容到此体积</small></label></div>
           <label className="field">计划单日最大降幅（0.1–0.5）<input name="maxDailyPo4DropMgL" type="number" step="0.1" min="0.1" max="0.5" required defaultValue={0.1} /></label>
           {lanthanumError && <p className="calculation-error" role="alert">{lanthanumError}</p>}
@@ -967,7 +972,7 @@ export default function Home() {
           {latestKhRecord && latestKhRecord.low !== latestKhRecord.high && <p className="calculation-error">最近 KH 是 {latestKhRecord.low}–{latestKhRecord.high} dKH 的范围，请输入复测单值。</p>}
           <div className="field-row">
             <label>当前 KH<input name="currentDkh" type="number" step="0.01" min="0" required defaultValue={exactLatestKh} placeholder="当前单值 dKH" /></label>
-            <label>目标 KH<input name="targetDkh" type="number" step="0.01" min="0.01" required defaultValue={khTarget?.min ?? 8} placeholder="目标 dKH" /></label>
+            <label>目标 KH<input name="targetDkh" type="number" step="any" min="0.01" required defaultValue={defaultCalculatorTargets.kh} placeholder="目标 dKH" /><small className="field-note">默认取目标范围中值，可修改</small></label>
           </div>
           <div className="field-row">
             <label>实际净水量<input name="netWaterVolumeL" type="number" step="0.1" min="0.1" required defaultValue={200} placeholder="扣除活石底砂后的 L" /></label>
