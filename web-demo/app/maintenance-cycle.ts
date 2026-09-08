@@ -7,7 +7,7 @@ export type MaintenanceCycle = {
   input: MaintenanceInput; startDate: string; refillDate: string;
   solutionMl: number; dailyLiquidMl: number; effectPerMl: number;
   retainedMl: number; addedStockMl: number; addedWaterMl: number;
-  previousCycleId?: number; closedOnDate?: string;
+  previousCycleId?: number; closedOnDate?: string; refillDeferredUntil?: string;
 };
 
 const dayMs = 86_400_000;
@@ -65,7 +65,7 @@ export function addMaintenanceCycle(cycles: MaintenanceCycle[], next: Maintenanc
 }
 
 function makeTask(cycle: MaintenanceCycle, date: string, today: string, overdue = false) {
-  const refill = overdue || date === cycle.refillDate;
+  const refill = overdue || date >= cycle.refillDate;
   const days = cycleRemainingDays(cycle, date);
   const remainingMl = cycleRemainingMl(cycle, date);
   const volume = remainingMl > 0 && remainingMl < 0.001
@@ -74,23 +74,40 @@ function makeTask(cycle: MaintenanceCycle, date: string, today: string, overdue 
   const name = cycle.chemical === 'po4' ? 'PO₄' : 'KH';
   const state: 'done' | 'due' | 'soon' = !refill || cycle.closedOnDate ? 'done' : date <= today ? 'due' : 'soon';
   const detail = cycle.closedOnDate ? `${remaining} · 已于 ${cycle.closedOnDate} 续配`
-    : overdue ? `${remaining} · 补液已逾期，请添加滴定液`
+    : overdue ? `${remaining} · ${date} 提醒配液${date <= today ? '，补液已逾期' : ''}`
       : refill ? `${remaining} · ${cycle.refillDate} 需配液` : `${remaining} · ${cycle.refillDate} 补液`;
   return { id: -cycle.id, tankId: cycle.tankId, source: 'maintenance-cycle' as const, maintenanceCycleId: cycle.id,
     title: `${name} 每日平衡${refill ? ' · 添加滴定液' : ''}`,
     cycle: `预计还可用 ${Math.round(days)} 天（${days.toPrecision(3)} 天）`,
-    due: `${cycle.refillDate} 补液`, scheduledDate: date, oneOff: true, state, detail,
+    due: `${refill ? date : cycle.refillDate} 补液`, scheduledDate: date, oneOff: true, state, detail,
   };
 }
 
-/** Finite calendar occurrences; overdue reminders are projected separately. */
-export function maintenanceTasksOnDate(cycles: MaintenanceCycle[], tankId: number, date: string, today: string) {
-  return cycles.filter(c => c.tankId === tankId && date >= c.startDate && date <= c.refillDate
-    && (!c.closedOnDate || date < c.closedOnDate)).map(c => makeTask(c, date, today));
+export function maintenanceReminderDate(cycle: MaintenanceCycle, today: string) {
+  return [cycle.refillDate, cycle.refillDeferredUntil ?? cycle.refillDate, today].sort().at(-1)!;
 }
 
-/** One reminder per overdue active cycle, for today's pending views, never the calendar. */
+/** Delay only the reminder, never the physical reservoir forecast. */
+export function delayMaintenanceCycle(cycles: MaintenanceCycle[], id: number, days: number, today: string) {
+  const cycle = cycles.find(c => c.id === id && !c.closedOnDate);
+  if (!cycle) throw new Error('补液周期已变化，请重新打开任务。');
+  if (!Number.isSafeInteger(days) || days < 1) throw new Error('延迟天数须为大于 0 的整数。');
+  const time = (ordinal(maintenanceReminderDate(cycle, today)) + days) * dayMs;
+  if (!Number.isFinite(time) || time > Date.UTC(9999, 11, 31)) throw new Error('延迟日期超出可用范围。');
+  const refillDeferredUntil = new Date(time).toISOString().slice(0, 10);
+  return cycles.map(c => c.id === id ? { ...c, refillDeferredUntil } : c);
+}
+
+/** Finite daily status plus one outstanding refill that rolls forward until confirmed. */
+export function maintenanceTasksOnDate(cycles: MaintenanceCycle[], tankId: number, date: string, today: string) {
+  return cycles.filter(c => c.tankId === tankId && date >= c.startDate &&
+    (c.closedOnDate ? date < c.closedOnDate && date <= c.refillDate
+      : date < c.refillDate || date === maintenanceReminderDate(c, today)))
+    .map(c => makeTask(c, date, today, date > c.refillDate));
+}
+
+/** Compatibility accessor; callers must not merge this with the same day's projection. */
 export function overdueMaintenanceTasks(cycles: MaintenanceCycle[], tankId: number, today: string) {
-  return cycles.filter(c => c.tankId === tankId && !c.closedOnDate && today > c.refillDate)
-    .map(c => makeTask(c, today, today, true));
+  return maintenanceTasksOnDate(cycles, tankId, today, today)
+    .filter(task => task.state === 'due' && cycles.some(c => c.id === task.maintenanceCycleId && today > c.refillDate));
 }

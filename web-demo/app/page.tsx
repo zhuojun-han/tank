@@ -14,7 +14,9 @@ import { readRecordValues, recordPoint, recordValueText } from "./record-values"
 import { PagedRecordList } from "./paged-record-list";
 import { historyDate, recordDateLabel } from "./history-date";
 import { RecordTrend } from "./record-trend";
-import { addMaintenanceCycle, maintenanceTasksOnDate, overdueMaintenanceTasks, type MaintenanceCycle, type MaintenanceChemical } from "./maintenance-cycle";
+import { addMaintenanceCycle, delayMaintenanceCycle, localCycleDate, maintenanceReminderDate, maintenanceTasksOnDate, type MaintenanceCycle, type MaintenanceChemical } from "./maintenance-cycle";
+import { completeRollingTask, correctRollingCompletion, delayRollingTask, initializeRollingTasks, projectRollingTasks, reopenRollingTask, stopRollingTask, taskDisplayDate } from "./rolling-task";
+import { TaskActionDialog } from "./task-action-dialog";
 import { useLocalDate } from "./use-local-date";
 import { MaintenanceDosingPanel } from "./maintenance-dosing-panel";
 import {
@@ -42,7 +44,7 @@ import {
   SalinityCalculationError,
   type SalinityCalculationResult,
 } from "./salinity-calculator";
-import { completedTasksOnDate, editRecurringTask, groupChemicalPlanTasks, hasChemicalPlanFromDate, markTaskIncomplete, pendingTasksOnDate, removeChemicalPlansFromDate, stopChemicalPlanFromDay, stopRecurringTaskFromDate, taskCatalogGroups, taskOccursOnDate, taskStateOnDate, wakeExpiredSnoozedTasks } from "./task-calendar";
+import { completedTasksOnDate, editRecurringTask, groupChemicalPlanTasks, hasChemicalPlanFromDate, markTaskIncomplete, pendingTasksOnDate, removeChemicalPlansFromDate, stopChemicalPlanFromDay, taskCatalogGroups, taskOccursOnDate, taskStateOnDate, wakeExpiredSnoozedTasks } from "./task-calendar";
 import {
   defaultFishStock,
   type FishStockItem,
@@ -51,6 +53,7 @@ import { AquariumSimulator, FishManagerSheet } from "./aquarium-simulator";
 
 type Tab = "home" | "test" | "trend" | "tasks";
 type TaskFilter = "pending" | "completed" | "all";
+type PendingTaskAction = { mode: "delay" | "complete" | "correct"; id: number; tankId: number; title: string; occurrenceDate: string; revision?: number; cycleId?: number; deferredUntil?: string };
 type Advice = { parameterId: string; status: "high" | "low" | "good" | "partial" | "missing"; title: string; summary: string; actions: string[] };
 type LanthanumUiPlan = LanthanumPlan & {
   previewOnly?: boolean;
@@ -158,6 +161,7 @@ export default function Home() {
   const [editRecord, setEditRecord] = useState<RecordItem | null>(null);
   const [taskModal, setTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
+  const [taskAction, setTaskAction] = useState<PendingTaskAction | null>(null);
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("pending");
   const [chemicalPlanDetails, setChemicalPlanDetails] = useState<ChemicalPlanDetails | null>(null);
   const todayKey = useLocalDate((next, previous) => {
@@ -297,21 +301,27 @@ export default function Home() {
   const tankFishStock = fishStock.filter((item) => item.tankId === tankId);
   const trendRecords = tankRecords.filter((item) => item.parameterId === trendParameter.id).slice().reverse();
   const trendTarget = targets.find((item) => item.tankId === tankId && item.parameterId === trendParameter.id);
+  const projectedTasks = useMemo(() => projectRollingTasks(tasks, todayKey), [tasks, todayKey]);
   const tankTasksForDate = (date: string): TaskItem[] => [
-    ...tasks.filter((item) => item.tankId === tankId),
+    ...projectedTasks.filter((item) => item.tankId === tankId),
     ...maintenanceTasksOnDate(maintenanceCycles, tankId, date, todayKey),
   ];
-  const allTankTasks: TaskItem[] = [...tankTasksForDate(todayKey), ...overdueMaintenanceTasks(maintenanceCycles, tankId, todayKey)];
+  const futureRefills = maintenanceCycles.filter(cycle => cycle.tankId === tankId && !cycle.closedOnDate && cycle.refillDeferredUntil)
+    .flatMap(cycle => {
+      const date = maintenanceReminderDate(cycle, todayKey);
+      return date > todayKey ? maintenanceTasksOnDate([cycle], tankId, date, todayKey) : [];
+    });
+  const allTankTasks: TaskItem[] = [...tankTasksForDate(todayKey), ...futureRefills];
   const homeDosingTasks = allTankTasks.filter(task => task.source === "maintenance-cycle" && task.state === "done");
   const chemicalPlanDetailTasks = chemicalPlanDetails ? allTankTasks
     .filter((item) => item.planId === chemicalPlanDetails.planId && item.source === chemicalPlanDetails.source)
-    .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? "")) : [];
+    .sort((a, b) => (taskDisplayDate(a, todayKey) ?? "").localeCompare(taskDisplayDate(b, todayKey) ?? "")) : [];
   const tankTasks = allTankTasks.filter((item) => item.state !== "done" && item.state !== "skipped");
-  const pendingListTasks = tankTasks.filter((item) => !(item.intervalDays && !item.oneOff));
-  const completedDateTasks = completedTasksOnDate(tankTasksForDate(selectedCalendarDate), selectedCalendarDate);
+  const pendingListTasks = tankTasks;
+  const completedDateTasks = completedTasksOnDate(tankTasksForDate(selectedCalendarDate), selectedCalendarDate, todayKey);
   const pendingPlanGroups = groupChemicalPlanTasks(pendingListTasks, todayKey);
-  const allPlanGroups = [...taskCatalogGroups(allTankTasks, todayKey), ...allTankTasks
-    .filter(task => task.source === "maintenance-cycle")
+  const cycleCatalogTasks = [...new Map(allTankTasks.filter(task => task.source === "maintenance-cycle").map(task => [task.id, task])).values()];
+  const allPlanGroups = [...taskCatalogGroups(allTankTasks, todayKey), ...cycleCatalogTasks
     .map(task => ({ key: `cycle-${task.id}`, isChemicalPlan: false, task, members: [task] }))];
   const homeTaskGroups = groupChemicalPlanTasks(pendingTasksOnDate(allTankTasks, todayKey), todayKey);
   const completedDateGroups = completedDateTasks.map((task) => ({ key: `completed-${task.id}`, isChemicalPlan: false, task, members: [task] }));
@@ -433,7 +443,9 @@ export default function Home() {
   }
   function openRecurringTaskEditor(task: TaskItem) {
     if (!task.intervalDays || task.oneOff) return;
-    setEditingTask(task);
+    const current = projectedTasks.find(item => item.id === task.id && item.tankId === tankId);
+    if (!current) return;
+    setEditingTask(current);
     setTaskModal(true);
   }
   function closeTaskModal() {
@@ -446,7 +458,10 @@ export default function Home() {
     const title = String(data.get("title") ?? "").trim();
     const scheduledDate = String(data.get("startDate"));
     const scheduled = new Date(`${scheduledDate}T12:00:00`);
-    const intervalDays = Math.max(1, Number(data.get("interval")));
+    const intervalDays = Number(data.get("interval"));
+    if (!title || !Number.isSafeInteger(intervalDays) || intervalDays < 1 || !Number.isFinite(scheduled.getTime()) || dateKey(scheduled) !== scheduledDate) {
+      setToast("请填写有效日期及大于 0 的整数间隔。"); return;
+    }
     const reminderTime = String(data.get("reminderTime") || "09:00");
     const scheduleFields = {
       title,
@@ -455,24 +470,27 @@ export default function Home() {
       state: scheduledDate <= todayKey ? "due" as const : "soon" as const,
       scheduledDate,
       intervalDays,
-      defaultCompletedBeforeDate: scheduledDate < todayKey ? todayKey : undefined,
     };
     if (editingTask) {
-      setTasks((items) => editRecurringTask(items, editingTask.id, scheduleFields));
+      const current = tasks.find(task => task.id === editingTask.id && task.tankId === tankId);
+      if (!current || current.rolling?.revision !== editingTask.rolling?.revision) { setToast("任务已变化，请重新打开编辑。"); return; }
+      try { persistTaskChanges(editRecurringTask(tasks, editingTask.id, scheduleFields)); }
+      catch (error) { setToast((error as Error).message); return; }
       closeTaskModal();
       announceSaved("重复任务已更新；既有逐日完成和跳过记录已保留");
       return;
     }
-    setTasks((items) => [{
-      id: Date.now(),
+    try { persistTaskChanges(initializeRollingTasks([{
+      id: Math.max(Date.now(), ...tasks.map(task => task.id + 1)),
       tankId,
       ...scheduleFields,
       completedDates: [],
       skippedDates: [],
       reopenedDates: [],
-    }, ...items]);
+    }, ...tasks], todayKey)); }
+    catch (error) { setToast((error as Error).message); return; }
     closeTaskModal();
-    announceSaved(scheduledDate < todayKey ? `维护任务将从 ${scheduledDate} 开始；过去执行日已默认为完成` : `维护任务将从 ${scheduledDate} 开始，每 ${intervalDays} 天重复`);
+    announceSaved(`维护任务已添加；下次按实际完成日期加 ${intervalDays} 天安排`);
   }
   function toggleNotificationReminder() {
     const next = !notificationEnabled;
@@ -530,7 +548,7 @@ export default function Home() {
       });
       const scheduledStartDate = dateKey(new Date());
       const scheduledPlan = { ...result, calculatedTankId: tankId, scheduledPlanId: `lacl3-${tankId}-${Date.now()}`, scheduledStartDate };
-      if (hasChemicalPlanFromDate(tasks, tankId, "lanthanum-plan", scheduledStartDate)) {
+      if (hasChemicalPlanFromDate(tasks, tankId, "lanthanum-plan", scheduledStartDate, todayKey)) {
         setPendingChemicalReplacement({ kind: "lanthanum", plan: scheduledPlan });
         return;
       }
@@ -562,7 +580,7 @@ export default function Home() {
         scheduledDate: dateKey(scheduled),
       };
     });
-    setTasks((items) => [...generatedTasks, ...removeChemicalPlansFromDate(items, plan.calculatedTankId, "lanthanum-plan", plan.scheduledStartDate)]);
+    setTasks((items) => initializeRollingTasks([...generatedTasks, ...removeChemicalPlansFromDate(items, plan.calculatedTankId, "lanthanum-plan", plan.scheduledStartDate, todayKey)], todayKey));
     setCalendarMonth(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
     setSelectedCalendarDate(dateKey(startDate));
     announceSaved(`已自动将 ${generatedTasks.length} 天条件事项加入日历`);
@@ -588,7 +606,7 @@ export default function Home() {
       });
       const scheduledStartDate = dateKey(new Date());
       const scheduledPlan = { ...result, calculatedTankId: tankId, scheduledPlanId: `nahco3-${tankId}-${Date.now()}`, scheduledStartDate };
-      if (hasChemicalPlanFromDate(tasks, tankId, "alkalinity-plan", scheduledStartDate)) {
+      if (hasChemicalPlanFromDate(tasks, tankId, "alkalinity-plan", scheduledStartDate, todayKey)) {
         setPendingChemicalReplacement({ kind: "alkalinity", plan: scheduledPlan });
         return;
       }
@@ -620,7 +638,7 @@ export default function Home() {
         scheduledDate: dateKey(scheduled),
       };
     });
-    setTasks((items) => [...generatedTasks, ...removeChemicalPlansFromDate(items, plan.calculatedTankId, "alkalinity-plan", plan.scheduledStartDate)]);
+    setTasks((items) => initializeRollingTasks([...generatedTasks, ...removeChemicalPlansFromDate(items, plan.calculatedTankId, "alkalinity-plan", plan.scheduledStartDate, todayKey)], todayKey));
     setCalendarMonth(new Date(startDate.getFullYear(), startDate.getMonth(), 1));
     setSelectedCalendarDate(dateKey(startDate));
     announceSaved(`已自动将 ${generatedTasks.length} 天补 KH 条件事项加入日历`);
@@ -670,64 +688,88 @@ export default function Home() {
     return <article key={task.id} className={`task-card ${task.state}`} data-testid="maintenance-cycle-task">
       <div className="task-top"><div><span className="task-state">{task.state === "done" ? "已完成" : task.state === "soon" ? "计划补液" : "待处理"}</span><h2>{task.title}</h2><p>{task.cycle}</p></div></div>
       <p className="task-detail">{task.detail}</p>
-      {cycle && !cycle.closedOnDate && <div className="task-actions"><button className="soft-button" onClick={() => openMaintenanceCycle(cycle.id)}>{todayKey >= cycle.refillDate ? "添加滴定液" : "提前续配"}</button></div>}
+      {cycle && !cycle.closedOnDate && <div className="task-actions"><button className="soft-button" onClick={() => openMaintenanceCycle(cycle.id)}>{todayKey >= cycle.refillDate ? "添加滴定液" : "提前续配"}</button>{task.state !== "done" && <button className="soft-button" onClick={() => setTaskAction({ mode: "delay", id: task.id, tankId, title: task.title, occurrenceDate: maintenanceReminderDate(cycle, todayKey), cycleId: cycle.id, deferredUntil: cycle.refillDeferredUntil })}>延迟</button>}</div>}
     </article>;
   }
   function completeTask(id: number, occurrenceDate?: string) {
-    const selected = tasks.find((item) => item.id === id);
-    if (selected?.intervalDays && occurrenceDate) {
-      setTasks((items) => items.map((item) => item.id === id ? {
-        ...item,
-        completedDates: [...new Set([...(item.completedDates ?? []), occurrenceDate])],
-        skippedDates: (item.skippedDates ?? []).filter((date) => date !== occurrenceDate),
-        snoozedDates: (item.snoozedDates ?? []).filter((date) => date !== occurrenceDate),
-        snoozedUntilByDate: Object.fromEntries(Object.entries(item.snoozedUntilByDate ?? {}).filter(([date]) => date !== occurrenceDate)),
-        reopenedDates: (item.reopenedDates ?? []).filter((date) => date !== occurrenceDate),
-      } : item));
-      announceSaved(`已完成 ${calendarDateLabel(new Date(`${occurrenceDate}T12:00:00`))} 的本次任务，后续周期保留`);
-      return;
-    }
-    const oneOff = selected?.oneOff;
-    setTasks((items) => items.map((item) => item.id === id ? { ...item, state: "done", handledAt: "刚刚完成", snoozedUntil: undefined } : item));
-    announceSaved(oneOff ? "已记录；后续日历事项仍须先复测再决定" : "已完成");
+    openTaskAction("complete", id, occurrenceDate);
   }
   function reopenTask(id: number, occurrenceDate: string) {
-    setTasks((items) => markTaskIncomplete(items, id, occurrenceDate, todayKey));
-    announceSaved("已重新标记为未完成");
+    const selected = tasks.find(item => item.id === id && item.tankId === tankId);
+    if (!selected) return;
+    try {
+      const today = localCycleDate();
+      persistTaskChanges(selected.rolling?.completed.some(item => item.completedDate === occurrenceDate)
+        ? reopenRollingTask(tasks, id, occurrenceDate, today, selected.rolling.revision)
+        : markTaskIncomplete(tasks, id, occurrenceDate, today));
+      setToast("已重新标记为未完成");
+    } catch (error) { setToast((error as Error).message); }
   }
-  function snoozeTask(id: number, occurrenceDate?: string) {
-    const selected = tasks.find((item) => item.id === id);
-    const snoozedUntil = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
-    const untilLabel = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(snoozedUntil));
-    setReminderOpen(false);
-    setReminderDismissedDate(todayKey);
-    if (selected?.intervalDays && occurrenceDate) {
-      setTasks((items) => items.map((item) => item.id === id ? { ...item, snoozedDates: [...new Set([...(item.snoozedDates ?? []), occurrenceDate])], snoozedUntilByDate: { ...(item.snoozedUntilByDate ?? {}), [occurrenceDate]: snoozedUntil } } : item));
-      announceSaved(`已推迟至 ${untilLabel}，不改变后续周期`);
-      return;
+  function delayTask(id: number, occurrenceDate?: string) {
+    openTaskAction("delay", id, occurrenceDate);
+  }
+  function openTaskAction(mode: PendingTaskAction["mode"], id: number, occurrenceDate?: string) {
+    const selected = projectedTasks.find(item => item.id === id && item.tankId === tankId);
+    if (!selected) return;
+    const date = occurrenceDate ?? taskDisplayDate(selected, todayKey) ?? todayKey;
+    if (mode !== "correct" && date !== taskDisplayDate(selected, todayKey)) { setToast("请先处理最近一次任务。"); return; }
+    setTaskAction({ mode, id, tankId, title: selected.title, occurrenceDate: date, revision: selected.rolling?.revision });
+  }
+  function persistTaskChanges(next: TaskItem[], cycles = maintenanceCycles) {
+    if (storageBlocked) throw new Error("原存档尚未恢复，请先处理存储提示。");
+    const saved = saveDemoState(() => window.localStorage, { ...storageExtras, tanks, tankId, parameters, targets, records, tasks: next, maintenanceCycles: cycles, fishStock, timerDefaults, notificationEnabled, reminderDismissedDate: "" });
+    if (!saved.ok) { setStorageIssue(saved.message); throw new Error(saved.message); }
+    setTasks(next); setMaintenanceCycles(cycles); setReminderDismissedDate("");
+  }
+  function confirmTaskAction(value: number | string) {
+    if (!taskAction || taskAction.tankId !== tankId) throw new Error("当前海缸已变化，请重新打开任务。");
+    const today = localCycleDate();
+    if (taskAction.cycleId !== undefined) {
+      const current = maintenanceCycles.find(c => c.id === taskAction.cycleId && c.tankId === tankId && !c.closedOnDate);
+      if (!current || current.refillDeferredUntil !== taskAction.deferredUntil || maintenanceReminderDate(current, today) !== taskAction.occurrenceDate) throw new Error("补液安排已变化，请重新打开任务。");
+      persistTaskChanges(tasks, delayMaintenanceCycle(maintenanceCycles, current.id, Number(value), today));
+    } else {
+      const current = projectRollingTasks(tasks, today).find(item => item.id === taskAction.id && item.tankId === tankId);
+      if (!current || (taskAction.mode !== "correct" && taskDisplayDate(current, today) !== taskAction.occurrenceDate)) throw new Error("任务日期已变化，请重新打开任务。");
+      const next = taskAction.mode === "delay" ? delayRollingTask(tasks, taskAction.id, Number(value), today, taskAction.revision)
+        : taskAction.mode === "correct" ? correctRollingCompletion(tasks, taskAction.id, taskAction.occurrenceDate, String(value), today, taskAction.revision)
+          : completeRollingTask(tasks, taskAction.id, String(value), today, taskAction.revision);
+      persistTaskChanges(next);
+      if (taskAction.mode !== "delay") {
+        setSelectedCalendarDate(String(value));
+        setCalendarMonth(new Date(`${String(value).slice(0, 7)}-01T12:00:00`));
+      }
     }
-    setTasks((items) => items.map((item) => item.id === id ? { ...item, state: "snoozed", snoozedUntil } : item));
-    announceSaved(`已推迟至 ${untilLabel}${selected?.oneOff ? "；继续前仍须复测并重算" : ""}`);
+    setTaskAction(null);
+    setToast(taskAction.mode === "delay" ? `已延迟 ${value} 天` : "完成日期已记录，后续安排已更新");
   }
   function stopChemicalPlan(id: number, keepSelectedDateInCalendar = true) {
     const selected = tasks.find((item) => item.id === id);
     if (!isFiniteChemicalPlanSource(selected?.source)) return;
     const planName = selected.source === "alkalinity-plan" ? "碳酸氢钠补 KH" : "氯化镧";
-    setTasks((items) => stopChemicalPlanFromDay(items, id, "计划已停止", keepSelectedDateInCalendar));
-    announceSaved(`已停止后续${planName}计划；后续日期已从日历移除`);
+    try { persistTaskChanges(stopChemicalPlanFromDay(tasks, id, "计划已停止", keepSelectedDateInCalendar, localCycleDate()));
+      setToast(`已停止后续${planName}计划；后续日期已从日历移除`); }
+    catch (error) { setToast((error as Error).message); }
   }
   function stopFutureTasks(id: number, occurrenceDate: string) {
     const selected = tasks.find((item) => item.id === id);
     if (isFiniteChemicalPlanSource(selected?.source)) { stopChemicalPlan(id); return; }
     if (selected?.intervalDays && !selected.oneOff) {
-      setTasks((items) => stopRecurringTaskFromDate(items, id, occurrenceDate));
-      announceSaved("已停止后续计划；未来日期已从日历移除");
+      try { persistTaskChanges(stopRollingTask(tasks, id, localCycleDate(), selected.rolling?.revision));
+        setToast("已停止后续计划；未来日期已从日历移除"); }
+      catch (error) { setToast((error as Error).message); }
       return;
     }
     skipTask(id, occurrenceDate);
   }
   function skipTask(id: number, occurrenceDate?: string) {
-    const selected = tasks.find((item) => item.id === id);
+    const selected = tasks.find((item) => item.id === id && item.tankId === tankId);
+    if (isFiniteChemicalPlanSource(selected?.source)) { stopChemicalPlan(id); return; }
+    if (selected?.rolling) {
+      try { persistTaskChanges(stopRollingTask(tasks, id, localCycleDate(), selected.rolling.revision)); setToast("本次已跳过"); }
+      catch (error) { setToast((error as Error).message); }
+      return;
+    }
     if (selected?.intervalDays && occurrenceDate) {
       setTasks((items) => items.map((item) => item.id === id ? {
         ...item,
@@ -739,7 +781,6 @@ export default function Home() {
       announceSaved("仅跳过本次，后续重复日期不受影响");
       return;
     }
-    if (isFiniteChemicalPlanSource(selected?.source)) { stopChemicalPlan(id); return; }
     setTasks((items) => items.map((item) => item.id === id ? { ...item, state: "skipped", handledAt: "刚刚跳过", snoozedUntil: undefined } : item));
     announceSaved("本次已跳过");
   }
@@ -816,7 +857,7 @@ export default function Home() {
             {homeTaskGroups.length ? <div className="home-task-list">{homeTaskGroups.map(({ key, task, isChemicalPlan }) => task.source === "maintenance-cycle" ? maintenanceTaskCard(task) : <article key={key} className={`panel next-task ${task.state}`}>
               <div className="section-head"><div><h2>{isChemicalPlan ? task.source === "alkalinity-plan" ? "碳酸氢钠补 KH 计划" : "PO4 氯化镧计划" : task.title}</h2><p>{isChemicalPlan ? `今日第 ${task.dayIndex}/${task.totalDays} 天 · 复测后决定` : `${task.cycle} · 今日事项`}</p></div><span className="overdue-pill">{task.state === "snoozed" ? "稍后提醒" : "今日待办"}</span></div>
               {task.detail && <p className="task-detail">{task.detail}</p>}
-              <div className="task-actions"><button className="soft-button" onClick={() => snoozeTask(task.id, todayKey)}>稍后</button>{(isChemicalPlan || task.intervalDays) && <button className="soft-button" onClick={() => stopFutureTasks(task.id, todayKey)}>停止后续计划</button>}<button className="primary-button compact" onClick={() => completeTask(task.id, todayKey)}>当日任务已完成</button></div>
+              <div className="task-actions"><button className="soft-button" onClick={() => delayTask(task.id, todayKey)}>延迟</button>{(isChemicalPlan || task.intervalDays) && <button className="soft-button" onClick={() => stopFutureTasks(task.id, todayKey)}>停止后续计划</button>}<button className="primary-button compact" onClick={() => completeTask(task.id, todayKey)}>当日任务已完成</button></div>
             </article>)}</div> : <div className="panel home-clear"><span>✓</span><div><h2>今天没有待办事项</h2><p>其他日期的未完成事项可在任务页查看。</p></div></div>}
           </section>
           <section className="home-trends"><div className="home-section-title"><div><p className="eyebrow">每屏 5 次 · 左右滑动查看历史</p><h2>所有参数变化趋势</h2>{tankRecords.some(r=>r.note==="历史演示数据 · 非真实检测") && <button onClick={() => {window.history.replaceState(null,"",window.location.pathname);setRecords(items=>items.filter(r=>!(r.tankId===tankId && r.note==="历史演示数据 · 非真实检测")));}}>清除当前缸演示数据</button>}</div><button onClick={() => switchTab("trend")}>趋势详情</button></div>{enabledParameters.map(parameter => <section key={`${tankId}-${parameter.id}`} className="panel trend-preview home-trend-card"><div className="section-head"><div><h2>{parameter.name} 变化</h2><p>{parameter.label} · {parameter.unit}</p></div><button className="target-chip" onClick={() => {setTrendParameterId(parameter.id);switchTab("trend");}}>查看详情</button></div><HomeHistoryBars records={tankRecords.filter(r=>r.parameterId===parameter.id)} unit={parameter.unit} name={parameter.name} /></section>)}</section>
@@ -856,7 +897,7 @@ export default function Home() {
             })}</div>
             <div className="calendar-selected daily-agenda">
               <div className="agenda-heading"><div><small>当天待办</small><strong>{selectedDateLabel}</strong></div><span>{selectedDateTasks.length} 项</span></div>
-              {selectedDateTasks.some(({ task }) => task.source !== "maintenance-cycle") && <p className="daily-agenda-hint">每项任务单独处理，点击“当日任务已完成”只完成这一天。</p>}
+              {selectedDateTasks.some(({ task }) => task.source !== "maintenance-cycle") && <p className="daily-agenda-hint">未完成自动顺延；下次按实际完成日期安排。</p>}
               {selectedDateTasks.length ? <div className="daily-task-list">{selectedDateTasks.map(({ task, state, occurrenceDate }) => {
                 if (task.source === "maintenance-cycle") return maintenanceTaskCard(task);
                 const handled = state === "done" || state === "skipped";
@@ -864,9 +905,9 @@ export default function Home() {
                 const snoozedLabel = snoozedUntil ? new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(snoozedUntil)) : "稍后";
                 const stateLabel = state === "done" ? "已完成" : state === "skipped" ? "已跳过" : state === "snoozed" ? `稍后至 ${snoozedLabel}` : state === "due" ? "待完成" : "计划中";
                 return <article key={`${task.id}-${occurrenceDate}`} className={`daily-task ${state}`}>
-                  <div className="daily-task-main"><span className="task-state">{stateLabel}</span><h3>{task.title}</h3><p>{task.cycle} · {task.due}</p></div>
+                  <div className="daily-task-main"><span className="task-state">{stateLabel}</span><h3>{task.title}</h3><p>{task.cycle} · {occurrenceDate} {taskReminderTime(task)}</p></div>
                   {task.detail && <details className="daily-task-detail"><summary>查看执行说明</summary><p>{task.detail}</p></details>}
-                  {handled ? <div className="daily-task-handled"><div className={`daily-task-result ${state}`}>{state === "done" ? "✓ 当日任务已完成" : "– 当日计划已停止"}</div>{state === "done" && <button className="daily-task-reopen" onClick={() => reopenTask(task.id, occurrenceDate)}>重新标记为未完成</button>}</div> : <div className={`daily-task-actions ${occurrenceDate === todayKey ? "with-snooze" : "without-snooze"}`}><button className="complete-once" onClick={() => completeTask(task.id, occurrenceDate)}>✓ 当日任务已完成</button>{occurrenceDate === todayKey && <button className="soft-button" onClick={() => snoozeTask(task.id, occurrenceDate)}>稍后 1 小时</button>}<button className="skip-once" onClick={() => task.intervalDays && !task.oneOff || isFiniteChemicalPlanSource(task.source) ? stopFutureTasks(task.id, occurrenceDate) : skipTask(task.id, occurrenceDate)}>{task.intervalDays && !task.oneOff || isFiniteChemicalPlanSource(task.source) ? "停止后续计划" : "跳过本次"}</button></div>}
+                  {handled ? <div className="daily-task-handled"><div className={`daily-task-result ${state}`}>{state === "done" ? "✓ 当日任务已完成" : "– 当日计划已停止"}</div>{state === "done" && <button className="daily-task-reopen" onClick={() => reopenTask(task.id, occurrenceDate)}>重新标记为未完成</button>}</div> : <div className={`daily-task-actions ${occurrenceDate === todayKey ? "with-snooze" : "without-snooze"}`}><button className="complete-once" onClick={() => completeTask(task.id, occurrenceDate)}>✓ 当日任务已完成</button><button className="soft-button" onClick={() => delayTask(task.id, occurrenceDate)}>延迟</button><button className="skip-once" onClick={() => task.intervalDays && !task.oneOff || isFiniteChemicalPlanSource(task.source) ? stopFutureTasks(task.id, occurrenceDate) : skipTask(task.id, occurrenceDate)}>{task.intervalDays && !task.oneOff || isFiniteChemicalPlanSource(task.source) ? "停止后续计划" : "跳过本次"}</button></div>}
                 </article>;
               })}</div> : <p>当天暂无事项</p>}
             </div>
@@ -876,15 +917,15 @@ export default function Home() {
           <div className="task-list">{visibleTaskGroups.map(({ key, task, members, isChemicalPlan }) => {
             if (task.source === "maintenance-cycle") return maintenanceTaskCard(task);
             if (isChemicalPlan) { return <article key={key} className="task-card chemical-plan-summary">
-              <div className="task-top"><div><span className="task-state">合并计划 · 剩余 {members.length} 天待处理</span><h2>{task.source === "alkalinity-plan" ? "碳酸氢钠补 KH 计划" : "PO4 氯化镧计划"}</h2><p>{members[0].scheduledDate} 至 {members.at(-1)?.scheduledDate}</p><small className="next-cycle">每天的剂量和完成状态保留在日历中，不会一次完成整个计划。</small></div></div>
+              <div className="task-top"><div><span className="task-state">合并计划 · 剩余 {members.length} 天待处理</span><h2>{task.source === "alkalinity-plan" ? "碳酸氢钠补 KH 计划" : "PO4 氯化镧计划"}</h2><p>{taskDisplayDate(members[0], todayKey)} 至 {taskDisplayDate(members.at(-1)!, todayKey)}</p><small className="next-cycle">每天的剂量和完成状态保留在日历中，不会一次完成整个计划。</small></div></div>
               <div className="task-actions"><button className="soft-button" onClick={() => setChemicalPlanDetails({ planId: task.planId!, source: task.source as ChemicalPlanDetails["source"] })}>查看每日安排</button><button className="soft-button" onClick={() => stopChemicalPlan(members[0].id, false)}>停止后续计划</button></div>
             </article>; }
-            const handled = task.state === "done" || task.state === "skipped";
+            const handled = taskFilter === "completed" || task.state === "done" || task.state === "skipped";
             const recurring = Boolean(task.intervalDays && !task.oneOff);
-            const todayRecurringState = recurring && taskOccursOnDate(task, todayKey) ? taskStateOnDate(task, todayKey, todayKey) : null;
-            const todayRecurringPending = todayRecurringState !== null && todayRecurringState !== "done" && todayRecurringState !== "skipped";
+            const nextOccurrence = taskDisplayDate(task, todayKey) ?? todayKey;
+            const recurringPending = recurring && !handled;
             const stateLabel = taskFilter === "completed" ? "所选日已完成" : recurring ? `每 ${task.intervalDays} 天重复` : task.state === "due" ? "已到期" : task.state === "snoozed" ? "稍后提醒" : task.state === "done" ? "已完成" : task.state === "skipped" ? "已跳过" : "即将到期";
-            return <article key={task.id} className={`task-card ${task.state}`}><div className="task-top"><button className={`check-button ${handled ? "checked" : ""}`} aria-label={recurring ? `${task.title}是重复计划` : handled ? stateLabel : `完成${task.title}`} disabled={handled || recurring} onClick={() => completeTask(task.id)}>{recurring ? "↻" : "✓"}</button><div><span className="task-state">{stateLabel}</span><h2>{task.title}</h2><p>{taskFilter === "completed" ? `${task.cycle} · ${selectedCalendarDate}` : handled ? `${task.cycle} · ${task.handledAt ?? "已处理"}` : `${task.cycle} · ${task.due}`}</p>{handled && taskFilter !== "completed" && <small className="next-cycle">{task.due}</small>}{recurring && taskFilter !== "completed" && <small className="next-cycle">在上方日历选择具体日期处理；停止后未来日期不再显示。</small>}</div>{recurring && <button type="button" className="more-button" aria-label={`编辑${task.title}`} title="编辑任务" onClick={() => openRecurringTaskEditor(task)}>•••</button>}</div>{task.detail && <p className="task-detail">{task.detail}</p>}{taskFilter === "completed" && <div className="task-actions"><button className="soft-button" onClick={() => reopenTask(task.id, selectedCalendarDate)}>重新标记为未完成</button></div>}{!handled && !recurring && <div className="task-actions"><button className="soft-button" onClick={() => snoozeTask(task.id)}>稍后</button><button className="soft-button" onClick={() => skipTask(task.id)}>跳过本次</button></div>}{!handled && recurring && <div className="task-actions">{todayRecurringPending && <button className="soft-button" onClick={() => snoozeTask(task.id, todayKey)}>稍后</button>}<button className="soft-button" onClick={() => stopFutureTasks(task.id, todayKey)}>停止后续计划</button>{todayRecurringPending && <button className="primary-button compact" onClick={() => completeTask(task.id, todayKey)}>当日任务已完成</button>}</div>}</article>;
+            return <article key={task.id} className={`task-card ${task.state}`}><div className="task-top"><button className={`check-button ${handled ? "checked" : ""}`} aria-label={recurring ? `${task.title}是重复计划` : handled ? stateLabel : `完成${task.title}`} disabled={handled || recurring} onClick={() => completeTask(task.id)}>{recurring ? "↻" : "✓"}</button><div><span className="task-state">{stateLabel}</span><h2>{task.title}</h2><p>{taskFilter === "completed" ? `${task.cycle} · ${selectedCalendarDate}` : handled ? `${task.cycle} · ${task.handledAt ?? "已处理"}` : `${task.cycle} · ${nextOccurrence} ${taskReminderTime(task)}`}</p>{handled && taskFilter !== "completed" && <small className="next-cycle">{task.due}</small>}{recurring && taskFilter !== "completed" && <small className="next-cycle">下次按实际完成日期安排。</small>}</div>{recurring && <button type="button" className="more-button" aria-label={`编辑${task.title}`} title="编辑任务" onClick={() => openRecurringTaskEditor(task)}>•••</button>}</div>{task.detail && <p className="task-detail">{task.detail}</p>}{taskFilter === "completed" && <div className="task-actions"><button className="soft-button" onClick={() => reopenTask(task.id, selectedCalendarDate)}>重新标记为未完成</button>{task.rolling?.completed.at(-1)?.completedDate === selectedCalendarDate && <button className="soft-button" onClick={() => openTaskAction("correct", task.id, selectedCalendarDate)}>修改完成日期</button>}</div>}{!handled && !recurring && <div className="task-actions"><button className="soft-button" onClick={() => delayTask(task.id)}>延迟</button><button className="soft-button" onClick={() => skipTask(task.id)}>跳过本次</button></div>}{!handled && recurring && <div className="task-actions">{recurringPending && <button className="soft-button" onClick={() => delayTask(task.id, nextOccurrence)}>延迟</button>}<button className="soft-button" onClick={() => stopFutureTasks(task.id, todayKey)}>停止后续计划</button>{recurringPending && <button className="primary-button compact" onClick={() => completeTask(task.id, nextOccurrence)}>当日任务已完成</button>}</div>}</article>;
           })}{!visibleTaskGroups.length && <div className="empty-state"><span>✓</span><h2>{taskFilter === "completed" ? "所选日期没有已完成任务" : taskFilter === "all" ? "还没有周期任务或进行中的加药计划" : "今天都完成了"}</h2><p>{taskFilter === "completed" ? "选择日期查看当天已完成记录。" : taskFilter === "all" ? "添加周期任务，或先制定 KH/PO4 加药计划。" : "新的维护任务会显示在这里。"}</p></div>}</div>
           <button className="primary-button wide" onClick={openNewTaskModal}>＋ 添加维护任务</button>
           <section className="notification-note"><span>🔔</span><div><strong>网页内到期弹窗提醒</strong><p>{notificationEnabled ? "已开启；网站打开时会弹出当天待办。" : "已关闭；可在这里或设置中开启。"}</p></div><button className={`toggle-switch ${notificationEnabled ? "on" : ""}`} role="switch" aria-checked={notificationEnabled} aria-label="网页内到期弹窗提醒" onClick={toggleNotificationReminder}><i /></button></section>
@@ -901,12 +942,12 @@ export default function Home() {
       <section className="sheet plan-details-sheet" onMouseDown={(event) => event.stopPropagation()}>
         <div className="sheet-handle" />
         <div className="section-head"><div><p className="eyebrow">完整计划 · {chemicalPlanDetailTasks.length} 天</p><h2 id="plan-details-title">{chemicalPlanDetails.source === "alkalinity-plan" ? "碳酸氢钠补 KH" : "PO4 氯化镧"}每日安排</h2></div><button className="icon-button" onClick={() => setChemicalPlanDetails(null)}>×</button></div>
-        <p className="form-hint">完成或稍后处理，请到任务日历操作。</p>
+        <p className="form-hint">完成或延迟，请到任务日历操作。</p>
         <div className="plan-detail-list">{chemicalPlanDetailTasks.map((task) => {
-          const occurrenceDate = task.scheduledDate ?? todayKey;
+          const occurrenceDate = taskDisplayDate(task, todayKey) ?? todayKey;
           const state = taskStateOnDate(task, occurrenceDate, todayKey);
           const stateLabel = state === "done" ? "已完成" : state === "skipped" ? "已停止" : state === "snoozed" ? "稍后处理" : state === "due" ? "待完成" : "计划中";
-          return <article key={task.id} className={`plan-detail-item ${state}`}><div><span>{occurrenceDate}</span><b>{stateLabel}</b></div><h3>{task.title}</h3><p>{task.cycle} · {task.due}</p>{task.detail && <details><summary>查看任务说明</summary><p>{task.detail}</p></details>}</article>;
+          return <article key={task.id} className={`plan-detail-item ${state}`}><div><span>{occurrenceDate}</span><b>{stateLabel}</b></div><h3>{task.title}</h3><p>{task.cycle} · {occurrenceDate} {taskReminderTime(task)}</p>{task.detail && <details><summary>查看任务说明</summary><p>{task.detail}</p></details>}</article>;
         })}</div>
       </section>
     </div>}
@@ -957,7 +998,11 @@ export default function Home() {
 
     {reminderOpen && notificationEnabled && <div className="modal-backdrop reminder-backdrop" role="dialog" aria-modal="true" aria-labelledby="reminder-title"><section className="sheet reminder-sheet"><div className="reminder-icon">🔔</div><p className="eyebrow">{calendarDateLabel(new Date())}</p><h2 id="reminder-title">今天有 {todayReminderTasks.length} 项待办</h2><div className="reminder-task-list">{todayReminderTasks.slice(0, 5).map(({ task, occurrenceDate }) => <div key={`${task.id}-${occurrenceDate}`}><span className={isFiniteChemicalPlanSource(task.source) ? "lanthanum-dot" : ""} /><div><strong>{task.title}</strong><small>{task.cycle} · {task.due}</small></div></div>)}</div>{todayReminderTasks.length > 5 && <p className="form-hint">另有 {todayReminderTasks.length - 5} 项，请进入当天任务查看。</p>}<button className="primary-button wide" onClick={() => dismissTodayReminder(true)}>查看并处理当天任务</button><button className="soft-button wide" onClick={() => dismissTodayReminder(false)}>今天不再提示</button><p className="disclaimer">提醒仅在网页打开时生效。</p></section></div>}
 
-    {taskModal && <div className="modal-backdrop"><form className="sheet" onSubmit={saveMaintenanceTask}><div className="sheet-handle" /><div className="section-head"><div><p className="eyebrow">当前海缸</p><h2>{editingTask ? "编辑重复任务" : "添加维护任务"}</h2></div><button type="button" className="icon-button" onClick={closeTaskModal}>×</button></div><label className="field">任务名称<input name="title" required placeholder="例如：清洗滤棉" defaultValue={editingTask?.title ?? ""} /></label><div className="field-row"><label>开始日期<input name="startDate" required type="date" defaultValue={editingTask?.scheduledDate ?? dateKey(addDays(new Date(), 1))} /></label><label>提醒时间<input name="reminderTime" type="time" defaultValue={editingTask ? taskReminderTime(editingTask) : "09:00"} /></label></div><label className="field">重复间隔（天）<input name="interval" required type="number" min="1" defaultValue={editingTask?.intervalDays ?? 7} /></label><p className="form-hint">{editingTask ? "修改后更新后续安排，保留已处理记录。" : "过去的执行日期默认为已完成，可在日历中修改。"}</p><button className="primary-button wide" type="submit">{editingTask ? "保存修改" : "保存任务"}</button></form></div>}
+    {taskAction && (taskAction.mode === "delay"
+      ? <TaskActionDialog key={"delay-" + taskAction.id} mode="delay" title={taskAction.title} today={todayKey} onClose={() => setTaskAction(null)} onConfirm={confirmTaskAction} />
+      : <TaskActionDialog key={"complete-" + taskAction.id} mode="complete" title={taskAction.title} today={todayKey} initialCompletedDate={taskAction.mode === "correct" ? taskAction.occurrenceDate : todayKey} onClose={() => setTaskAction(null)} onConfirm={confirmTaskAction} />)}
+
+    {taskModal && <div className="modal-backdrop"><form className="sheet" onSubmit={saveMaintenanceTask}><div className="sheet-handle" /><div className="section-head"><div><p className="eyebrow">当前海缸</p><h2>{editingTask ? "编辑重复任务" : "添加维护任务"}</h2></div><button type="button" className="icon-button" onClick={closeTaskModal}>×</button></div><label className="field">任务名称<input name="title" required placeholder="例如：清洗滤棉" defaultValue={editingTask?.title ?? ""} /></label><div className="field-row"><label>开始日期<input name="startDate" required type="date" defaultValue={editingTask ? taskDisplayDate(editingTask, todayKey) : dateKey(addDays(new Date(), 1))} /></label><label>提醒时间<input name="reminderTime" type="time" defaultValue={editingTask ? taskReminderTime(editingTask) : "09:00"} /></label></div><label className="field">重复间隔（天）<input name="interval" required type="number" min="1" defaultValue={editingTask?.intervalDays ?? 7} /></label><p className="form-hint">{editingTask ? "修改后更新后续安排，保留已处理记录。" : "未完成自动顺延，可补选实际完成日期。"}</p><button className="primary-button wide" type="submit">{editingTask ? "保存修改" : "保存任务"}</button></form></div>}
 
     {tankModal && <div className="modal-backdrop"><form className="sheet" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const id = Date.now(); setTanks((items) => [...items, { id, name: String(data.get("name")), volume: `${data.get("volume") || "--"} L` }]); setTargets((items) => [...items, { tankId: id, parameterId: "no3", min: null, max: null }, { tankId: id, parameterId: "po4", min: null, max: null }]); setTankId(id); setSelectedParameterId("no3"); setTrendParameterId("no3"); setTankModal(false); announceSaved("新海缸已创建，可继续添加关注指标"); }}><div className="sheet-handle" /><div className="section-head"><div><p className="eyebrow">多海缸</p><h2>添加海缸</h2></div><button type="button" className="icon-button" onClick={() => setTankModal(false)}>×</button></div><label className="field">海缸名称<input name="name" required placeholder="例如：书房珊瑚缸" /></label><label className="field">水体体积（可选）<input name="volume" inputMode="decimal" placeholder="例如：120" /></label><button className="primary-button wide" type="submit">创建海缸</button></form></div>}
 

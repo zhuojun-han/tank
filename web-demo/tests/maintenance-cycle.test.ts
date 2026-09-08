@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMaintenanceCycle, currentMaintenanceCycle, cycleRemainingDays, cycleRemainingMl, maintenanceTasksOnDate, overdueMaintenanceTasks, prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
+import { addMaintenanceCycle, currentMaintenanceCycle, cycleRemainingDays, cycleRemainingMl, delayMaintenanceCycle, maintenanceReminderDate, maintenanceTasksOnDate, overdueMaintenanceTasks, prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
 import { pendingTasksOnDate, completedTasksOnDate } from '../app/task-calendar.ts';
 import type { MaintenanceInput } from '../app/maintenance-dosing.ts';
 
@@ -31,14 +31,15 @@ test('fractional duration uses final run day, not displayed rounded days; one-da
   assert.equal(prepareMaintenanceCycle(input, 'po4', 1, '2028-02-27').refillDate, '2028-03-02');
 });
 
-test('calendar stops at the last day while a separate overdue reminder remains pending today', () => {
+test('one unresolved refill rolls to today without duplicating old or future reminders', () => {
   const c = prepare();
   assert.deepEqual(maintenanceTasksOnDate([c], 1, '2026-09-07', start), []);
   assert.equal(maintenanceTasksOnDate([c], 1, c.refillDate, c.refillDate)[0].state, 'due');
   assert.deepEqual(overdueMaintenanceTasks([c], 1, c.refillDate), []);
   for (const date of ['2026-09-13', '2026-09-15', '2026-10-01']) {
     assert.deepEqual(maintenanceTasksOnDate([c], 1, date, start), []);
-    assert.deepEqual(maintenanceTasksOnDate([c], 1, date, date), []);
+    assert.equal(maintenanceTasksOnDate([c], 1, date, date).length, 1);
+    assert.deepEqual(maintenanceTasksOnDate([c], 1, c.refillDate, date), []);
     const overdue = overdueMaintenanceTasks([c], 1, date);
     assert.equal(overdue.length, 1);
     assert.equal(overdue[0].state, 'due');
@@ -50,6 +51,36 @@ test('calendar stops at the last day while a separate overdue reminder remains p
   }
   near(cycleRemainingMl(c, '2026-09-10'), 300);
   near(cycleRemainingMl(c, '2026-10-01'), 0);
+});
+
+test('custom delay changes only the reminder, survives reload, and new recipe cancels it in its own scope', () => {
+  for (const chemical of ['po4', 'kh'] as const) {
+    const old = prepare(chemical);
+    const other = prepare(chemical === 'po4' ? 'kh' : 'po4');
+    const otherTank = { ...old, id: 900, tankId: 2 };
+    const today = '2026-09-13';
+    const original = [old, other, otherTank];
+    const snapshot = structuredClone(original);
+    const delayed = delayMaintenanceCycle(original, old.id, 2, today);
+    const selected = delayed.find(c => c.id === old.id)!;
+    assert.equal(selected.refillDate, '2026-09-12');
+    assert.equal(maintenanceReminderDate(selected, today), '2026-09-15');
+    assert.equal(cycleRemainingDays(selected, today), 0);
+    assert.equal(cycleRemainingMl(selected, today), 0);
+    assert.equal(maintenanceTasksOnDate(delayed, 1, today, today).length, 1);
+    assert.equal(maintenanceTasksOnDate(delayed, 1, '2026-09-15', today)[0].maintenanceCycleId, old.id);
+    assert.equal(maintenanceTasksOnDate(delayed, 1, '2026-09-16', '2026-09-16').length, 2);
+    const next = prepareMaintenanceCycle({ ...input, po4Rise: 0.06, khDrop: 0.6 }, chemical, 1, '2026-09-12', selected, 0, 1000);
+    const renewed = addMaintenanceCycle(JSON.parse(JSON.stringify(delayed)), next);
+    assert.equal(renewed.find(c => c.id === old.id)?.closedOnDate, '2026-09-12');
+    assert.ok(!maintenanceTasksOnDate(renewed, 1, '2026-09-15', today).some(t => t.maintenanceCycleId === old.id));
+    assert.deepEqual(renewed.find(c => c.id === other.id), JSON.parse(JSON.stringify(other)));
+    assert.deepEqual(renewed.find(c => c.id === otherTank.id), JSON.parse(JSON.stringify(otherTank)));
+    assert.equal(next.refillDeferredUntil, undefined);
+    assert.deepEqual(original, snapshot);
+    for (const days of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER]) assert.throws(() => delayMaintenanceCycle(original, old.id, days, today));
+    assert.throws(() => delayMaintenanceCycle(renewed, old.id, 1, today), /周期已变化/);
+  }
 });
 
 test('500 mL at 84 mL per day shows six dates with decreasing days and volume for both chemicals', () => {

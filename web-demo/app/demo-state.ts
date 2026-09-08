@@ -1,5 +1,6 @@
 import type { PhotoReview } from "./color-match/page";
 import type { KhTitrationResult } from "./kh-titration";
+import type { RollingTaskMetadata, RollingTaskProjection } from "./rolling-task";
 
 export type Tank = { id: number; name: string; volume: string };
 export type Parameter = { id: string; name: string; label: string; unit: string; builtIn: boolean; photoSupported: boolean };
@@ -31,6 +32,8 @@ export type TaskItem = {
   reopenedDates?: string[];
   hiddenFromCalendar?: boolean;
   stoppedAfterDate?: string;
+  rolling?: RollingTaskMetadata;
+  projection?: RollingTaskProjection;
 };
 export type TimerDefaults = Record<string, number>;
 

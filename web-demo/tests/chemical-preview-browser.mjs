@@ -89,7 +89,9 @@ try {
     await sheet.getByText('✓ 已加入任务日历', { exact: true }).waitFor();
     const replaced = await tasks();
     for (const id of [900001, 900002, 900003]) assert.deepEqual(replaced.find(t => t.id === id), baseline.find(t => t.id === id));
-    const activeNew = replaced.filter(t => t.source === source && t.tankId !== 999 && t.id !== 900001);
+    const preservedHistory = baseline.filter(t => ['done', 'skipped'].includes(t.state));
+    for (const old of preservedHistory) assert.deepEqual(replaced.find(t => t.id === old.id), old, 'replacement must retain actual handled history, including its original day');
+    const activeNew = replaced.filter(t => t.source === source && t.tankId !== 999 && t.id !== 900001 && !['done', 'skipped'].includes(t.state));
     assert.equal(activeNew.length, 3);
     assert.ok(activeNew.every(t => !baseline.some(old => old.planId === t.planId)));
     assert.deepEqual(errors, []);

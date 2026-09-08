@@ -1,3 +1,5 @@
+import { projectRollingTasks, reopenRollingTask, rollingHistoryState, rollingOccursOnDate, rollingPendingOnDate, stopRollingTask, taskDisplayDate, type RollingTaskMetadata, type RollingTaskProjection } from "./rolling-task.ts";
+
 export type CalendarTaskState = "due" | "soon" | "done" | "snoozed" | "skipped";
 
 type ChemicalPlanSource = "lanthanum-plan" | "alkalinity-plan";
@@ -12,16 +14,25 @@ function isMatchingChemicalTask(task: ChemicalPlanTask, tankId: number, source: 
   return task.tankId === tankId && task.source === source;
 }
 
-type DatedChemicalPlanTask = ChemicalPlanTask & { id: number; planId?: string; scheduledDate?: string };
+type DatedChemicalPlanTask = ChemicalPlanTask & { id: number; planId?: string; scheduledDate?: string; rolling?: RollingTaskMetadata; projection?: RollingTaskProjection };
+
+function hasHandledChemicalHistory(task: DatedChemicalPlanTask) {
+  return task.state === "done" || task.state === "skipped" || Boolean(task.rolling?.completed.length);
+}
 
 /** A replacement prompt is needed only when an older plan occupies the new plan's date range. */
-export function hasChemicalPlanFromDate(tasks: DatedChemicalPlanTask[], tankId: number, source: ChemicalPlanSource, startDate: string) {
-  return tasks.some((task) => isMatchingChemicalTask(task, tankId, source) && (!task.scheduledDate || task.scheduledDate >= startDate));
+export function hasChemicalPlanFromDate(tasks: DatedChemicalPlanTask[], tankId: number, source: ChemicalPlanSource, startDate: string, today?: string) {
+  const view = today ? projectRollingTasks(tasks, today) : tasks;
+  return view.some((task) => isMatchingChemicalTask(task, tankId, source) && !hasHandledChemicalHistory(task) && !task.hiddenFromCalendar
+    && (!taskDisplayDate(task) || taskDisplayDate(task)! >= startDate));
 }
 
 /** Preserve dated history before startDate and remove only the overlapping/future part of an older plan. */
-export function removeChemicalPlansFromDate<T extends DatedChemicalPlanTask>(tasks: T[], tankId: number, source: ChemicalPlanSource, startDate: string): T[] {
-  return tasks.filter((task) => !isMatchingChemicalTask(task, tankId, source) || Boolean(task.scheduledDate && task.scheduledDate < startDate));
+export function removeChemicalPlansFromDate<T extends DatedChemicalPlanTask>(tasks: T[], tankId: number, source: ChemicalPlanSource, startDate: string, today?: string): T[] {
+  const view = today ? projectRollingTasks(tasks, today) : tasks;
+  const removed = new Set(view.filter(task => isMatchingChemicalTask(task, tankId, source) && !hasHandledChemicalHistory(task)
+    && (!taskDisplayDate(task) || taskDisplayDate(task)! >= startDate)).map(task => task.id));
+  return tasks.filter(task => !removed.has(task.id));
 }
 
 /**
@@ -39,19 +50,22 @@ export function pruneSupersededChemicalPlanOverlaps<T extends DatedChemicalPlanT
       source: task.source,
       planId: task.planId,
       maxTaskId: Math.max(current?.maxTaskId ?? Number.NEGATIVE_INFINITY, task.id),
-      startDate: !task.scheduledDate ? current?.startDate : !current?.startDate || task.scheduledDate < current.startDate ? task.scheduledDate : current.startDate,
+      startDate: !taskDisplayDate(task) ? current?.startDate : !current?.startDate || taskDisplayDate(task)! < current.startDate ? taskDisplayDate(task) : current.startDate,
     });
   }
   const generations = [...plans.values()];
   return tasks.filter((task) => {
     if (!task.planId || (task.source !== "lanthanum-plan" && task.source !== "alkalinity-plan")) return true;
+    // Rolling generations are replaced explicitly. Reloading must not reinterpret
+    // their original dates or discard completion evidence after a reschedule.
+    if (task.rolling || hasHandledChemicalHistory(task)) return true;
     const current = plans.get(JSON.stringify([task.tankId, task.source, task.planId]));
     if (!current) return true;
     return !generations.some((newer) => newer.tankId === task.tankId
       && newer.source === task.source
       && newer.planId !== task.planId
       && newer.maxTaskId > current.maxTaskId
-      && (!task.scheduledDate || !newer.startDate || task.scheduledDate >= newer.startDate));
+      && (!taskDisplayDate(task) || !newer.startDate || taskDisplayDate(task)! >= newer.startDate));
   });
 }
 
@@ -69,6 +83,10 @@ export type CalendarTaskSchedule = {
   reopenedDates?: string[];
   hiddenFromCalendar?: boolean;
   stoppedAfterDate?: string;
+  source?: string;
+  planId?: string;
+  rolling?: RollingTaskMetadata;
+  projection?: RollingTaskProjection;
 };
 
 type EditableRecurringTask = CalendarTaskSchedule & {
@@ -86,6 +104,11 @@ export function editRecurringTask<T extends EditableRecurringTask>(tasks: T[], s
   return tasks.map((task) => task.id === selectedTaskId && task.intervalDays && !task.oneOff ? {
     ...task,
     ...edits,
+    // The original start remains a lower bound and evidence for the old history.
+    scheduledDate: task.rolling ? task.scheduledDate : edits.scheduledDate,
+    defaultCompletedBeforeDate: task.rolling ? task.defaultCompletedBeforeDate : edits.defaultCompletedBeforeDate,
+    rolling: task.rolling ? { ...task.rolling, nextDate: edits.scheduledDate ?? task.rolling.nextDate, revision: task.rolling.revision + 1 } : undefined,
+    projection: undefined,
     handledAt: undefined,
     stoppedAfterDate: undefined,
   } : task);
@@ -96,7 +119,8 @@ function dateOrdinal(key: string) {
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
 }
 
-export function taskOccursOnDate(task: CalendarTaskSchedule, key: string) {
+export function taskOccursOnDate(task: CalendarTaskSchedule, key: string, today?: string) {
+  if (task.rolling) return rollingOccursOnDate(task, key, today);
   if (!task.scheduledDate || task.hiddenFromCalendar) return false;
   if (task.stoppedAfterDate && key > task.stoppedAfterDate) return false;
   if (!task.intervalDays || task.intervalDays < 1 || task.oneOff || ((task.state === "done" || task.state === "skipped") && !task.stoppedAfterDate)) {
@@ -106,22 +130,38 @@ export function taskOccursOnDate(task: CalendarTaskSchedule, key: string) {
   return offset >= 0 && offset % task.intervalDays === 0;
 }
 
-type StoppableChemicalTask = ChemicalPlanTask & { id: number; planId?: string; dayIndex?: number };
+type StoppableChemicalTask = DatedChemicalPlanTask & { dayIndex?: number; skippedDates?: string[] };
 
 /** Stop a finite plan while optionally retaining the selected day as history on its date. */
-export function stopChemicalPlanFromDay<T extends StoppableChemicalTask>(tasks: T[], selectedTaskId: number, handledAt: string, keepSelectedDateInCalendar = true): StoppedChemicalTask<T>[] {
+export function stopChemicalPlanFromDay<T extends StoppableChemicalTask>(tasks: T[], selectedTaskId: number, handledAt: string, keepSelectedDateInCalendar = true, today?: string): StoppedChemicalTask<T>[] {
   const selected = tasks.find((task) => task.id === selectedTaskId);
   if (!selected?.planId || !selected.source || (selected.source !== "lanthanum-plan" && selected.source !== "alkalinity-plan")) return tasks;
   const selectedDay = selected.dayIndex ?? 0;
+  const selectedDate = taskDisplayDate(today ? projectRollingTasks(tasks, today).find(task => task.id === selectedTaskId)! : selected);
   return tasks.map((task) => {
-    const affected = task.planId === selected.planId && task.source === selected.source && (task.dayIndex ?? 0) >= selectedDay && task.state !== "done" && task.state !== "skipped";
+    const affected = task.tankId === selected.tankId && task.planId === selected.planId && task.source === selected.source && (task.dayIndex ?? 0) >= selectedDay && task.state !== "done" && task.state !== "skipped";
     if (!affected) return task;
     const isSelectedDay = task.id === selectedTaskId;
-    return { ...task, state: "skipped", handledAt, hiddenFromCalendar: !isSelectedDay || !keepSelectedDateInCalendar };
+    return { ...task, state: "skipped", handledAt, hiddenFromCalendar: !isSelectedDay || !keepSelectedDateInCalendar,
+      projection: undefined,
+      skippedDates: task.rolling && isSelectedDay && selectedDate ? [...new Set([...(task.skippedDates ?? []), selectedDate])] : task.skippedDates,
+      rolling: task.rolling ? { ...task.rolling, revision: task.rolling.revision + 1 } : undefined };
   });
 }
 
 export function taskStateOnDate(task: CalendarTaskSchedule, key: string, today: string): CalendarTaskState {
+  if (task.rolling) {
+    // A reopened head may land on an old handled date. Its pending occurrence
+    // remains actionable while the completed view keeps the dated history.
+    if (rollingPendingOnDate(task, key, today)) {
+      if (key === taskDisplayDate(task, today) && (task.state === "snoozed" || task.snoozedDates?.includes(task.rolling.nextDate))) return "snoozed";
+      return key <= today ? "due" : "soon";
+    }
+    const history = rollingHistoryState(task, key);
+    if (history) return history;
+    if (key === taskDisplayDate(task, today) && (task.state === "snoozed" || task.snoozedDates?.includes(task.rolling.nextDate))) return "snoozed";
+    return key <= today ? "due" : "soon";
+  }
   if (task.completedDates?.includes(key)) return "done";
   if (task.skippedDates?.includes(key)) return "skipped";
   if (task.snoozedDates?.includes(key)) return "snoozed";
@@ -156,6 +196,7 @@ export function wakeExpiredSnoozedTasks<T extends RecurringTask>(tasks: T[], now
 
 /** Reopen one completed occurrence without changing later dates in the schedule. */
 export function markTaskIncomplete<T extends RecurringTask>(tasks: T[], selectedTaskId: number, occurrenceDate: string, today: string): T[] {
+  if (tasks.find(task => task.id === selectedTaskId)?.rolling) return reopenRollingTask(tasks, selectedTaskId, occurrenceDate, today);
   return tasks.map((task) => {
     if (task.id !== selectedTaskId) return task;
     if (task.intervalDays && !task.oneOff) {
@@ -174,6 +215,7 @@ export function markTaskIncomplete<T extends RecurringTask>(tasks: T[], selected
 }
 
 export function stopRecurringTaskFromDate<T extends RecurringTask>(tasks: T[], selectedTaskId: number, occurrenceDate: string): T[] {
+  if (tasks.find(task => task.id === selectedTaskId)?.rolling) return stopRollingTask(tasks, selectedTaskId, occurrenceDate);
   return tasks.map((task) => task.id === selectedTaskId && task.intervalDays && !task.oneOff ? {
     ...task,
     state: "skipped",
@@ -187,16 +229,17 @@ export function stopRecurringTaskFromDate<T extends RecurringTask>(tasks: T[], s
 }
 
 /** Select occurrences, not merely pending rules: past/future one-offs stay off home. */
-export function pendingTasksOnDate<T extends CalendarTaskSchedule>(tasks: T[], key: string): T[] {
-  return tasks.filter((task) => taskOccursOnDate(task, key))
-    .map((task) => ({ ...task, state: taskStateOnDate(task, key, key) }))
+export function pendingTasksOnDate<T extends CalendarTaskSchedule>(tasks: T[], key: string, today?: string): T[] {
+  return tasks.filter((task) => taskOccursOnDate(task, key, today))
+    .map((task) => ({ ...task, state: taskStateOnDate(task, key, today ?? task.projection?.today ?? key) }))
     .filter((task) => task.state !== "done" && task.state !== "skipped");
 }
 
 /** The completed tab is an occurrence view for one calendar date, not an all-time archive. */
-export function completedTasksOnDate<T extends CalendarTaskSchedule>(tasks: T[], key: string): T[] {
-  return tasks.filter((task) => taskOccursOnDate(task, key))
-    .map((task) => ({ ...task, state: taskStateOnDate(task, key, key) }))
+export function completedTasksOnDate<T extends CalendarTaskSchedule>(tasks: T[], key: string, today?: string): T[] {
+  return tasks.filter((task) => taskOccursOnDate(task, key, today))
+    .map((task) => ({ ...task, state: task.rolling ? rollingHistoryState(task, key) ?? "due" : taskStateOnDate(task, key, today ?? key),
+      projection: task.rolling ? { date: key, today: today ?? task.projection?.today ?? key } : task.projection }))
     .filter((task) => task.state === "done");
 }
 
@@ -213,8 +256,8 @@ export function groupChemicalPlanTasks<T extends GroupableTask>(tasks: T[], toda
     else groups.set(key, { key, isChemicalPlan, task, members: [task] });
   }
   return [...groups.values()].map((group) => {
-    group.members.sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""));
-    group.task = group.members.find((task) => task.scheduledDate === today) ?? group.members[0];
+    group.members.sort((a, b) => (taskDisplayDate(a) ?? "").localeCompare(taskDisplayDate(b) ?? ""));
+    group.task = group.members.find((task) => taskDisplayDate(task) === today) ?? group.members[0];
     return group;
   });
 }

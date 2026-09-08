@@ -60,7 +60,7 @@ async function scenario(start = '2026-09-08T23:55:00') {
 }
 
 try {
-  // Six calendar days for 500 / 84 = 5.95238 days, with a separate overdue reminder.
+  // Five daily statuses and one refill; the unresolved refill rolls to today.
   {
     const s = await scenario();
     const before = await s.read();
@@ -106,6 +106,8 @@ try {
     await s.page.getByRole('tab', { name: /^待处理/ }).click();
     await expect(s.card('.task-list')).toHaveCount(2);
     await s.date(14).click();
+    await expect(s.card('.daily-agenda')).toHaveCount(2);
+    await s.date(13).click();
     await expect(s.card('.daily-agenda')).toHaveCount(0);
     await s.date(15).click();
     await expect(s.card('.daily-agenda')).toHaveCount(0);
