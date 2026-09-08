@@ -26,6 +26,9 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run check
+        env:
+          WRANGLER_LOG: debug
+          WRANGLER_LOG_PATH: artifacts/preview-logs
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

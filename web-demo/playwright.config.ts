@@ -7,5 +7,6 @@ export default defineConfig({
   webServer: process.env.BASE_URL ? undefined : {
     command: 'node tools/preview.mjs --port 3100',
     url: baseURL, reuseExistingServer: false, timeout: 60_000,
+    stdout: 'pipe',
   },
 });
