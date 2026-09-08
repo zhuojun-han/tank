@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lanjiao_water_quality/core/notifications/local_notification.dart';
@@ -8,9 +9,273 @@ import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_notification_coordinator.dart';
 import 'package:lanjiao_water_quality/features/maintenance/data/maintenance_repository.dart';
 import 'package:lanjiao_water_quality/features/maintenance/domain/recurrence.dart';
+import 'package:lanjiao_water_quality/features/maintenance/domain/rolling_schedule.dart';
+import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_cycle_items.dart';
+import 'package:lanjiao_water_quality/features/calculators/domain/maintenance_cycle.dart';
+import 'package:lanjiao_water_quality/features/calculators/domain/maintenance_dosing.dart';
+import 'package:lanjiao_water_quality/features/calculators/data/maintenance_cycle_repository.dart';
+import 'package:lanjiao_water_quality/features/tanks/data/tank_repository.dart';
 
 void main() {
-  test('日期周期只安排实际发生日，完成和停止后重排取消', () async {
+  test(
+    'slow gateway coalesces rapid snapshots and keeps the final forced refresh',
+    () async {
+      final store = _FakeTaskStore(),
+          notifications = _SlowNotificationService();
+      final coordinator = _coordinator(store, notifications);
+      await coordinator.start();
+      final id = stableMaintenanceNotificationId('task-1');
+      store.emit([_item(dueAt: DateTime.utc(2026, 8, 13), notificationId: id)]);
+      await notifications.entered.future;
+      for (var index = 0; index < 100; index++) {
+        store.emit([
+          _item(dueAt: DateTime.utc(2026, 8, 14 + index), notificationId: id),
+        ]);
+      }
+      await Future<void>.delayed(Duration.zero);
+      final settled = coordinator.reconcileNow();
+      notifications.release.complete();
+      await settled;
+      expect(notifications.oneShots, hasLength(2));
+      expect(notifications.dailySchedules, hasLength(2));
+      expect(
+        dateKey(notifications.oneShots.last.atUtc),
+        dateKey(DateTime.utc(2026, 8, 113)),
+      );
+      await coordinator.dispose();
+      await store.close();
+    },
+  );
+
+  test(
+    'uncompleted weekly head rolls tomorrow; only actual completion establishes the next week',
+    () async {
+      final store = _FakeTaskStore(),
+          notifications = _FakeNotificationService();
+      var now = DateTime(2026, 9, 5, 8);
+      final coordinator = MaintenanceNotificationCoordinator(
+        taskStore: store,
+        notificationService: notifications,
+        nowUtc: () => now.toUtc(),
+        nowDeviceLocal: () => now,
+      );
+      addTearDown(coordinator.dispose);
+      addTearDown(store.close);
+      await coordinator.start();
+      final task = initializeRollingTask(
+        _item(dueAt: DateTime(2026, 9, 5, 9).toUtc()).task,
+      );
+      var ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit([
+        MaintenanceTaskItem(
+          task: task,
+          state: MaintenanceTaskViewState.upcoming,
+        ),
+      ]);
+      await ready;
+      expect(notifications.oneShots.map((s) => dateKey(s.atUtc)), [
+        '2026-09-05',
+      ]);
+      expect(
+        dateKey(notifications.dailySchedules.single.atDeviceLocal),
+        '2026-09-06',
+      );
+      now = DateTime(2026, 9, 6, 8);
+      await coordinator.reconcileNow();
+      expect(dateKey(notifications.oneShots.last.atUtc), '2026-09-06');
+      expect(
+        dateKey(notifications.dailySchedules.last.atDeviceLocal),
+        '2026-09-07',
+      );
+      final completed = completeRollingTasks(
+        [task],
+        task.id,
+        '2026-09-06',
+        now,
+      ).single;
+      ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit([
+        MaintenanceTaskItem(
+          task: completed,
+          state: MaintenanceTaskViewState.upcoming,
+        ),
+      ]);
+      await ready;
+      expect(dateKey(notifications.oneShots.last.atUtc), '2026-09-13');
+      expect(rollingSchedule(task).completed, isEmpty);
+    },
+  );
+
+  test(
+    'a finite plan schedules only its unresolved head and advances after actual completion',
+    () async {
+      final store = _FakeTaskStore(),
+          notifications = _FakeNotificationService(),
+          now = DateTime(2026, 9, 8, 8);
+      final coordinator = MaintenanceNotificationCoordinator(
+        taskStore: store,
+        notificationService: notifications,
+        nowUtc: () => now.toUtc(),
+        nowDeviceLocal: () => now,
+      );
+      addTearDown(coordinator.dispose);
+      addTearDown(store.close);
+      await coordinator.start();
+      final tasks = [
+        for (var i = 0; i < 3; i++)
+          initializeRollingTask(
+            _item(dueAt: DateTime(2026, 9, 5 + i, 9).toUtc()).task.copyWith(
+              id: 'chemical-$i',
+              source: const Value('alkalinity-plan'),
+              planId: const Value('same'),
+              planDayIndex: Value(i + 1),
+              isOneOff: true,
+            ),
+          ),
+      ];
+      var ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit([
+        for (final task in tasks)
+          MaintenanceTaskItem(
+            task: task,
+            state: MaintenanceTaskViewState.upcoming,
+          ),
+      ]);
+      await ready;
+      expect(notifications.oneShots, hasLength(1));
+      expect(notifications.dailySchedules, hasLength(1));
+      final after = completeRollingTasks(
+        tasks,
+        'chemical-0',
+        '2026-09-08',
+        now,
+      );
+      notifications.oneShots.clear();
+      notifications.dailySchedules.clear();
+      ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit([
+        for (final task in after)
+          MaintenanceTaskItem(
+            task: task,
+            state: MaintenanceTaskViewState.upcoming,
+          ),
+      ]);
+      await ready;
+      expect(notifications.oneShots, hasLength(1));
+      expect(dateKey(notifications.oneShots.single.atUtc), '2026-09-09');
+    },
+  );
+
+  test(
+    'refill deferral replaces its reminder and closure cancels the previous cycle',
+    () async {
+      final store = _FakeTaskStore(),
+          notifications = _FakeNotificationService(),
+          now = DateTime(2026, 9, 1, 8);
+      final coordinator = MaintenanceNotificationCoordinator(
+        taskStore: store,
+        notificationService: notifications,
+        nowUtc: () => now.toUtc(),
+        nowDeviceLocal: () => now,
+      );
+      addTearDown(coordinator.dispose);
+      addTearDown(store.close);
+      await coordinator.start();
+      final cycle = prepareMaintenanceCycle(
+        input: const MaintenanceDosingInput(dailyChange: .1),
+        chemical: DosingChemical.po4,
+        tankId: 'tank-1',
+        startDate: '2026-09-01',
+        id: 'reservoir',
+      );
+      var ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit(maintenanceCycleNotificationItems([cycle], now));
+      await ready;
+      expect(notifications.oneShots, hasLength(1));
+      expect(dateKey(notifications.oneShots.last.atUtc), '2026-09-06');
+      ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit(
+        maintenanceCycleNotificationItems([
+          cycle.copyWith(refillDeferredUntil: '2026-09-09'),
+        ], now),
+      );
+      await ready;
+      expect(dateKey(notifications.oneShots.last.atUtc), '2026-09-09');
+      final id = store.persistedIds.first;
+      notifications.cancelledIds.clear();
+      ready = coordinator.states.firstWhere(
+        (s) => s.phase == MaintenanceNotificationSyncPhase.ready,
+      );
+      store.emit(
+        maintenanceCycleNotificationItems([
+          cycle.copyWith(closedOnDate: '2026-09-03'),
+        ], now),
+      );
+      await ready;
+      expect(
+        notifications.cancelledIds,
+        containsAll([id, maintenanceDailyNotificationId(id)]),
+      );
+    },
+  );
+
+  test(
+    'archived tanks disable both ordinary and refill reminders while retaining stored cycles',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final now = DateTime.now(),
+          repo = MaintenanceRepository(db),
+          cycles = MaintenanceCycleRepository(db);
+      const tank = AppDatabase.defaultTankId;
+      await TankRepository(db).createTank(name: '保留缸');
+      await repo.createTask(
+        tankId: tank,
+        title: '任务',
+        intervalAmount: 1,
+        intervalUnit: MaintenanceIntervalUnit.day,
+        dueAt: now,
+      );
+      await cycles.confirm(
+        prepareMaintenanceCycle(
+          input: const MaintenanceDosingInput(dailyChange: .1),
+          chemical: DosingChemical.po4,
+          tankId: tank,
+          startDate: dateKey(now),
+          id: 'reservoir',
+        ),
+      );
+      final store = RepositoryMaintenanceNotificationTaskStore(
+        repo,
+        cycles: cycles,
+      );
+      expect(
+        (await store.watchAllTaskItems().first).every(
+          (i) => i.task.status == 'enabled',
+        ),
+        isTrue,
+      );
+      await TankRepository(db).archiveTank(tank);
+      final after = await store.watchAllTaskItems().first;
+      expect(after, hasLength(2));
+      expect(after.every((i) => i.task.status == 'disabled'), isTrue);
+      expect((await cycles.getCycles()).single.closedOnDate, isNull);
+    },
+  );
+
+  test('只确认当前head并每日提醒，完成后再排下一次，停止取消', () async {
     final store = _FakeTaskStore();
     final notifications = _FakeNotificationService();
     final clock = DateTime(2026, 9, 5, 8);
@@ -38,11 +303,12 @@ void main() {
     );
     store.emit([item()]);
     await ready;
-    expect(notifications.dailySchedules, isEmpty);
-    expect(notifications.oneShots.map((r) => dateKey(r.atUtc)), [
-      '2026-09-05',
-      '2026-09-07',
-    ]);
+    expect(notifications.dailySchedules, hasLength(1));
+    expect(
+      dateKey(notifications.dailySchedules.single.atDeviceLocal),
+      '2026-09-06',
+    );
+    expect(notifications.oneShots.map((r) => dateKey(r.atUtc)), ['2026-09-05']);
     notifications.oneShots.clear();
     rule.states['2026-09-05'] = 'completed';
     ready = coordinator.states.firstWhere(
@@ -50,10 +316,7 @@ void main() {
     );
     store.emit([item()]);
     await ready;
-    expect(notifications.oneShots.map((r) => dateKey(r.atUtc)), [
-      '2026-09-07',
-      '2026-09-09',
-    ]);
+    expect(notifications.oneShots.map((r) => dateKey(r.atUtc)), ['2026-09-07']);
     notifications.oneShots.clear();
     notifications.cancelledIds.clear();
     rule.stoppedAfter = '2026-09-05';
@@ -177,7 +440,7 @@ void main() {
       expect(notifications.dailySchedules, hasLength(1));
       expect(
         notifications.dailySchedules.single.atDeviceLocal,
-        DateTime(2026, 8, 13, 9, 30),
+        DateTime(2026, 8, 14, 9, 30),
       );
       expect(
         notifications.dailySchedules.single.request.id,
@@ -493,5 +756,22 @@ final class _FakeNotificationService implements LocalNotificationService {
   Future<NotificationOperationResult> cancel(int id) async {
     cancelledIds.add(id);
     return const NotificationOperationResult.succeeded();
+  }
+}
+
+final class _SlowNotificationService extends _FakeNotificationService {
+  final entered = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<NotificationOperationResult> scheduleAtUtc(
+    LocalNotificationRequest request,
+    DateTime scheduledAtUtc,
+  ) async {
+    if (!entered.isCompleted) {
+      entered.complete();
+      await release.future;
+    }
+    return super.scheduleAtUtc(request, scheduledAtUtc);
   }
 }

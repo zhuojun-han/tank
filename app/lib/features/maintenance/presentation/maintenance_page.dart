@@ -2,6 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../calculators/application/maintenance_cycle_providers.dart';
+import '../../calculators/domain/maintenance_dosing.dart';
+import '../application/maintenance_cycle_items.dart';
+import '../domain/rolling_schedule.dart';
+import 'task_schedule_dialogs.dart';
 
 import '../../../core/errors/app_error_view.dart';
 import '../../../data/database/app_database.dart';
@@ -96,6 +102,25 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
     try {
       if (!mounted || _handledInitialTaskId == taskId) return;
       _handledInitialTaskId = taskId;
+      if (taskId.startsWith('cycle-')) {
+        final cycles = await ref
+            .read(maintenanceCycleRepositoryProvider)
+            .getCycles();
+        final cycle = cycles
+            .where((cycle) => cycle.id == taskId.substring(6))
+            .firstOrNull;
+        if (!mounted) return;
+        if (cycle == null || cycle.closedOnDate != null) {
+          _message(context, '该补液周期已结束或不存在');
+          return;
+        }
+        await ref.read(tankRepositoryProvider).switchTank(cycle.tankId);
+        if (!mounted) return;
+        await context.push(
+          '/maintenance-dosing?chemical=${cycle.chemical == DosingChemical.kh ? 'kh' : 'po4'}',
+        );
+        return;
+      }
       final matches = items.where((item) => item.task.id == taskId);
       if (matches.isEmpty) {
         _message(context, '未找到该维护任务，它可能已被删除。');
@@ -104,7 +129,7 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
       final item = matches.first;
       await ref.read(tankRepositoryProvider).switchTank(item.task.tankId);
       if (!mounted) return;
-      if (item.task.recurrenceJson != null) {
+      if (item.task.recurrenceJson != null || item.task.rollingJson != null) {
         // A stale notification must never complete tomorrow's occurrence.
         final today = localDate(DateTime.now());
         setState(() {
@@ -132,12 +157,17 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
 
   Widget _buildForTank(Tank tank) {
     final clock = ref.watch(maintenanceClockProvider).value ?? DateTime.now();
-
-    final calendarItems = ref.watch(
+    final cycles = ref.watch(maintenanceCyclesProvider(tank.id)).value ?? [];
+    final stored = ref.watch(
       maintenanceTaskItemsProvider((
         tankId: tank.id,
         filter: MaintenanceTaskFilter.all,
       )),
+    );
+    final gridStart = DateTime(
+      _calendarMonth.year,
+      _calendarMonth.month,
+      2 - DateTime(_calendarMonth.year, _calendarMonth.month).weekday,
     );
     return Stack(
       children: [
@@ -154,9 +184,7 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
                       tank.name,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 4),
-                    const Text('任务状态保存在本机；系统通知未显示也不会自动完成任务。'),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     SegmentedButton<MaintenanceTaskFilter>(
                       key: const Key('maintenance-filter'),
                       segments: const [
@@ -174,131 +202,183 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
                         ),
                       ],
                       selected: {_filter},
-                      onSelectionChanged: (value) {
-                        setState(() => _filter = value.single);
-                      },
+                      onSelectionChanged: (value) =>
+                          setState(() => _filter = value.single),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            calendarItems.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => AppErrorView(message: '无法读取任务日历：$error'),
-              data: (taskItems) => MaintenanceCalendar(
-                month: _calendarMonth,
-                selectedDate: _selectedCalendarDate,
-                items: calendarOccurrences(
-                  taskItems,
-                  DateTime(
-                    _calendarMonth.year,
-                    _calendarMonth.month,
-                    2 -
-                        DateTime(
-                          _calendarMonth.year,
-                          _calendarMonth.month,
-                        ).weekday,
-                  ),
-                  42,
-                ),
-                onMonthChanged: (month) =>
-                    setState(() => _calendarMonth = month),
-                onDateSelected: (date) => setState(() {
-                  _selectedCalendarDate = date;
-                  _calendarMonth = DateTime(date.year, date.month);
-                }),
-                onComplete: (item) => _completeCalendarTask(tank.id, item),
-                onSkip: (item) => _skipCalendarTask(tank.id, item),
-                onSnooze: (item) => _snoozeToday(tank.id, item),
-                onReopen: (item) => _reopen(tank.id, item),
-                onStop: (item) => _stopRecurring(tank.id, item),
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text('计划与本日记录'),
-            calendarItems.when(
+            stored.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => AppErrorView(message: '无法读取任务：$error'),
-              data: (storedItems) {
-                final all = [
-                  for (final item in storedItems)
-                    refreshMaintenanceItem(item, clock),
+              data: (raw) {
+                final all = prepareMaintenanceTaskItems(raw, clock);
+                final visible = [
+                  ...calendarOccurrences(all, gridStart, 42, now: clock),
+                  ...maintenanceCycleItems(
+                    cycles,
+                    tankId: tank.id,
+                    start: gridStart,
+                    days: 42,
+                    now: clock,
+                  ),
                 ];
-                final today = calendarOccurrences(
-                  all,
-                  localDate(DateTime.now()),
-                  1,
-                );
-                if (_filter == MaintenanceTaskFilter.completed) {
-                  final done = today
-                      .where(
-                        (i) => i.state == MaintenanceTaskViewState.completed,
-                      )
-                      .toList();
-                  return Column(
-                    children: [
-                      if (done.isEmpty)
-                        const Card(child: ListTile(title: Text('本日还没有完成记录'))),
-                      for (final item in done)
-                        Card(
-                          child: ListTile(
-                            title: Text(item.task.title),
-                            subtitle: const Text('本日已完成'),
-                            trailing: TextButton(
-                              onPressed: () => _reopen(tank.id, item),
-                              child: const Text('重新标记为未完成'),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                }
-                final active = all
+                final selected = [
+                  ...calendarOccurrences(
+                    all,
+                    _selectedCalendarDate,
+                    1,
+                    now: clock,
+                  ),
+                  ...maintenanceCycleItems(
+                    cycles,
+                    tankId: tank.id,
+                    start: _selectedCalendarDate,
+                    days: 1,
+                    now: clock,
+                  ),
+                ];
+                final shown = selected
                     .where(
-                      (i) =>
-                          i.task.status == 'enabled' &&
-                          (i.task.recurrenceJson == null ||
-                              Recurrence.decode(
-                                    i.task.recurrenceJson!,
-                                  ).stoppedAfter ==
-                                  null),
+                      (item) => _filter == MaintenanceTaskFilter.completed
+                          ? item.state == MaintenanceTaskViewState.completed
+                          : item.state != MaintenanceTaskViewState.completed,
                     )
                     .toList();
                 final plans =
                     groupMaintenancePlans(
-                          all.where((i) => isChemicalPlan(i.task)).toList(),
+                          all
+                              .where((item) => isChemicalPlan(item.task))
+                              .toList(),
                         )
                         .where(
-                          (group) =>
-                              group.any((i) => i.task.status == 'enabled'),
+                          (group) => group.any(
+                            (item) => item.task.status == 'enabled',
+                          ),
                         )
                         .toList();
-                final ordinary = _filter == MaintenanceTaskFilter.all
-                    ? active.where((i) => !i.task.isOneOff).toList()
-                    : active
-                          .where(
-                            (i) => i.task.isOneOff && !isChemicalPlan(i.task),
-                          )
-                          .toList();
                 return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final group in plans)
-                      ChemicalPlanCard(
-                        items: group,
-                        onStop: (item) => _skipCalendarTask(tank.id, item),
-                      ),
-                    if (ordinary.isNotEmpty)
+                    MaintenanceCalendar(
+                      month: _calendarMonth,
+                      selectedDate: _selectedCalendarDate,
+                      items: visible,
+                      onMonthChanged: (month) =>
+                          setState(() => _calendarMonth = month),
+                      onDateSelected: (date) => setState(() {
+                        _selectedCalendarDate = date;
+                        _calendarMonth = DateTime(date.year, date.month);
+                      }),
+                      onComplete: (item) =>
+                          _completeCalendarTask(tank.id, item),
+                      onSkip: (item) => _skipCalendarTask(tank.id, item),
+                      onSnooze: (item) => _delayTask(tank.id, item),
+                      onReopen: (item) => _reopen(tank.id, item),
+                      onCorrect: (item) => _correctCompletion(tank.id, item),
+                      onStop: (item) => _stopRecurring(tank.id, item),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_filter == MaintenanceTaskFilter.all) ...[
+                      for (final group in plans)
+                        ChemicalPlanCard(
+                          items: group,
+                          onStop: (item) => _skipCalendarTask(tank.id, item),
+                          onComplete: (item) =>
+                              _completeCalendarTask(tank.id, item),
+                          onDelay: (item) => _delayTask(tank.id, item),
+                        ),
                       _TaskList(
-                        items: ordinary,
-                        onOpen: (item) => item.task.recurrenceJson != null
-                            ? _editTask(context, tank.id, task: item.task)
-                            : _openTask(context, tank.id, item),
+                        items: all
+                            .where(
+                              (item) =>
+                                  item.task.status == 'enabled' &&
+                                  !isChemicalPlan(item.task),
+                            )
+                            .toList(),
+                        onOpen: (item) => _openTask(context, tank.id, item),
                         onMenuAction: (item, action) =>
                             _handleMenuAction(context, tank.id, item, action),
                       ),
-                    if (plans.isEmpty && ordinary.isEmpty)
-                      const Card(child: ListTile(title: Text('当前筛选没有事项'))),
+                    ] else ...[
+                      Text(dateKey(_selectedCalendarDate)),
+                      if (shown.isEmpty)
+                        const Card(child: ListTile(title: Text('所选日期没有记录'))),
+                      for (final item in shown)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  item.task.title,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                if (item.cycleOccurrence != null)
+                                  Text(item.task.notes ?? ''),
+                                if (item.state ==
+                                    MaintenanceTaskViewState.completed)
+                                  Wrap(
+                                    spacing: 8,
+                                    children: [
+                                      const Text('已完成'),
+                                      if (item.canEditCompletion)
+                                        TextButton(
+                                          onPressed: () =>
+                                              _correctCompletion(tank.id, item),
+                                          child: const Text('修改完成日期'),
+                                        ),
+                                      if (item.canReopen)
+                                        TextButton(
+                                          onPressed: () =>
+                                              _reopen(tank.id, item),
+                                          child: const Text('撤销完成'),
+                                        ),
+                                    ],
+                                  )
+                                else ...[
+                                  FilledButton(
+                                    onPressed: () =>
+                                        _completeCalendarTask(tank.id, item),
+                                    child: Text(
+                                      item.cycleOccurrence != null
+                                          ? '添加滴定液'
+                                          : '完成本次',
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton(
+                                          onPressed: () =>
+                                              _delayTask(tank.id, item),
+                                          child: const Text('延迟'),
+                                        ),
+                                      ),
+                                      if (item.cycleOccurrence == null) ...[
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            onPressed: () => _skipCalendarTask(
+                                              tank.id,
+                                              item,
+                                            ),
+                                            child: const Text('停止'),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 );
               },
@@ -319,39 +399,91 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
     );
   }
 
+  Future<void> _openRefill(MaintenanceTaskItem item) async {
+    final cycle = item.cycleOccurrence!.cycle;
+    await context.push(
+      '/maintenance-dosing?chemical=${cycle.chemical == DosingChemical.kh ? 'kh' : 'po4'}',
+    );
+  }
+
   Future<void> _completeCalendarTask(
     String tankId,
     MaintenanceTaskItem item,
   ) async {
+    if (item.cycleOccurrence != null) {
+      await _openRefill(item);
+      return;
+    }
+    final schedule = rollingSchedule(item.task);
+    final date = await showTaskCompletionDate(context);
+    if (date == null || !mounted) return;
     try {
       await ref
           .read(maintenanceRepositoryProvider)
           .complete(
             tankId: tankId,
             taskId: item.task.id,
-            occurrenceDate: item.occurrenceDate,
+            completedDate: date,
+            expectedRevision: schedule.revision,
           );
-      if (mounted) {
-        _message(context, item.task.isOneOff ? '已完成本次任务' : '已完成本次任务');
-      }
+      if (mounted) _message(context, '已完成，后续日期已更新');
     } catch (error) {
       if (mounted) _message(context, '操作失败：$error');
     }
   }
 
-  Future<void> _snoozeToday(String tankId, MaintenanceTaskItem item) async {
+  Future<void> _delayTask(String tankId, MaintenanceTaskItem item) async {
+    final days = await showTaskDelayDays(context);
+    if (days == null || !mounted) return;
+    try {
+      final cycle = item.cycleOccurrence?.cycle;
+      if (cycle != null) {
+        await ref
+            .read(maintenanceCycleRepositoryProvider)
+            .delay(
+              cycle.id,
+              days,
+              expectedDeferredUntil: cycle.refillDeferredUntil,
+            );
+      } else {
+        await ref
+            .read(maintenanceRepositoryProvider)
+            .delayTask(
+              tankId: tankId,
+              taskId: item.task.id,
+              days: days,
+              expectedRevision: rollingSchedule(item.task).revision,
+            );
+      }
+      if (mounted) _message(context, '已延迟 $days 天');
+    } catch (error) {
+      if (mounted) _message(context, '操作失败：$error');
+    }
+  }
+
+  Future<void> _correctCompletion(
+    String tankId,
+    MaintenanceTaskItem item,
+  ) async {
+    final original = item.occurrenceDate ?? item.task.dueAt.toLocal();
+    final date = await showTaskCompletionDate(
+      context,
+      initialDate: original,
+      title: '修改完成日期',
+    );
+    if (date == null || !mounted) return;
     try {
       await ref
           .read(maintenanceRepositoryProvider)
-          .snooze(
+          .correctCompletion(
             tankId: tankId,
             taskId: item.task.id,
-            occurrenceDate: item.occurrenceDate,
-            until: DateTime.now().add(const Duration(hours: 1)),
+            completedDate: original,
+            newDate: date,
+            expectedRevision: rollingSchedule(item.task).revision,
           );
-      if (mounted) _message(context, '已稍后 1 小时');
-    } catch (e) {
-      if (mounted) _message(context, '操作失败：$e');
+    } catch (error) {
+      if (mounted) _message(context, '修改失败：$error');
     }
   }
 
@@ -363,6 +495,7 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
             tankId: tankId,
             taskId: item.task.id,
             occurrenceDate: item.occurrenceDate,
+            expectedRevision: rollingSchedule(item.task).revision,
           );
     } catch (e) {
       if (mounted) _message(context, '恢复失败：$e');
@@ -399,13 +532,13 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
     final lanthanum = isChemicalPlan(item.task);
     final confirmed = await _confirm(
       context,
-      title: lanthanum ? '停止当天及后续计划？' : '跳过本次任务？',
+      title: lanthanum ? '停止当天及后续计划？' : '停止任务？',
       body: lanthanum
           ? '会记录当天及同一加药计划全部后续事项为已跳过，并取消对应系统提醒。'
           : item.task.isOneOff
           ? '会保留一次跳过记录，不再产生后续周期。'
-          : '会记录本次跳过，按日期重复的任务仅跳过所选日期，后续周期保留。',
-      confirmLabel: lanthanum ? '停止计划' : '跳过',
+          : '后续待办和提醒会停止，已完成历史保留。',
+      confirmLabel: lanthanum ? '停止计划' : '停止',
     );
     if (!confirmed || !mounted) return;
     try {
@@ -416,7 +549,7 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
             taskId: item.task.id,
             occurrenceDate: item.occurrenceDate,
           );
-      if (mounted) _message(context, lanthanum ? '已停止当天及后续计划' : '已跳过本次');
+      if (mounted) _message(context, lanthanum ? '已停止当天及后续计划' : '已停止后续任务');
     } catch (error) {
       if (mounted) _message(context, '操作失败：$error');
     }
@@ -569,7 +702,7 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
                 onPressed: () =>
                     Navigator.pop(sheetContext, _TaskDetailAction.snooze),
                 icon: const Icon(Icons.snooze),
-                label: const Text('稍后提醒'),
+                label: const Text('延迟'),
               ),
               const SizedBox(height: 8),
               TextButton.icon(
@@ -591,64 +724,16 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
       ),
     );
     if (action == null || !context.mounted) return;
-    try {
-      final repository = ref.read(maintenanceRepositoryProvider);
-      switch (action) {
-        case _TaskDetailAction.complete:
-          await repository.complete(
-            tankId: tankId,
-            taskId: item.task.id,
-            occurrenceDate: item.occurrenceDate,
-          );
-          if (context.mounted) {
-            _message(
-              context,
-              item.task.isOneOff ? '已完成本次任务' : '已完成；下一周期从本次操作时间计算',
-            );
-          }
-          break;
-        case _TaskDetailAction.skip:
-          final lanthanum = isChemicalPlan(item.task);
-          final confirmed = await _confirm(
-            context,
-            title: lanthanum ? '停止当天及后续计划？' : '跳过本次？',
-            body: lanthanum
-                ? '会记录当天及同一加药计划全部后续事项为已跳过，并取消对应系统提醒。'
-                : item.task.isOneOff
-                ? '会记录一次跳过事件，不再产生后续周期。'
-                : '会记录一次跳过事件，按日期重复的任务仅跳过所选日期，后续周期保留。',
-            confirmLabel: lanthanum ? '停止计划' : '跳过',
-          );
-          if (!confirmed || !context.mounted) return;
-          await repository.skip(
-            tankId: tankId,
-            taskId: item.task.id,
-            occurrenceDate: item.occurrenceDate,
-          );
-          if (context.mounted) {
-            _message(
-              context,
-              lanthanum
-                  ? '已停止当天及后续计划'
-                  : item.task.isOneOff
-                  ? '已跳过本次任务'
-                  : '已跳过；下一周期从本次操作时间计算',
-            );
-          }
-          break;
-        case _TaskDetailAction.snooze:
-          final until = await _showSnoozePicker(context);
-          if (until == null || !context.mounted) return;
-          await repository.snooze(
-            tankId: tankId,
-            taskId: item.task.id,
-            until: until,
-          );
-          if (context.mounted) _message(context, '已稍后提醒；原重复周期未改变');
-          break;
-      }
-    } catch (error) {
-      if (context.mounted) _message(context, '操作失败：$error');
+    switch (action) {
+      case _TaskDetailAction.complete:
+        await _completeCalendarTask(tankId, item);
+        break;
+      case _TaskDetailAction.snooze:
+        await _delayTask(tankId, item);
+        break;
+      case _TaskDetailAction.skip:
+        await _skipCalendarTask(tankId, item);
+        break;
     }
   }
 }
@@ -805,8 +890,8 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
       (value) => value.name == task?.intervalUnit,
       orElse: () => MaintenanceIntervalUnit.week,
     );
-    _dueAt = task?.recurrenceJson != null
-        ? DateTime.parse(Recurrence.decode(task!.recurrenceJson!).start)
+    _dueAt = task?.rollingJson != null
+        ? DateTime.parse(rollingSchedule(task!).nextDate)
         : task?.dueAt.toLocal() ??
               DateTime(now.year, now.month, now.day + 1, 9);
     _reminder = _parseTime(task?.preferredReminderTime ?? '09:00');
@@ -878,7 +963,7 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
                 trailing: const Icon(Icons.event),
                 onTap: _chooseDueAt,
               ),
-              const Text('可选择过去日期：今天以前符合间隔的日期默认为已完成，可在日历逐日恢复。编辑保留已有逐日完成和跳过记录。'),
+              const Text('按实际完成日期安排下一次。'),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('每日提醒时间'),
@@ -954,71 +1039,6 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
   }
 }
 
-Future<DateTime?> _showSnoozePicker(BuildContext context) async {
-  final choice = await showDialog<_SnoozeChoice>(
-    context: context,
-    builder: (dialogContext) => SimpleDialog(
-      title: const Text('稍后提醒'),
-      children: [
-        SimpleDialogOption(
-          onPressed: () => Navigator.pop(dialogContext, _SnoozeChoice.oneHour),
-          child: const ListTile(
-            leading: Icon(Icons.schedule),
-            title: Text('1 小时后'),
-          ),
-        ),
-        SimpleDialogOption(
-          onPressed: () =>
-              Navigator.pop(dialogContext, _SnoozeChoice.tomorrowNine),
-          child: const ListTile(
-            leading: Icon(Icons.wb_sunny_outlined),
-            title: Text('明天 09:00'),
-          ),
-        ),
-        SimpleDialogOption(
-          onPressed: () => Navigator.pop(dialogContext, _SnoozeChoice.custom),
-          child: const ListTile(
-            leading: Icon(Icons.edit_calendar),
-            title: Text('自定义时间'),
-          ),
-        ),
-      ],
-    ),
-  );
-  if (choice == null || !context.mounted) return null;
-  final now = DateTime.now();
-  return switch (choice) {
-    _SnoozeChoice.oneHour => now.add(const Duration(hours: 1)).toUtc(),
-    _SnoozeChoice.tomorrowNine => DateTime(
-      now.year,
-      now.month,
-      now.day + 1,
-      9,
-    ).toUtc(),
-    _SnoozeChoice.custom => (await _pickDateTime(
-      context,
-      now.add(const Duration(hours: 1)),
-    ))?.toUtc(),
-  };
-}
-
-Future<DateTime?> _pickDateTime(BuildContext context, DateTime initial) async {
-  final local = initial.toLocal();
-  final date = await showDatePicker(
-    context: context,
-    initialDate: local,
-    firstDate: DateTime(2000),
-    lastDate: DateTime.now().add(const Duration(days: 3650)),
-  );
-  if (date == null || !context.mounted) return null;
-  final time = await showTimePicker(
-    context: context,
-    initialTime: TimeOfDay.fromDateTime(local),
-  );
-  if (time == null) return null;
-  return DateTime(date.year, date.month, date.day, time.hour, time.minute);
-}
-
 Future<bool> _confirm(
   BuildContext context, {
   required String title,
@@ -1074,8 +1094,6 @@ class _TaskDraft {
 enum _TaskDetailAction { complete, snooze, skip }
 
 enum _TaskMenuAction { edit, disable, enable, archive, delete }
-
-enum _SnoozeChoice { oneHour, tomorrowNine, custom }
 
 String _stateLabel(MaintenanceTaskViewState state) => switch (state) {
   MaintenanceTaskViewState.upcoming => '待处理',

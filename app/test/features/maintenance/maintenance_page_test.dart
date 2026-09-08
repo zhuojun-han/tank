@@ -3,11 +3,17 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_notification_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/data/maintenance_repository.dart';
 import 'package:lanjiao_water_quality/features/maintenance/presentation/maintenance_page.dart';
+import 'package:lanjiao_water_quality/features/maintenance/domain/rolling_schedule.dart';
+import 'package:lanjiao_water_quality/features/calculators/application/maintenance_cycle_providers.dart';
+import 'package:lanjiao_water_quality/features/calculators/data/maintenance_cycle_repository.dart';
+import 'package:lanjiao_water_quality/features/calculators/domain/maintenance_cycle.dart';
+import 'package:lanjiao_water_quality/features/calculators/domain/maintenance_dosing.dart';
 import 'package:lanjiao_water_quality/features/tanks/application/tank_providers.dart';
 import 'package:lanjiao_water_quality/features/tanks/data/tank_repository.dart';
 
@@ -26,6 +32,73 @@ void main() {
 
   tearDown(() => database.close());
 
+  testWidgets('补液通知切换正确海缸和药剂，已关闭周期不打开旧配方', (tester) async {
+    _useTallTestSurface(tester);
+    final tanks = TankRepository(database),
+        cycles = MaintenanceCycleRepository(database);
+    final otherId = await tanks.createTank(name: '另一个缸');
+    final cycle = prepareMaintenanceCycle(
+      input: const MaintenanceDosingInput(dailyChange: .1),
+      chemical: DosingChemical.kh,
+      tankId: otherId,
+      startDate: cycleDateKey(clock),
+      id: 'notify-cycle',
+    );
+    await cycles.confirm(cycle);
+    await tanks.switchTank(AppDatabase.defaultTankId);
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const Scaffold(
+            body: MaintenancePage(initialTaskId: 'cycle-notify-cycle'),
+          ),
+        ),
+        GoRoute(
+          path: '/maintenance-dosing',
+          builder: (_, state) => Scaffold(
+            body: Text('药剂 ${state.uri.queryParameters['chemical']}'),
+          ),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    Widget page() => ProviderScope(
+      overrides: [
+        appDatabaseProvider.overrideWithValue(database),
+        notificationsEnabledProvider.overrideWithValue(false),
+        maintenanceRepositoryProvider.overrideWithValue(repository),
+      ],
+      child: MaterialApp.router(routerConfig: router),
+    );
+    await tester.pumpWidget(page());
+    await _pumpUntilFound(tester, find.text('药剂 kh'));
+    expect(
+      (await tester.runAsync(
+        () => database.select(database.appPreferences).getSingle(),
+      ))!.currentTankId,
+      otherId,
+    );
+    await _disposePage(tester);
+    await (database.update(
+      database.maintenanceCycles,
+    )..where((row) => row.id.equals(cycle.id))).write(
+      MaintenanceCyclesCompanion(closedOnDate: Value(cycleDateKey(clock))),
+    );
+    await tanks.switchTank(AppDatabase.defaultTankId);
+    router.go('/');
+    await tester.pumpWidget(page());
+    await _pumpUntilFound(tester, find.text('该补液周期已结束或不存在'));
+    expect(find.text('药剂 kh'), findsNothing);
+    expect(
+      (await tester.runAsync(
+        () => database.select(database.appPreferences).getSingle(),
+      ))!.currentTankId,
+      AppDatabase.defaultTankId,
+    );
+    await _disposePage(tester);
+  });
+
   testWidgets('空态只展示当前海缸，并严格隔离其他海缸任务', (tester) async {
     _useTallTestSurface(tester);
     final now = clock;
@@ -38,7 +111,7 @@ void main() {
     await tester.pumpWidget(
       _testPage(repository: repository, tank: defaultTank),
     );
-    await _pumpUntilFound(tester, find.text('当前筛选没有事项'));
+    await _pumpUntilFound(tester, find.text('所选日期没有记录'));
 
     expect(find.text('我的海缸'), findsOneWidget);
     expect(find.text('当天没有已安排的事项。'), findsOneWidget);
@@ -96,7 +169,7 @@ void main() {
     );
     await repository.complete(tankId: tank.id, taskId: completedId);
     await tester.pumpWidget(_testPage(repository: repository, tank: tank));
-    await _pumpUntilFound(tester, find.text('当前筛选没有事项'));
+    await _pumpUntilFound(tester, find.text('所选日期没有记录'));
     expect(find.byKey(Key('maintenance-task-$ruleId')), findsNothing);
     await tester.tap(
       find.descendant(
@@ -104,17 +177,17 @@ void main() {
         matching: find.text('已完成'),
       ),
     );
-    await _pumpUntilFound(tester, find.text('本日已完成'));
+    await _pumpUntilFound(tester, find.text('今天已完成'));
     await tester.tap(find.text('全部'));
     await _pumpUntilFound(tester, find.byKey(Key('maintenance-task-$ruleId')));
-    expect(find.text('本日已完成'), findsNothing);
+    expect(find.byKey(Key('maintenance-task-$ruleId')), findsOneWidget);
     await _disposePage(tester);
   });
   testWidgets('新增任务使用默认 09:00 提醒时间', (tester) async {
     _useTallTestSurface(tester);
     final tank = _tank(id: AppDatabase.defaultTankId, name: '我的海缸', now: clock);
     await tester.pumpWidget(_testPage(repository: repository, tank: tank));
-    await _pumpUntilFound(tester, find.text('当前筛选没有事项'));
+    await _pumpUntilFound(tester, find.text('所选日期没有记录'));
 
     await tester.tap(find.byKey(const Key('add-maintenance-task')));
     await _pumpUntilFound(tester, find.text('新增维护任务'));
@@ -147,7 +220,9 @@ void main() {
     final complete = find.byKey(Key('calendar-complete-$taskId'));
     await _pumpUntilFound(tester, complete);
     await tester.tap(complete);
-    await _pumpUntilFound(tester, find.text('已完成本次任务'));
+    await _pumpUntilFound(tester, find.text('实际完成日期'));
+    await tester.tap(find.text('确认'));
+    await _pumpUntilFound(tester, find.text('已完成，后续日期已更新'));
 
     final task = await (database.select(
       database.maintenanceTasks,
@@ -156,7 +231,7 @@ void main() {
     await _disposePage(tester);
   });
 
-  testWidgets('任务详情支持完成、稍后提醒和跳过本周期', (tester) async {
+  testWidgets('任务详情支持实际完成、取消延迟及自定义延迟和停止', (tester) async {
     _useTallTestSurface(tester);
     final tank = _tank(id: AppDatabase.defaultTankId, name: '我的海缸', now: clock);
     final completeId = await _createTask(repository, tank.id, '完成任务', clock);
@@ -174,38 +249,59 @@ void main() {
       find.byKey(const Key('complete-maintenance-task')),
     );
     await tester.tap(find.byKey(const Key('complete-maintenance-task')));
-    await _pumpUntilFound(tester, find.textContaining('下一周期从本次操作时间计算'));
+    await _pumpUntilFound(tester, find.text('实际完成日期'));
+    await tester.tap(find.text('确认'));
+    await _pumpUntilFound(tester, find.text('已完成，后续日期已更新'));
+    await tester.ensureVisible(find.byKey(Key('maintenance-task-$snoozeId')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(Key('maintenance-task-$snoozeId')));
     await _pumpUntilFound(
       tester,
       find.byKey(const Key('snooze-maintenance-task')),
     );
     await tester.tap(find.byKey(const Key('snooze-maintenance-task')));
-    await _pumpUntilFound(tester, find.text('1 小时后'));
-    await tester.tap(find.text('1 小时后'));
-    await _pumpUntilFound(tester, find.textContaining('原重复周期未改变'));
-    await _pumpUntilFound(tester, find.textContaining('已稍后提醒 ·'));
+    await _pumpUntilFound(tester, find.text('延迟任务'));
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    var delayed = await (database.select(
+      database.maintenanceTasks,
+    )..where((t) => t.id.equals(snoozeId))).getSingle();
+    expect(rollingSchedule(delayed).revision, 0);
+    await tester.ensureVisible(find.byKey(Key('maintenance-task-$snoozeId')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('maintenance-task-$snoozeId')));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('snooze-maintenance-task')),
+    );
+    await tester.tap(find.byKey(const Key('snooze-maintenance-task')));
+    await _pumpUntilFound(tester, find.text('延迟任务'));
+    await tester.enterText(find.byType(TextField).last, '2');
+    await tester.tap(find.text('确认延迟'));
+    await _pumpUntilFound(tester, find.text('已延迟 2 天'));
+    delayed = await (database.select(
+      database.maintenanceTasks,
+    )..where((t) => t.id.equals(snoozeId))).getSingle();
+    expect(rollingSchedule(delayed).revision, 1);
 
+    await tester.ensureVisible(find.byKey(Key('maintenance-task-$skipId')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(Key('maintenance-task-$skipId')));
     await _pumpUntilFound(
       tester,
       find.byKey(const Key('skip-maintenance-task')),
     );
     await tester.tap(find.byKey(const Key('skip-maintenance-task')));
-    await _pumpUntilFound(tester, find.text('跳过本次？'));
-    await tester.tap(find.text('跳过'));
-    await _pumpUntilFound(tester, find.textContaining('已跳过；下一周期'));
+    await _pumpUntilFound(tester, find.text('停止任务？'));
+    await tester.tap(find.text('停止').last);
+    await _pumpUntilFound(tester, find.text('已停止后续任务'));
 
     final events = await database.select(database.taskEvents).get();
     expect(
       events.where((event) => event.type == TaskEventType.completed.name),
       hasLength(1),
     );
-    final snoozed = events.singleWhere(
-      (event) => event.type == TaskEventType.snoozed.name,
-    );
-    expect(snoozed.snoozedUntil, isNotNull);
-    expect(snoozed.snoozedUntil!.isAfter(clock), isTrue);
+    expect(events.where((event) => event.type == 'snoozed'), isEmpty);
     expect(
       events.where((event) => event.type == TaskEventType.skipped.name),
       hasLength(1),
@@ -266,6 +362,9 @@ Widget _testPage({
     key: ValueKey('maintenance-scope-${tank.id}'),
     overrides: [
       notificationsEnabledProvider.overrideWithValue(false),
+      maintenanceCyclesProvider(
+        tank.id,
+      ).overrideWith((ref) => Stream.value([])),
       currentTankProvider.overrideWith((ref) => Stream.value(tank)),
       maintenanceRepositoryProvider.overrideWith((ref) => repository),
     ],
@@ -294,7 +393,7 @@ Future<String> _createTask(
     title: title,
     intervalAmount: 1,
     intervalUnit: MaintenanceIntervalUnit.week,
-    dueAt: now.add(const Duration(days: 1)),
+    dueAt: now,
   );
 }
 

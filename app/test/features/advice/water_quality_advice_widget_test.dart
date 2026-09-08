@@ -9,6 +9,7 @@ import 'package:lanjiao_water_quality/app/router.dart';
 import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/aquarium/application/aquarium_providers.dart';
 import 'package:lanjiao_water_quality/features/aquarium/domain/fish_stock.dart';
+import 'package:lanjiao_water_quality/features/calculators/application/maintenance_cycle_providers.dart';
 import 'package:lanjiao_water_quality/features/tanks/application/tank_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_notification_providers.dart';
@@ -69,6 +70,7 @@ void main() {
     );
     expect(find.textContaining('不能替代规范复测、专业诊断'), findsOneWidget);
     expect(find.textContaining('不会自动控制设备'), findsOneWidget);
+    await _disposeApp(tester);
   });
 
   testWidgets('范围记录与目标部分重叠时首页只提示复测', (tester) async {
@@ -107,6 +109,7 @@ void main() {
     expect(find.textContaining('不能判定偏高或偏低'), findsOneWidget);
     expect(find.text('NO3 高于目标'), findsNothing);
     expect(find.text('NO3 低于目标'), findsNothing);
+    await _disposeApp(tester);
   });
 }
 
@@ -142,6 +145,12 @@ Widget _testApp({
         FixtureRecordHistorySource([record]),
       ),
       notificationsEnabledProvider.overrideWithValue(false),
+      maintenanceClockProvider.overrideWith((ref) => Stream.value(now)),
+      // Advice fixtures contain no dosing cycles. Keep this new homepage
+      // dependency isolated just like the task/record/stock fixture streams.
+      maintenanceCyclesProvider.overrideWith(
+        (ref, tankId) => Stream.value(const []),
+      ),
       allMaintenanceTaskItemsProvider.overrideWith(
         (ref) => Stream.value(const []),
       ),
@@ -172,6 +181,12 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
     if (finder.evaluate().isNotEmpty) return;
   }
   fail('等待组件超时：$finder');
+}
+
+Future<void> _disposeApp(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  // Flush asynchronous subscription/database cleanup before test invariants.
+  await tester.pump(const Duration(milliseconds: 1));
 }
 
 Future<void> _scrollIntoView(WidgetTester tester, Finder finder) async {

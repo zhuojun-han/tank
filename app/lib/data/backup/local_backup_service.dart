@@ -9,6 +9,11 @@ import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../../features/aquarium/domain/fish_stock.dart';
 import '../../features/maintenance/domain/recurrence.dart';
+import '../../features/maintenance/domain/rolling_schedule.dart';
+import '../../features/test_timer/domain/kh_titration.dart';
+import '../../features/calculators/data/maintenance_cycle_repository.dart';
+import '../../features/calculators/domain/maintenance_cycle.dart';
+import '../../features/calculators/domain/maintenance_dosing.dart';
 
 const _backupValueSerializer = _UtcBackupValueSerializer();
 
@@ -19,7 +24,7 @@ class LocalBackupService {
   final AppDatabase _database;
   final String Function() _idGenerator;
 
-  static const formatVersion = 10;
+  static const formatVersion = 11;
 
   Future<File> exportToPrivateFile() async {
     final root = await getApplicationSupportDirectory();
@@ -66,6 +71,7 @@ class LocalBackupService {
     final reagents = await _database.select(_database.reagentProfiles).get();
     final preferences = await _database.select(_database.appPreferences).get();
     final records = await _database.select(_database.testRecords).get();
+    final cycles = await _database.select(_database.maintenanceCycles).get();
     final maintenanceTasks = await _database
         .select(_database.maintenanceTasks)
         .get();
@@ -115,6 +121,12 @@ class LocalBackupService {
               .copyWith(notificationId: const Value(null))
               .toJson(serializer: _backupValueSerializer),
       ],
+      'maintenanceCycles': [
+        for (final item in cycles)
+          item
+              .copyWith(notificationId: const Value(null))
+              .toJson(serializer: _backupValueSerializer),
+      ],
       'taskEvents': [
         for (final item in taskEvents)
           item.toJson(serializer: _backupValueSerializer),
@@ -155,6 +167,7 @@ class LocalBackupService {
       // Delete dependants before their referenced rows while foreign-key
       // enforcement remains enabled for the entire transaction.
       await _database.delete(_database.taskEvents).go();
+      await _database.delete(_database.maintenanceCycles).go();
       await _database.delete(_database.activeTestSessions).go();
       await _database.delete(_database.testRecords).go();
       await _database.delete(_database.maintenanceTasks).go();
@@ -191,6 +204,9 @@ class LocalBackupService {
         if (backup.maintenanceTasks.isNotEmpty) {
           batch.insertAll(_database.maintenanceTasks, backup.maintenanceTasks);
         }
+        if (backup.cycles.isNotEmpty) {
+          batch.insertAll(_database.maintenanceCycles, backup.cycles);
+        }
         if (backup.taskEvents.isNotEmpty) {
           batch.insertAll(_database.taskEvents, backup.taskEvents);
         }
@@ -207,6 +223,7 @@ class LocalBackupService {
           );
         }
       });
+      await _database.initializeKhTargetDefaults();
     });
     return LocalBackupRestoreResult(
       insertedTankCount: backup.tanks.length,
@@ -238,6 +255,9 @@ class LocalBackupService {
         .select(_database.reagentProfiles)
         .get();
     final existingRecords = await _database.select(_database.testRecords).get();
+    final existingCycles = await _database
+        .select(_database.maintenanceCycles)
+        .get();
     final existingTasks = await _database
         .select(_database.maintenanceTasks)
         .get();
@@ -340,6 +360,17 @@ class LocalBackupService {
     final existingTargetsById = {
       for (final item in existingTargets) item.id: item,
     };
+    final legacyKhIds = !backup.preferences.single.khTargetDefaultsApplied
+        ? backup.parameters
+              .where((p) => p.code.toUpperCase() == 'KH')
+              .map((p) => p.id)
+              .toSet()
+        : <String>{};
+    final legacyEnabledKhScopes = {
+      for (final p in backup.tankParameters)
+        if (p.isEnabled && legacyKhIds.contains(p.parameterId))
+          _scopeKey(p.tankId, p.parameterId),
+    };
     for (final incoming in backup.targets) {
       final mappedTankId = tankIdMap[incoming.tankId]!;
       final mappedParameterId = parameterIdMap[incoming.parameterId]!;
@@ -349,14 +380,48 @@ class LocalBackupService {
       final id = existingTargetsById.containsKey(incoming.id)
           ? _nextUniqueId(targetIds)
           : incoming.id;
+      final initializeKh =
+          incoming.minValue == null &&
+          incoming.maxValue == null &&
+          legacyEnabledKhScopes.contains(
+            _scopeKey(incoming.tankId, incoming.parameterId),
+          );
       targets.add(
         incoming.copyWith(
           id: id,
           tankId: mappedTankId,
           parameterId: mappedParameterId,
+          minValue: initializeKh ? const Value(7) : const Value.absent(),
+          maxValue: initializeKh ? const Value(9) : const Value.absent(),
         ),
       );
       targetIds.add(id);
+    }
+    // A merge keeps this device's initialized/cleared targets authoritative.
+    // Only newly introduced scopes from an older backup receive defaults.
+    final incomingParameters = {for (final p in backup.parameters) p.id: p};
+    for (final scope in backup.tankParameters) {
+      if (!legacyEnabledKhScopes.contains(
+        _scopeKey(scope.tankId, scope.parameterId),
+      )) {
+        continue;
+      }
+      final mappedTankId = tankIdMap[scope.tankId]!;
+      final mappedParameterId = parameterIdMap[scope.parameterId]!;
+      if (!targetScopes.add(_scopeKey(mappedTankId, mappedParameterId))) {
+        continue;
+      }
+      targets.add(
+        WaterQualityTarget(
+          id: _nextUniqueId(targetIds),
+          tankId: mappedTankId,
+          parameterId: mappedParameterId,
+          minValue: 7,
+          maxValue: 9,
+          unit: incomingParameters[scope.parameterId]!.unit,
+          updatedAt: scope.updatedAt,
+        ),
+      );
     }
 
     final reagents = <ReagentProfile>[];
@@ -415,6 +480,79 @@ class LocalBackupService {
       }
     }
 
+    final cycleIds = <String>{
+      ...existingCycles.map((c) => c.id),
+      ...backup.cycles.map((c) => c.id),
+    };
+    final existingCyclesById = {for (final c in existingCycles) c.id: c};
+    final incomingCyclesById = {for (final c in backup.cycles) c.id: c};
+    final cycleIdMap = <String, String>{};
+    for (final start in backup.cycles) {
+      final chain = <MaintenanceCycleRow>[];
+      MaintenanceCycleRow? cursor = start;
+      while (cursor != null && !cycleIdMap.containsKey(cursor.id)) {
+        chain.add(cursor);
+        cursor = incomingCyclesById[cursor.previousCycleId];
+      }
+      for (final incoming in chain.reversed) {
+        final existing = existingCyclesById[incoming.id];
+        final mapped = incoming.copyWith(
+          tankId: tankIdMap[incoming.tankId],
+          previousCycleId: Value(
+            incoming.previousCycleId == null
+                ? null
+                : cycleIdMap[incoming.previousCycleId],
+          ),
+        );
+        cycleIdMap[incoming.id] =
+            existing == null || _sameCycleContent(existing, mapped)
+            ? incoming.id
+            : _nextUniqueId(cycleIds);
+      }
+    }
+    final cycles = <MaintenanceCycleRow>[];
+    final activeCycleScopes = {
+      for (final c in existingCycles)
+        if (c.closedOnDate == null) _scopeKey(c.tankId, c.chemical),
+    };
+    for (final incoming in backup.cycles) {
+      final mapped = incoming.copyWith(
+        id: cycleIdMap[incoming.id],
+        tankId: tankIdMap[incoming.tankId],
+        previousCycleId: Value(
+          incoming.previousCycleId == null
+              ? null
+              : cycleIdMap[incoming.previousCycleId],
+        ),
+        notificationId: const Value(null),
+      );
+      final existing = existingCyclesById[mapped.id];
+      if (existing != null && _sameCycleContent(existing, mapped)) continue;
+      if (existing != null ||
+          (mapped.closedOnDate == null &&
+              !activeCycleScopes.add(
+                _scopeKey(mapped.tankId, mapped.chemical),
+              ))) {
+        throw const FormatException('当前海缸已有不同的补液周期，请使用完整恢复或先处理当前周期');
+      }
+      cycles.add(mapped);
+    }
+    final existingCycleChildren = {
+      for (final cycle in existingCycles)
+        if (cycle.previousCycleId != null) cycle.previousCycleId!,
+    };
+    final reusedCycleParents = <MaintenanceCycleRow>[];
+    for (final cycle in cycles) {
+      final parent = existingCyclesById[cycle.previousCycleId];
+      if (parent == null) continue;
+      if (existingCycleChildren.contains(parent.id)) {
+        throw const FormatException('补液历史已有不同的续配记录，请使用完整恢复');
+      }
+      // A new child can reuse an unchanged, childless historical parent. Keep
+      // that snapshot so a preview cannot later attach to a changed lineage.
+      reusedCycleParents.add(parent);
+    }
+
     final tasks = <MaintenanceTask>[];
     final taskIdMap = <String, String>{};
     final taskIds = <String>{
@@ -422,10 +560,38 @@ class LocalBackupService {
       ...backup.maintenanceTasks.map((item) => item.id),
     };
     final existingTasksById = {for (final item in existingTasks) item.id: item};
+    String? chemicalScope(MaintenanceTask task) =>
+        {'lanthanum-plan', 'alkalinity-plan'}.contains(task.source) &&
+            task.planId != null
+        ? '${task.tankId}\u0000${task.source}\u0000${task.planId}'
+        : null;
+    final existingPlans = <String, Map<String, MaintenanceTask>>{};
+    for (final task in existingTasks) {
+      final scope = chemicalScope(task);
+      if (scope != null) (existingPlans[scope] ??= {})[task.id] = task;
+    }
+    final incomingPlans = <String, List<MaintenanceTask>>{};
+    for (final task in backup.maintenanceTasks) {
+      final mapped = task.copyWith(tankId: tankIdMap[task.tankId]);
+      final scope = chemicalScope(mapped);
+      if (scope != null) (incomingPlans[scope] ??= []).add(mapped);
+    }
+    for (final entry in incomingPlans.entries) {
+      final existing = existingPlans[entry.key];
+      if (existing != null &&
+          (existing.length != entry.value.length ||
+              entry.value.any(
+                (task) =>
+                    existing[task.id] == null ||
+                    !_sameTaskContent(existing[task.id]!, task),
+              ))) {
+        throw const FormatException('加药计划与本机版本不同，请使用完整恢复，避免重复加药安排');
+      }
+    }
     for (final incoming in backup.maintenanceTasks) {
       final mapped = incoming.copyWith(tankId: tankIdMap[incoming.tankId]);
       final existing = existingTasksById[incoming.id];
-      if (existing != null && existing == mapped) {
+      if (existing != null && _sameTaskContent(existing, mapped)) {
         taskIdMap[incoming.id] = existing.id;
         continue;
       }
@@ -515,6 +681,8 @@ class LocalBackupService {
       reagents: reagents,
       records: records,
       tasks: tasks,
+      cycles: cycles,
+      reusedCycleParents: reusedCycleParents,
       events: events,
       timerDefaults: timerDefaults,
       sessions: sessions,
@@ -536,6 +704,33 @@ class LocalBackupService {
     LocalBackupMergePlan plan,
   ) async {
     await _database.transaction(() async {
+      for (final expected in plan._reusedCycleParents) {
+        final current = await (_database.select(
+          _database.maintenanceCycles,
+        )..where((row) => row.id.equals(expected.id))).getSingleOrNull();
+        final child =
+            await (_database.select(_database.maintenanceCycles)
+                  ..where((row) => row.previousCycleId.equals(expected.id))
+                  ..limit(1))
+                .getSingleOrNull();
+        if (current == null ||
+            !_sameCycleContent(current, expected) ||
+            child != null) {
+          throw StateError('补液历史已变化，请重新读取备份');
+        }
+      }
+      // Recheck the scope at commit, because a cycle can change after preview.
+      for (final cycle in plan._cycles.where((c) => c.closedOnDate == null)) {
+        final conflict =
+            await (_database.select(_database.maintenanceCycles)..where(
+                  (c) =>
+                      c.tankId.equals(cycle.tankId) &
+                      c.chemical.equals(cycle.chemical) &
+                      c.closedOnDate.isNull(),
+                ))
+                .getSingleOrNull();
+        if (conflict != null) throw StateError('补液周期已变化，请重新读取备份');
+      }
       await _database.batch((batch) {
         if (plan._tanks.isNotEmpty) {
           batch.insertAll(_database.tanks, plan._tanks);
@@ -557,6 +752,9 @@ class LocalBackupService {
         }
         if (plan._tasks.isNotEmpty) {
           batch.insertAll(_database.maintenanceTasks, plan._tasks);
+        }
+        if (plan._cycles.isNotEmpty) {
+          batch.insertAll(_database.maintenanceCycles, plan._cycles);
         }
         if (plan._events.isNotEmpty) {
           batch.insertAll(_database.taskEvents, plan._events);
@@ -627,6 +825,8 @@ class LocalBackupMergePlan {
     required List<ReagentProfile> reagents,
     required List<TestRecord> records,
     required List<MaintenanceTask> tasks,
+    required List<MaintenanceCycleRow> cycles,
+    required List<MaintenanceCycleRow> reusedCycleParents,
     required List<TaskEvent> events,
     required List<TestTimerDefault> timerDefaults,
     required List<ActiveTestSession> sessions,
@@ -640,6 +840,8 @@ class LocalBackupMergePlan {
        _reagents = List.unmodifiable(reagents),
        _records = List.unmodifiable(records),
        _tasks = List.unmodifiable(tasks),
+       _cycles = List.unmodifiable(cycles),
+       _reusedCycleParents = List.unmodifiable(reusedCycleParents),
        _events = List.unmodifiable(events),
        _timerDefaults = List.unmodifiable(timerDefaults),
        _sessions = List.unmodifiable(sessions),
@@ -654,6 +856,8 @@ class LocalBackupMergePlan {
   final List<ReagentProfile> _reagents;
   final List<TestRecord> _records;
   final List<MaintenanceTask> _tasks;
+  final List<MaintenanceCycleRow> _cycles;
+  final List<MaintenanceCycleRow> _reusedCycleParents;
   final List<TaskEvent> _events;
   final List<TestTimerDefault> _timerDefaults;
   final List<ActiveTestSession> _sessions;
@@ -711,6 +915,8 @@ class LocalBackupMergePlan {
       reagents: _reagents,
       records: records,
       tasks: _tasks,
+      cycles: _cycles,
+      reusedCycleParents: _reusedCycleParents,
       events: _events,
       timerDefaults: _timerDefaults,
       sessions: sessions,
@@ -773,12 +979,38 @@ bool _sameRecordContent(TestRecord first, TestRecord second) {
       jsonEncode(second.toJson(serializer: _backupValueSerializer));
 }
 
+bool _sameCycleContent(MaintenanceCycleRow first, MaintenanceCycleRow second) =>
+    jsonEncode(
+      first
+          .copyWith(notificationId: const Value(null))
+          .toJson(serializer: _backupValueSerializer),
+    ) ==
+    jsonEncode(
+      second
+          .copyWith(notificationId: const Value(null))
+          .toJson(serializer: _backupValueSerializer),
+    );
+
+bool _sameTaskContent(MaintenanceTask first, MaintenanceTask second) =>
+    jsonEncode(
+      first
+          .copyWith(notificationId: const Value(null))
+          .toJson(serializer: _backupValueSerializer),
+    ) ==
+    jsonEncode(
+      second
+          .copyWith(notificationId: const Value(null))
+          .toJson(serializer: _backupValueSerializer),
+    );
+
 _DecodedLocalBackup _decodeAndValidateBackup(String source) {
   final decodedValue = jsonDecode(source);
   if (decodedValue is! Map) throw const FormatException('不支持的备份格式');
   final decoded = Map<String, dynamic>.from(decodedValue);
   final sourceVersion = decoded['formatVersion'];
-  if (sourceVersion is! int || sourceVersion < 1 || sourceVersion > 10) {
+  if (sourceVersion is! int ||
+      sourceVersion < 1 ||
+      sourceVersion > LocalBackupService.formatVersion) {
     throw const FormatException('不支持的备份格式');
   }
   late final List<Tank> tanks;
@@ -789,6 +1021,7 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
   late final List<AppPreference> preferences;
   late final List<TestRecord> records;
   late final List<MaintenanceTask> maintenanceTasks;
+  late final List<MaintenanceCycleRow> cycles;
   late final List<TaskEvent> taskEvents;
   late final List<TestTimerDefault> testTimerDefaults;
   late final List<ActiveTestSession> activeTestSessions;
@@ -860,6 +1093,16 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
               )
               .toList()
         : <MaintenanceTask>[];
+    cycles = sourceVersion >= 11
+        ? _list(decoded, 'maintenanceCycles')
+              .map(
+                (item) => MaintenanceCycleRow.fromJson(
+                  item,
+                  serializer: _backupValueSerializer,
+                ),
+              )
+              .toList()
+        : <MaintenanceCycleRow>[];
     taskEvents = sourceVersion >= 3
         ? _list(decoded, 'taskEvents')
               .map(
@@ -970,7 +1213,7 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
         (item) =>
             !tankIds.contains(item.tankId) ||
             !parameterIds.contains(item.parameterId) ||
-            !_validRequiredRange(item.minValue, item.maxValue) ||
+            !_validTargetBounds(item.minValue, item.maxValue) ||
             item.unit.trim().isEmpty ||
             item.unit != parametersById[item.parameterId]?.unit,
       ) ||
@@ -1026,6 +1269,12 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
             item.unit != parametersById[item.parameterId]?.unit ||
             !_validManagedPhotoPath(item.photoPath),
       ) ||
+      records.any(
+        (item) =>
+            item.khTitrationJson != null &&
+            !_validKhTitration(item.khTitrationJson!),
+      ) ||
+      !_validCycles(cycles, tankIds) ||
       maintenanceTasks.any(
         (item) =>
             !tankIds.contains(item.tankId) ||
@@ -1047,6 +1296,7 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
                     item.planTotalDays == null ||
                     item.planTotalDays! < item.planDayIndex!)) ||
             !validRecurrence(item.recurrenceJson) ||
+            !validRollingSchedule(item.rollingJson) ||
             (item.isOneOff && item.recurrenceJson != null) ||
             !_validReminderTime(item.preferredReminderTime),
       ) ||
@@ -1110,6 +1360,10 @@ _DecodedLocalBackup _decodeAndValidateBackup(String source) {
       for (final task in maintenanceTasks)
         task.copyWith(notificationId: const Value(null)),
     ],
+    cycles: [
+      for (final cycle in cycles)
+        cycle.copyWith(notificationId: const Value(null)),
+    ],
     taskEvents: taskEvents,
     testTimerDefaults: testTimerDefaults,
     activeTestSessions: [
@@ -1129,6 +1383,7 @@ class _DecodedLocalBackup {
     required this.preferences,
     required this.records,
     required this.maintenanceTasks,
+    required this.cycles,
     required this.taskEvents,
     required this.testTimerDefaults,
     required this.activeTestSessions,
@@ -1142,6 +1397,7 @@ class _DecodedLocalBackup {
   final List<AppPreference> preferences;
   final List<TestRecord> records;
   final List<MaintenanceTask> maintenanceTasks;
+  final List<MaintenanceCycleRow> cycles;
   final List<TaskEvent> taskEvents;
   final List<TestTimerDefault> testTimerDefaults;
   final List<ActiveTestSession> activeTestSessions;
@@ -1155,7 +1411,85 @@ Map<String, dynamic> _upgradeLegacyPreference(
   if (sourceVersion < 6) 'themeMode': 'system',
   if (sourceVersion < 7) 'maintenanceNotificationsEnabled': true,
   if (sourceVersion < 8) 'fishStockJson': '[]',
+  if (sourceVersion < 11) 'khTargetDefaultsApplied': false,
 };
+
+bool _validTargetBounds(double? lower, double? upper) =>
+    (lower == null || (lower.isFinite && lower >= 0)) &&
+    (upper == null || (upper.isFinite && upper >= 0)) &&
+    (lower == null || upper == null || lower <= upper);
+
+bool _validKhTitration(String source) {
+  try {
+    validateKhTitrationJson(source);
+    return true;
+  } on Object {
+    return false;
+  }
+}
+
+bool _validCycles(List<MaintenanceCycleRow> rows, Set<String> tankIds) {
+  try {
+    if (!_hasUniqueIds(rows.map((r) => r.id))) return false;
+    final cycles = <String, MaintenanceCycle>{};
+    final activeScopes = <String>{};
+    for (final row in rows) {
+      if (!tankIds.contains(row.tankId) ||
+          !row.createdAt.isUtc ||
+          !row.updatedAt.isUtc ||
+          row.inputJson.length > 4096) {
+        return false;
+      }
+      final cycle = maintenanceCycleFromRow(row);
+      if (cycle.closedOnDate == null &&
+          !activeScopes.add(_scopeKey(cycle.tankId, cycle.chemical.name))) {
+        return false;
+      }
+      cycles[cycle.id] = cycle;
+    }
+    final parents = <String>{};
+    for (final cycle in cycles.values) {
+      final parentId = cycle.previousCycleId;
+      if (parentId == null) continue;
+      final parent = cycles[parentId];
+      if (parent == null ||
+          !parents.add(parentId) ||
+          parent.tankId != cycle.tankId ||
+          parent.chemical != cycle.chemical ||
+          parent.closedOnDate != cycle.startDate ||
+          parent.startDate.compareTo(cycle.startDate) > 0 ||
+          cycle.retainedMl > parent.solutionMl ||
+          cycle.retainedMl > cycle.solutionMl) {
+        return false;
+      }
+      final stockEffect = cycle.chemical == DosingChemical.po4
+          ? 10.0
+          : 0.1 / cycle.input.khStrength;
+      final expectedStock =
+          (cycle.effectPerMl * cycle.solutionMl -
+              cycle.retainedMl * parent.effectPerMl) /
+          stockEffect;
+      if ((expectedStock - cycle.addedStockMl).abs() >
+          1e-8 * (1 + cycle.addedStockMl.abs())) {
+        return false;
+      }
+    }
+    // Linear, iterative walk also rejects zero-day cycles without deep recursion.
+    final checked = <String>{};
+    for (final start in cycles.keys) {
+      final path = <String>{};
+      String? id = start;
+      while (id != null && !checked.contains(id)) {
+        if (!path.add(id)) return false;
+        id = cycles[id]!.previousCycleId;
+      }
+      checked.addAll(path);
+    }
+    return true;
+  } on Object {
+    return false;
+  }
+}
 
 Map<String, dynamic> _upgradeLegacyMaintenanceTask(
   Map<String, dynamic> source,

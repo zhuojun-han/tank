@@ -85,10 +85,12 @@ ConfirmedMeasurement? _confirmedMeasurement(TestRecord? record) {
 }
 
 UserTargetRange? _targetRange(WaterQualityTarget? target) {
-  if (target == null) return null;
+  if (target == null || target.minValue == null || target.maxValue == null) {
+    return null;
+  }
   return UserTargetRange(
-    minValue: target.minValue,
-    maxValue: target.maxValue,
+    minValue: target.minValue!,
+    maxValue: target.maxValue!,
     unit: target.unit,
   );
 }

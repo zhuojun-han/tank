@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/calculators/domain/lanthanum_calculator.dart';
 import 'package:lanjiao_water_quality/features/maintenance/data/maintenance_repository.dart';
+import 'package:lanjiao_water_quality/features/maintenance/domain/rolling_schedule.dart';
 import 'package:lanjiao_water_quality/features/tanks/data/tank_repository.dart';
 
 void main() {
@@ -191,7 +192,7 @@ void main() {
     expect(remainingEvents.single.taskId, secondId);
   });
 
-  test('完成在事务中记录事件并从操作时间计算日周月周期', () async {
+  test('完成在事务中记录事件并从实际完成日计算日周月周期', () async {
     clock = DateTime.utc(2026, 1, 31, 14, 20);
     final taskIds = <String>[];
     for (final entry in [
@@ -219,9 +220,9 @@ void main() {
     final stored = await repository
         .watchAllTasks(AppDatabase.defaultTankId)
         .first;
-    expect(stored[0].dueAt.toUtc(), DateTime.utc(2026, 2, 1, 14, 20));
-    expect(stored[1].dueAt.toUtc(), DateTime.utc(2026, 2, 14, 14, 20));
-    expect(stored[2].dueAt.toUtc(), DateTime.utc(2026, 2, 28, 14, 20));
+    expect(rollingSchedule(stored[0]).nextDate, '2026-02-01');
+    expect(rollingSchedule(stored[1]).nextDate, '2026-02-14');
+    expect(rollingSchedule(stored[2]).nextDate, '2026-02-28');
     final events = await repository
         .watchCompletedEvents(AppDatabase.defaultTankId)
         .first;
@@ -251,7 +252,7 @@ void main() {
     expect(pending, isEmpty);
   });
 
-  test('跳过推进周期；稍后提醒保留原到期时间并出现在待处理查询', () async {
+  test('停止保留历史与原始日期；旧稍后提醒仍可读取', () async {
     final originalDue = DateTime.utc(2026, 8, 11, 1);
     final taskId = await repository.createTask(
       tankId: AppDatabase.defaultTankId,
@@ -285,7 +286,8 @@ void main() {
     );
     task = (await repository.watchAllTasks(AppDatabase.defaultTankId).first)
         .single;
-    expect(task.dueAt.toUtc(), DateTime.utc(2026, 8, 19, 3));
+    expect(task.dueAt.toUtc(), originalDue);
+    expect(task.status, 'skipped');
     final all = await repository
         .watchTaskItems(
           AppDatabase.defaultTankId,

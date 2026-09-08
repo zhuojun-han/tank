@@ -8,6 +8,7 @@ import '../../../core/notifications/local_notification_service.dart';
 import '../../tanks/application/tank_providers.dart';
 import 'maintenance_notification_coordinator.dart';
 import 'maintenance_providers.dart';
+import '../../calculators/application/maintenance_cycle_providers.dart';
 
 final localNotificationServiceProvider = Provider<LocalNotificationService>((
   ref,
@@ -38,6 +39,7 @@ final maintenanceNotificationCoordinatorProvider =
       final coordinator = MaintenanceNotificationCoordinator(
         taskStore: RepositoryMaintenanceNotificationTaskStore(
           ref.watch(maintenanceRepositoryProvider),
+          cycles: ref.watch(maintenanceCycleRepositoryProvider),
         ),
         notificationService: ref.watch(localNotificationServiceProvider),
         notificationsEnabled: ref
@@ -47,6 +49,11 @@ final maintenanceNotificationCoordinatorProvider =
       if (ref.watch(notificationsEnabledProvider)) {
         unawaited(coordinator.start());
       }
+      ref.listen(maintenanceDateProvider, (previous, next) {
+        if (previous != null && previous != next) {
+          unawaited(coordinator.reconcileNow());
+        }
+      });
       ref.onDispose(() => unawaited(coordinator.dispose()));
       return coordinator;
     });

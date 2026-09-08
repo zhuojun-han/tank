@@ -332,20 +332,45 @@ class TankRepository {
               updatedAt: DateTime.now().toUtc(),
             ),
           );
+      if (enabled && parameterId == AppDatabase.khId) {
+        final target =
+            await (_database.select(_database.waterQualityTargets)..where(
+                  (row) =>
+                      row.tankId.equals(tankId) &
+                      row.parameterId.equals(parameterId),
+                ))
+                .getSingleOrNull();
+        if (target == null) {
+          final parameter = await (_database.select(
+            _database.waterParameters,
+          )..where((row) => row.id.equals(parameterId))).getSingle();
+          await _database
+              .into(_database.waterQualityTargets)
+              .insert(
+                WaterQualityTargetsCompanion.insert(
+                  id: _uuid.v4(),
+                  tankId: tankId,
+                  parameterId: parameterId,
+                  minValue: const Value(7),
+                  maxValue: const Value(9),
+                  unit: parameter.unit,
+                  updatedAt: DateTime.now().toUtc(),
+                ),
+              );
+        }
+      }
     });
   }
 
   Future<void> setTarget({
     required String tankId,
     required String parameterId,
-    required double minValue,
-    required double maxValue,
+    required double? minValue,
+    required double? maxValue,
   }) async {
-    if (!minValue.isFinite ||
-        !maxValue.isFinite ||
-        minValue < 0 ||
-        maxValue < 0 ||
-        minValue > maxValue) {
+    if ((minValue != null && (!minValue.isFinite || minValue < 0)) ||
+        (maxValue != null && (!maxValue.isFinite || maxValue < 0)) ||
+        (minValue != null && maxValue != null && minValue > maxValue)) {
       throw ArgumentError('目标范围必须为非负数，且下限不能大于上限');
     }
     final parameterQuery =
@@ -379,8 +404,8 @@ class TankRepository {
             id: existing?.id ?? _uuid.v4(),
             tankId: tankId,
             parameterId: parameterId,
-            minValue: minValue,
-            maxValue: maxValue,
+            minValue: Value(minValue),
+            maxValue: Value(maxValue),
             unit: parameter.unit,
             updatedAt: now,
           ),

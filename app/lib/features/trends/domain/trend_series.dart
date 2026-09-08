@@ -23,7 +23,8 @@ class TrendScale {
   }) {
     final values = <double>[
       for (final item in data) ...[item.lower, item.upper],
-      if (target != null) ...[target.minValue, target.maxValue],
+      if (target?.minValue case final double lower) lower,
+      if (target?.maxValue case final double upper) upper,
     ];
     if (values.isEmpty) return const TrendScale(minimum: 0, maximum: 1);
     var minimum = values.reduce((a, b) => a < b ? a : b);

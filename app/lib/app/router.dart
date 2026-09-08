@@ -63,7 +63,7 @@ GoRouter createAppRouter() => GoRouter(
     GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
     GoRoute(
       path: '/maintenance-dosing',
-      builder: (_, _) => Consumer(
+      builder: (_, state) => Consumer(
         builder: (context, ref, child) {
           final tank = ref.watch(currentTankProvider);
           return tank.when(
@@ -74,7 +74,9 @@ GoRouter createAppRouter() => GoRouter(
                 const Scaffold(body: Center(child: Text('无法读取当前海缸'))),
             data: (value) => MaintenanceDosingPage(
               key: ValueKey(value?.id),
+              tankId: value?.id,
               tankName: value?.name,
+              initialChemical: state.uri.queryParameters['chemical'],
               previousKh: value == null
                   ? null
                   : ref.read(calculatorSessionProvider).khPlanFor(value.id),
@@ -107,6 +109,7 @@ GoRouter createAppRouter() => GoRouter(
       path: '/test-flow',
       builder: (_, state) => TestWorkflowPage(
         initialSessionId: state.uri.queryParameters['sessionId'],
+        initialParameterId: state.uri.queryParameters['parameterId'],
       ),
     ),
   ],

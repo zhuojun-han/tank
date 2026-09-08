@@ -32,12 +32,12 @@ void main() {
     );
     await TankRepository(database).setParameterEnabled(
       tankId: AppDatabase.defaultTankId,
-      parameterId: AppDatabase.khId,
+      parameterId: AppDatabase.caId,
       enabled: true,
     );
     final sessionId = await controller.createDraft(
       tankId: AppDatabase.defaultTankId,
-      parameterId: AppDatabase.khId,
+      parameterId: AppDatabase.caId,
     );
     await controller.start((await repository.readDraftById(sessionId))!);
     final running = (await repository.readDraftById(sessionId))!;
@@ -109,12 +109,12 @@ void main() {
     );
     await TankRepository(database).setParameterEnabled(
       tankId: AppDatabase.defaultTankId,
-      parameterId: AppDatabase.khId,
+      parameterId: AppDatabase.caId,
       enabled: true,
     );
     final sessionId = await controller.createDraft(
       tankId: AppDatabase.defaultTankId,
-      parameterId: AppDatabase.khId,
+      parameterId: AppDatabase.caId,
     );
     await controller.start((await repository.readDraftById(sessionId))!);
     final running = (await repository.readDraftById(sessionId))!;

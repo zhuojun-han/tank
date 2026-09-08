@@ -122,6 +122,17 @@ class _Content extends ConsumerWidget {
                   label: const Text('开始完整检测'),
                 ),
                 const SizedBox(height: 8),
+                if (enabledParameters.any(
+                  (parameter) => parameter.id == AppDatabase.khId,
+                ))
+                  OutlinedButton.icon(
+                    key: const Key('start-kh-titration'),
+                    onPressed: () => context.push(
+                      '/test-flow?parameterId=${AppDatabase.khId}',
+                    ),
+                    icon: const Icon(Icons.water_drop_outlined),
+                    label: const Text('KH 滴定检测'),
+                  ),
                 OutlinedButton.icon(
                   key: const Key('add-test-record'),
                   onPressed: enabledParameters.isEmpty
@@ -152,9 +163,11 @@ class _Content extends ConsumerWidget {
                             '${parameter.code} · ${parameter.displayName}',
                           ),
                           subtitle: Text(
-                            target == null
+                            target == null ||
+                                    (target.minValue == null &&
+                                        target.maxValue == null)
                                 ? '尚未设置 · ${parameter.unit}'
-                                : '${_number(target.minValue)}–${_number(target.maxValue)} ${target.unit}',
+                                : '${_targetNumber(target.minValue)}–${_targetNumber(target.maxValue)} ${target.unit}',
                           ),
                           trailing: const Icon(Icons.edit_outlined),
                           onTap: () =>
@@ -1220,12 +1233,12 @@ class _ParameterOption {
   final bool isEnabled;
 }
 
-Future<(double, double)?> _showTargetDialog(
+Future<(double?, double?)?> _showTargetDialog(
   BuildContext context,
   WaterParameter parameter,
   WaterQualityTarget? target,
 ) {
-  return showDialog<(double, double)>(
+  return showDialog<(double?, double?)>(
     context: context,
     builder: (_) => _TargetRangeDialog(parameter: parameter, target: target),
   );
@@ -1251,10 +1264,10 @@ class _TargetRangeDialogState extends State<_TargetRangeDialog> {
     super.initState();
     final target = widget.target;
     _minController = TextEditingController(
-      text: target == null ? '' : _number(target.minValue),
+      text: target?.minValue?.toString() ?? '',
     );
     _maxController = TextEditingController(
-      text: target == null ? '' : _number(target.maxValue),
+      text: target?.maxValue?.toString() ?? '',
     );
   }
 
@@ -1268,12 +1281,11 @@ class _TargetRangeDialogState extends State<_TargetRangeDialog> {
   void _submit() {
     final min = double.tryParse(_minController.text.trim());
     final max = double.tryParse(_maxController.text.trim());
-    if (min == null ||
-        max == null ||
-        !min.isFinite ||
-        !max.isFinite ||
-        min < 0 ||
-        max < min) {
+    if ((_minController.text.trim().isNotEmpty && min == null) ||
+        (_maxController.text.trim().isNotEmpty && max == null) ||
+        (min != null && (!min.isFinite || min < 0)) ||
+        (max != null && (!max.isFinite || max < 0)) ||
+        (min != null && max != null && max < min)) {
       setState(() => _errorText = '请输入有效的非负范围');
       return;
     }
@@ -1360,6 +1372,14 @@ Future<bool> _confirm(
 }
 
 String _confirmedValue(TestRecord record) {
+  if (record.parameterId == AppDatabase.khId &&
+      record.khTitrationJson != null) {
+    final min = record.confirmedMinValue.toStringAsFixed(1);
+    final max = record.confirmedMaxValue;
+    return max == null || max == record.confirmedMinValue
+        ? min
+        : '$min–${max.toStringAsFixed(1)}';
+  }
   return record.confirmedMaxValue == null
       ? _number(record.confirmedMinValue)
       : '${_number(record.confirmedMinValue)}–${_number(record.confirmedMaxValue!)}';
@@ -1380,6 +1400,12 @@ String _number(double value) => value == value.roundToDouble()
           .toStringAsFixed(3)
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
+
+String _targetNumber(double? value) => value == null
+    ? '未设'
+    : value == value.truncateToDouble()
+    ? value.toInt().toString()
+    : value.toString();
 
 String _dateTime(DateTime value) {
   final local = value.toLocal();

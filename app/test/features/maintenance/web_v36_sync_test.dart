@@ -8,6 +8,7 @@ import 'package:lanjiao_water_quality/features/calculators/domain/alkalinity_cal
 import 'package:lanjiao_water_quality/features/calculators/domain/lanthanum_calculator.dart';
 import 'package:lanjiao_water_quality/features/maintenance/data/maintenance_repository.dart';
 import 'package:lanjiao_water_quality/features/maintenance/domain/recurrence.dart';
+import 'package:lanjiao_water_quality/features/maintenance/domain/rolling_schedule.dart';
 import 'package:lanjiao_water_quality/features/tanks/data/tank_repository.dart';
 
 void main() {
@@ -24,16 +25,30 @@ void main() {
   tearDown(() => db.close());
   Future<List<MaintenanceTaskItem>> items() =>
       repo.watchTaskItems(tank, MaintenanceTaskFilter.all).first;
-  Future<String> recurring() => repo.createTask(
-    tankId: tank,
-    title: '滤棉',
-    intervalAmount: 2,
-    intervalUnit: MaintenanceIntervalUnit.day,
-    dueAt: DateTime(2026, 9, 1, 9),
-    calendarRecurrence: true,
-  );
+  // Explicit pre-WEB008 storage fixture: new tasks never fabricate past completion.
+  Future<String> recurring() async {
+    final id = await repo.createTask(
+      tankId: tank,
+      title: '滤棉',
+      intervalAmount: 2,
+      intervalUnit: MaintenanceIntervalUnit.day,
+      dueAt: DateTime(2026, 9, 1, 9),
+    );
+    await (db.update(db.maintenanceTasks)..where((t) => t.id.equals(id))).write(
+      MaintenanceTasksCompanion(
+        rollingJson: const Value(null),
+        recurrenceJson: Value(
+          Recurrence(
+            start: '2026-09-01',
+            completedBefore: '2026-09-05',
+          ).encode(),
+        ),
+      ),
+    );
+    return id;
+  }
 
-  test('按开始日展开六周，过去默认完成，逐日恢复完成不影响未来', () async {
+  test('旧固定规则默认历史可读，恢复滚到今天并按实际完成日继续', () async {
     final id = await recurring();
     var dates = calendarOccurrences(
       await items(),
@@ -61,9 +76,17 @@ void main() {
       9,
       now: now,
     );
-    expect(dates.first.state, MaintenanceTaskViewState.overdue);
-    expect(dates[2].state, MaintenanceTaskViewState.completed);
-    expect(dates[3].state, MaintenanceTaskViewState.upcoming);
+    expect(dates.map((i) => dateKey(i.task.dueAt)), [
+      '2026-09-03',
+      '2026-09-05',
+      '2026-09-07',
+      '2026-09-09',
+    ]);
+    expect(
+      dates.take(2).every((i) => i.state == MaintenanceTaskViewState.completed),
+      true,
+    );
+    expect(dates[2].state, MaintenanceTaskViewState.upcoming);
     expect(await db.select(db.maintenanceTasks).get(), hasLength(1));
     final next = (await repo.watchAllTaskItems().first).single;
     expect(dateKey(next.task.dueAt), '2026-09-07');
@@ -95,15 +118,6 @@ void main() {
         now: now,
       ).single.state,
       MaintenanceTaskViewState.overdue,
-    );
-    await repo.skip(
-      tankId: tank,
-      taskId: id,
-      occurrenceDate: DateTime(2026, 9, 7),
-    );
-    expect(
-      calendarOccurrences(await items(), DateTime(2026, 9, 7), 1, now: now),
-      isEmpty,
     );
     await repo.stopRecurring(
       tankId: tank,
@@ -141,14 +155,8 @@ void main() {
     );
     final task = (await items()).single.task;
     expect(task.id, id);
-    expect(
-      Recurrence.decode(task.recurrenceJson!).states['2026-09-01'],
-      'pending',
-    );
-    expect(
-      Recurrence.decode(task.recurrenceJson!).states['2026-09-05'],
-      'completed',
-    );
+    expect(rollingSchedule(task).reopenedDates, contains('2026-09-01'));
+    expect(rollingSchedule(task).completed.single.completedDate, '2026-09-05');
     final source = await LocalBackupService(db).exportJson();
     final target = AppDatabase(NativeDatabase.memory());
     addTearDown(target.close);
@@ -203,10 +211,15 @@ void main() {
       replaceExisting: true,
     );
     final all = await db.select(db.maintenanceTasks).get();
-    expect(all, hasLength(9));
+    expect(all, hasLength(11));
     expect(all.singleWhere((t) => t.id == old.first).status, 'completed');
-    expect(all.any((t) => t.id == old[1]), false);
+    expect(all.singleWhere((t) => t.id == old[1]).status, 'archived');
     expect(await db.select(db.taskEvents).get(), hasLength(1));
+    await expectLater(
+      repo.skip(tankId: tank, taskId: fresh[1]),
+      throwsStateError,
+    );
+    await repo.complete(tankId: tank, taskId: fresh.first);
     await repo.skip(tankId: tank, taskId: fresh[1]);
     expect(
       (await items())
@@ -214,7 +227,6 @@ void main() {
           .every((i) => i.task.status == 'skipped'),
       true,
     );
-    await repo.complete(tankId: tank, taskId: fresh.first);
     now = now.add(const Duration(seconds: 1));
     await repo.reopen(tankId: tank, taskId: fresh.first);
     expect(
@@ -226,7 +238,7 @@ void main() {
     await LocalBackupService(
       target,
     ).restoreReplace(await LocalBackupService(db).exportJson());
-    expect(await target.select(target.maintenanceTasks).get(), hasLength(9));
+    expect(await target.select(target.maintenanceTasks).get(), hasLength(11));
   });
 
   test('覆盖计划新写入失败时事务恢复全部旧任务', () async {
@@ -267,7 +279,7 @@ void main() {
     await repo.stopRecurring(tankId: tank, taskId: id, from: now);
     expect(
       (await repo.watchAllTaskItems().first).single.task.status,
-      'disabled',
+      'skipped',
     );
   });
 }

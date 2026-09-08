@@ -54,6 +54,14 @@ class TestWorkflowController {
     );
   }
 
+  /// KH uses a syringe reading immediately. Switching to it stops countdowns
+  /// for this tank while keeping their unfinished inputs available to resume.
+  Future<void> prepareKhTitration(String tankId) async {
+    for (final session in await _repository.readRunningTimersForTank(tankId)) {
+      await reset(session);
+    }
+  }
+
   Future<String> createDraft({
     required String tankId,
     required String parameterId,

@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../data/database/app_database.dart';
+import '../../test_timer/domain/kh_titration.dart';
 
 class TestRecordRepository {
   TestRecordRepository(this._database, [this._uuid = const Uuid()]);
@@ -110,6 +113,49 @@ class TestRecordRepository {
             updatedAt: now,
           ),
         );
+    return id;
+  }
+
+  Future<String> createKhTitration({
+    required String tankId,
+    required double initialMl,
+    required double remainingMl,
+    required DateTime measuredAt,
+  }) async {
+    final result = calculateKhTitration(initialMl, remainingMl);
+    final parameter = await _requireParameter(
+      tankId,
+      AppDatabase.khId,
+      requireEnabled: true,
+    );
+    final now = DateTime.now().toUtc();
+    final id = _uuid.v4();
+    await _database.transaction(() async {
+      await _database
+          .into(_database.testRecords)
+          .insert(
+            TestRecordsCompanion.insert(
+              id: id,
+              tankId: tankId,
+              parameterId: AppDatabase.khId,
+              confirmedMinValue: result.confirmedValue,
+              unit: parameter.unit,
+              measuredAt: measuredAt.toUtc(),
+              confirmedAt: Value(measuredAt.toUtc()),
+              khTitrationJson: Value(jsonEncode(result.toJson())),
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      // Any old KH timer was cancelled on entry; a confirmed result finishes
+      // that legacy draft without touching another parameter or tank.
+      await (_database.delete(_database.activeTestSessions)..where(
+            (row) =>
+                row.tankId.equals(tankId) &
+                row.parameterId.equals(AppDatabase.khId),
+          ))
+          .go();
+    });
     return id;
   }
 

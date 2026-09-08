@@ -15,11 +15,17 @@ import '../application/test_session_providers.dart';
 import '../application/test_workflow_controller.dart';
 import '../data/test_session_repository.dart';
 import '../domain/test_timer.dart';
+import 'kh_titration_panel.dart';
 
 class TestWorkflowPage extends ConsumerStatefulWidget {
-  const TestWorkflowPage({this.initialSessionId, super.key});
+  const TestWorkflowPage({
+    this.initialSessionId,
+    this.initialParameterId,
+    super.key,
+  });
 
   final String? initialSessionId;
+  final String? initialParameterId;
 
   @override
   ConsumerState<TestWorkflowPage> createState() => _TestWorkflowPageState();
@@ -51,6 +57,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   @override
   void initState() {
     super.initState();
+    _selectedParameterId = widget.initialParameterId;
     WidgetsBinding.instance.addObserver(this);
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
@@ -348,101 +355,109 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
                 }),
         ),
         const SizedBox(height: 12),
-        reagents.when(
-          loading: () => const LinearProgressIndicator(),
-          error: (error, _) => Text('无法读取试剂：$error'),
-          data: (items) {
-            final enabled = items.where((item) => item.isEnabled).toList();
-            final effectiveReagentId = _selectedReagentId == ''
-                ? null
-                : enabled.any((item) => item.id == _selectedReagentId)
-                ? _selectedReagentId
-                : enabled.length == 1
-                ? enabled.first.id
-                : null;
-            return DropdownButtonFormField<String>(
-              key: Key('workflow-reagent-${effectiveReagentId ?? 'none'}'),
-              initialValue: effectiveReagentId ?? '',
-              decoration: const InputDecoration(
-                labelText: '试剂资料（可选）',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                const DropdownMenuItem<String>(value: '', child: Text('不指定试剂')),
-                for (final item in enabled)
-                  DropdownMenuItem<String>(
-                    value: item.id,
-                    child: Text(
-                      '${item.brand} · ${item.defaultDevelopmentSeconds} 秒',
-                    ),
-                  ),
-              ],
-              onChanged: _busy
+        if (parameter.id == AppDatabase.khId)
+          _khPanel(tankId)
+        else ...[
+          reagents.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (error, _) => Text('无法读取试剂：$error'),
+            data: (items) {
+              final enabled = items.where((item) => item.isEnabled).toList();
+              final effectiveReagentId = _selectedReagentId == ''
                   ? null
-                  : (value) => setState(() => _selectedReagentId = value ?? ''),
-            );
-          },
-        ),
-        const SizedBox(height: 24),
-        Text('默认等待时长', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        defaultSeconds.when(
-          loading: () => const LinearProgressIndicator(),
-          error: (error, _) => Text('无法读取默认时长：$error'),
-          data: (seconds) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final quick in TestTimerSnapshot.quickDurationSeconds)
-                    ChoiceChip(
-                      label: Text('${quick ~/ 60} 分钟'),
-                      selected: seconds == quick,
-                      onSelected: _busy
-                          ? null
-                          : (_) => _setDuration(scope, quick),
-                    ),
-                  ActionChip(
-                    avatar: const Icon(Icons.tune, size: 18),
-                    label: Text('自定义·${_formatDuration(seconds)}'),
-                    onPressed: _busy
-                        ? null
-                        : () => _chooseCustomDuration(scope, seconds),
+                  : enabled.any((item) => item.id == _selectedReagentId)
+                  ? _selectedReagentId
+                  : enabled.length == 1
+                  ? enabled.first.id
+                  : null;
+              return DropdownButtonFormField<String>(
+                key: Key('workflow-reagent-${effectiveReagentId ?? 'none'}'),
+                initialValue: effectiveReagentId ?? '',
+                decoration: const InputDecoration(
+                  labelText: '试剂资料（可选）',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String>(
+                    value: '',
+                    child: Text('不指定试剂'),
                   ),
+                  for (final item in enabled)
+                    DropdownMenuItem<String>(
+                      value: item.id,
+                      child: Text(
+                        '${item.brand} · ${item.defaultDevelopmentSeconds} 秒',
+                      ),
+                    ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              const Text('自定义范围为 10 秒至 60 分钟，按海缸和参数分别保存。'),
-            ],
+                onChanged: _busy
+                    ? null
+                    : (value) =>
+                          setState(() => _selectedReagentId = value ?? ''),
+              );
+            },
           ),
-        ),
-        const SizedBox(height: 24),
-        FilledButton.icon(
-          key: const Key('create-test-draft'),
-          onPressed: _busy
-              ? null
-              : () async {
-                  final reagentItems =
-                      reagents.value ?? const <ReagentProfile>[];
-                  final enabled = reagentItems
-                      .where((item) => item.isEnabled)
-                      .toList();
-                  final reagentId = _selectedReagentId == ''
-                      ? null
-                      : enabled.any((item) => item.id == _selectedReagentId)
-                      ? _selectedReagentId
-                      : enabled.length == 1
-                      ? enabled.first.id
-                      : null;
-                  await _createDraft(scope, reagentId);
-                },
-          icon: const Icon(Icons.science_outlined),
-          label: const Text('创建检测草稿'),
-        ),
-        const SizedBox(height: 12),
-        const Text('返回保留草稿，放弃则删除。'),
+          const SizedBox(height: 24),
+          Text('默认等待时长', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          defaultSeconds.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (error, _) => Text('无法读取默认时长：$error'),
+            data: (seconds) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final quick in TestTimerSnapshot.quickDurationSeconds)
+                      ChoiceChip(
+                        label: Text('${quick ~/ 60} 分钟'),
+                        selected: seconds == quick,
+                        onSelected: _busy
+                            ? null
+                            : (_) => _setDuration(scope, quick),
+                      ),
+                    ActionChip(
+                      avatar: const Icon(Icons.tune, size: 18),
+                      label: Text('自定义·${_formatDuration(seconds)}'),
+                      onPressed: _busy
+                          ? null
+                          : () => _chooseCustomDuration(scope, seconds),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('自定义范围为 10 秒至 60 分钟，按海缸和参数分别保存。'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            key: const Key('create-test-draft'),
+            onPressed: _busy
+                ? null
+                : () async {
+                    final reagentItems =
+                        reagents.value ?? const <ReagentProfile>[];
+                    final enabled = reagentItems
+                        .where((item) => item.isEnabled)
+                        .toList();
+                    final reagentId = _selectedReagentId == ''
+                        ? null
+                        : enabled.any((item) => item.id == _selectedReagentId)
+                        ? _selectedReagentId
+                        : enabled.length == 1
+                        ? enabled.first.id
+                        : null;
+                    await _createDraft(scope, reagentId);
+                  },
+            icon: const Icon(Icons.science_outlined),
+            label: const Text('创建检测草稿'),
+          ),
+          const SizedBox(height: 12),
+          const Text('返回保留草稿，放弃则删除。'),
+        ],
       ],
     );
   }
@@ -452,6 +467,18 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     required String tankName,
     required WaterParameter parameter,
   }) {
+    if (parameter.id == AppDatabase.khId &&
+        session.stage != ActiveTestStage.review.name) {
+      _setVisibleSession(null);
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(tankName, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 16),
+          _khPanel(session.tankId),
+        ],
+      );
+    }
     _setVisibleSession(session);
     if (session.stage == ActiveTestStage.review.name) {
       _hydrateReview(session);
@@ -505,6 +532,33 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
       ],
     );
   }
+
+  Widget _khPanel(String tankId) => KhTitrationPanel(
+    key: ValueKey('kh-$tankId'),
+    tankId: tankId,
+    onSaved: () {
+      _showMessage('检测记录已保存');
+      context.go('/test');
+    },
+    onCancel: () => context.go('/test'),
+    onManual: () async {
+      final repository = ref.read(testSessionRepositoryProvider);
+      final controller = ref.read(testWorkflowControllerProvider);
+      var session = await repository.readDraft(
+        tankId: tankId,
+        parameterId: AppDatabase.khId,
+      );
+      if (session == null) {
+        final id = await controller.createDraft(
+          tankId: tankId,
+          parameterId: AppDatabase.khId,
+        );
+        session = await repository.readDraftById(id);
+      }
+      if (!mounted || session == null) return;
+      await controller.useManualEntry(session);
+    },
+  );
 
   Widget _buildTimerCard(
     ActiveTestSession session,

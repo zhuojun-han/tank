@@ -5,10 +5,13 @@ class ChemicalPlanCard extends StatelessWidget {
   const ChemicalPlanCard({
     required this.items,
     required this.onStop,
+    this.onComplete,
+    this.onDelay,
     super.key,
   });
   final List<MaintenanceTaskItem> items;
   final ValueChanged<MaintenanceTaskItem> onStop;
+  final ValueChanged<MaintenanceTaskItem>? onComplete, onDelay;
   @override
   Widget build(BuildContext context) {
     final sorted = [...items]
@@ -60,9 +63,34 @@ class ChemicalPlanCard extends StatelessWidget {
               child: const Text('查看每日安排'),
             ),
             if (pending.isNotEmpty)
-              OutlinedButton(
-                onPressed: () => onStop(pending.first),
-                child: const Text('停止后续计划'),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (onComplete != null)
+                    FilledButton(
+                      onPressed: () => onComplete!(pending.first),
+                      child: const Text('完成本次'),
+                    ),
+                  Row(
+                    children: [
+                      if (onDelay != null) ...[
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => onDelay!(pending.first),
+                            child: const Text('延迟'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => onStop(pending.first),
+                          child: const Text('停止后续计划'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
           ],
         ),

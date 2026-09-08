@@ -6,6 +6,7 @@ import '../../../data/database/app_database.dart';
 import '../../maintenance/application/maintenance_providers.dart';
 import '../../tanks/application/tank_providers.dart';
 import '../domain/lanthanum_calculator.dart';
+import '../domain/target_default.dart';
 import 'plan_confirmation.dart';
 
 class LanthanumCalculatorPage extends ConsumerStatefulWidget {
@@ -27,6 +28,8 @@ class _LanthanumCalculatorPageState
   String? _planTankId;
   String? _error;
   bool _saving = false;
+  String? _targetTankId;
+  bool _targetEdited = false;
 
   @override
   void dispose() {
@@ -41,6 +44,30 @@ class _LanthanumCalculatorPageState
   @override
   Widget build(BuildContext context) {
     final tank = ref.watch(currentTankProvider).value;
+    final targets = tank == null
+        ? null
+        : ref.watch(waterQualityTargetsProvider(tank.id)).value;
+    if (tank != null && targets != null) {
+      if (_targetTankId != tank.id) {
+        _targetTankId = tank.id;
+        _targetEdited = false;
+        _plan = null;
+      }
+      if (!_targetEdited) {
+        final target = targets
+            .where((row) => row.parameterId == AppDatabase.po4Id)
+            .firstOrNull;
+        final text = calculatorTargetDefault(
+          kh: false,
+          minimum: target?.minValue,
+          maximum: target?.maxValue,
+        );
+        if (_targetPo4.text != text) {
+          _targetPo4.text = text;
+          _plan = null;
+        }
+      }
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('氯化镧降低 PO4')),
       body: ListView(
@@ -119,7 +146,9 @@ class _LanthanumCalculatorPageState
           const SizedBox(height: 12),
           FilledButton.icon(
             key: const Key('calculate-lanthanum'),
-            onPressed: _saving || tank == null ? null : _calculate,
+            onPressed: _saving || tank == null || targets == null
+                ? null
+                : _calculate,
             icon: const Icon(Icons.calculate_outlined),
             label: const Text('计算母液用量与计划天数'),
           ),
@@ -183,7 +212,10 @@ class _LanthanumCalculatorPageState
     key: key,
     controller: controller,
     enabled: !_saving,
-    onChanged: (_) => setState(() => _plan = null),
+    onChanged: (_) => setState(() {
+      if (identical(controller, _targetPo4)) _targetEdited = true;
+      _plan = null;
+    }),
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
     decoration: InputDecoration(labelText: label, helperText: helper),
   );

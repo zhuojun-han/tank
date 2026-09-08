@@ -22,7 +22,7 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('schema v8 事务性创建默认海缸、内置参数、试剂、偏好和阶段 4 表', () async {
+  test('当前 schema 事务性创建默认海缸、内置参数、试剂、偏好和阶段 4 表', () async {
     final tanks = await database.select(database.tanks).get();
     final parameters = await database.select(database.waterParameters).get();
     final enabled = await repository
@@ -33,7 +33,7 @@ void main() {
         .customSelect('PRAGMA user_version')
         .getSingle();
 
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(tanks, hasLength(1));
     expect(tanks.single.name, '我的海缸');
     expect(
@@ -155,7 +155,7 @@ void main() {
     );
   });
 
-  test('schema v1 迁移到 v8 时保留旧数据并创建阶段 2/3/4 表', () async {
+  test('schema v1 迁移到当前 schema 时保留旧数据并创建阶段 2/3/4 表', () async {
     final migrated = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
@@ -185,7 +185,7 @@ void main() {
         .customSelect('PRAGMA table_info(task_events)')
         .get();
 
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(
       columns.map((row) => row.read<String>('name')),
       containsAll(['estimated_min_value', 'confirmed_min_value']),
@@ -217,7 +217,7 @@ void main() {
     expect(stageFourTables, hasLength(2));
   });
 
-  test('schema v2 迁移到 v8 时保留旧数据并创建后续表', () async {
+  test('schema v2 迁移到当前 schema 时保留旧数据并创建后续表', () async {
     final migrated = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
@@ -243,14 +243,14 @@ void main() {
         .get();
 
     expect(marker.read<String>('value'), 'from-v2');
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(
       tables.map((row) => row.read<String>('name')),
       containsAll(['maintenance_tasks', 'task_events']),
     );
   });
 
-  test('schema v3 迁移到 v8 回填确认时间且不伪造算法字段', () async {
+  test('schema v3 迁移到当前 schema 回填确认时间且不伪造算法字段', () async {
     final measuredAt = DateTime.utc(2026, 8, 10, 3, 4, 5);
     final microseconds = measuredAt.microsecondsSinceEpoch;
     final migrated = AppDatabase(
@@ -294,7 +294,7 @@ CREATE TABLE test_records (
     final version = await migrated
         .customSelect('PRAGMA user_version')
         .getSingle();
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(record.read<int>('confirmed_at'), microseconds);
     expect(record.read<int>('was_manually_edited'), 0);
     expect(record.data['captured_at'], isNull);
@@ -303,7 +303,7 @@ CREATE TABLE test_records (
     expect(record.data['failure_reason'], isNull);
   });
 
-  test('schema v4 迁移到 v8 为检测草稿增加确认时间并创建偏好表', () async {
+  test('schema v4 迁移到当前 schema 为检测草稿增加确认时间并创建偏好表', () async {
     final migrated = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
@@ -325,7 +325,7 @@ CREATE TABLE active_test_sessions (
         .customSelect('PRAGMA table_info(active_test_sessions)')
         .get();
 
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(
       columns.map((row) => row.read<String>('name')),
       contains('draft_confirmed_at'),
@@ -336,7 +336,7 @@ CREATE TABLE active_test_sessions (
     expect(confirmedColumn.read<int>('notnull'), 0);
   });
 
-  test('schema v5 迁移到 v8 为既有应用偏好补主题、通知和鱼类档案', () async {
+  test('schema v5 迁移到当前 schema 为既有应用偏好补主题、通知和鱼类档案', () async {
     final migrated = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
@@ -364,13 +364,13 @@ CREATE TABLE app_preferences (
         .select(migrated.appPreferences)
         .getSingle();
 
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(preference.themeMode, 'system');
     expect(preference.maintenanceNotificationsEnabled, isTrue);
     expect(preference.fishStockJson, '[]');
   });
 
-  test('schema v6 迁移到 v8 保留任务并补一次性计划与鱼类字段', () async {
+  test('schema v6 迁移到当前 schema 保留任务并补一次性计划与鱼类字段', () async {
     final migrated = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
@@ -433,7 +433,7 @@ CREATE TABLE maintenance_tasks (
     expect(task.planTotalDays, isNull);
   });
 
-  test('schema v7 迁移到 v8 为既有偏好补空鱼类档案', () async {
+  test('schema v7 迁移到当前 schema 为既有偏好补空鱼类档案', () async {
     final migrated = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
@@ -465,7 +465,7 @@ CREATE TABLE app_preferences (
         .customSelect('PRAGMA user_version')
         .getSingle();
 
-    expect(version.read<int>('user_version'), 10);
+    expect(version.read<int>('user_version'), 11);
     expect(preference.themeMode, 'dark');
     expect(preference.maintenanceNotificationsEnabled, isFalse);
     expect(preference.fishStockJson, '[]');
@@ -521,9 +521,8 @@ CREATE TABLE app_preferences (
     expect(
       targets
           .where((item) => item.tankId == AppDatabase.defaultTankId)
-          .single
-          .parameterId,
-      customId,
+          .map((item) => item.parameterId),
+      unorderedEquals([customId, AppDatabase.khId]),
     );
     expect(
       targets.where((item) => item.tankId == secondTankId).single.parameterId,
@@ -656,7 +655,7 @@ CREATE TABLE app_preferences (
     expect(activeSessions.single.parameterId, AppDatabase.po4Id);
   });
 
-  test('备份格式 v8 兼容读取不含维护任务和检测草稿的 v2 备份', () async {
+  test('当前备份格式 兼容读取不含维护任务和检测草稿的 v2 备份', () async {
     final decoded =
         jsonDecode(await LocalBackupService(database).exportJson())
             as Map<String, dynamic>;
@@ -677,7 +676,7 @@ CREATE TABLE app_preferences (
     expect(await restored.select(restored.activeTestSessions).get(), isEmpty);
   });
 
-  test('备份格式 v8 读取 v3 记录时保守回填阶段 4 字段', () async {
+  test('当前备份格式 读取 v3 记录时保守回填阶段 4 字段', () async {
     await TestRecordRepository(database).createManual(
       tankId: AppDatabase.defaultTankId,
       parameterId: AppDatabase.no3Id,
@@ -718,7 +717,7 @@ CREATE TABLE app_preferences (
     expect(record.failureReason, isNull);
   });
 
-  test('备份格式 v8 兼容读取缺少草稿确认时间的 v4 备份', () async {
+  test('当前备份格式 兼容读取缺少草稿确认时间的 v4 备份', () async {
     final sessions = TestSessionRepository(database);
     final sessionId = await sessions.createDraft(
       tankId: AppDatabase.defaultTankId,

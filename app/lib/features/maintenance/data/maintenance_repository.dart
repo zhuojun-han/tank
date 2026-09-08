@@ -6,7 +6,9 @@ import 'package:uuid/uuid.dart';
 import '../../../data/database/app_database.dart';
 import '../../calculators/domain/lanthanum_calculator.dart';
 import '../../calculators/domain/alkalinity_calculator.dart';
+import '../../calculators/domain/maintenance_cycle.dart';
 import '../domain/recurrence.dart';
+import '../domain/rolling_schedule.dart';
 
 enum MaintenanceIntervalUnit { day, week, month }
 
@@ -32,12 +34,17 @@ class MaintenanceTaskItem {
     required this.state,
     this.latestEvent,
     this.occurrenceDate,
+    this.canEditCompletion = false,
+    this.canReopen = false,
+    this.cycleOccurrence,
   });
 
   final MaintenanceTask task;
   final TaskEvent? latestEvent;
   final MaintenanceTaskViewState state;
   final DateTime? occurrenceDate;
+  final bool canEditCompletion, canReopen;
+  final MaintenanceCycleOccurrence? cycleOccurrence;
 }
 
 class MaintenanceTaskHistoryEntry {
@@ -56,6 +63,9 @@ MaintenanceTaskItem refreshMaintenanceItem(
   task: item.task,
   latestEvent: item.latestEvent,
   occurrenceDate: item.occurrenceDate,
+  canEditCompletion: item.canEditCompletion,
+  canReopen: item.canReopen,
+  cycleOccurrence: item.cycleOccurrence,
   state: _viewState(item.task, item.latestEvent, now.toUtc()),
 );
 
@@ -71,6 +81,120 @@ class MaintenanceRepository {
   final AppDatabase _database;
   final Uuid _uuid;
   final DateTime Function() _now;
+
+  Future<List<MaintenanceTask>> _rollingTasks(String tankId) async {
+    final tasks = await (_database.select(
+      _database.maintenanceTasks,
+    )..where((t) => t.tankId.equals(tankId))).get();
+    final query = _database.select(_database.taskEvents).join([
+      innerJoin(
+        _database.maintenanceTasks,
+        _database.maintenanceTasks.id.equalsExp(_database.taskEvents.taskId),
+      ),
+    ])..where(_database.maintenanceTasks.tankId.equals(tankId));
+    final events = <String, List<TaskEvent>>{};
+    for (final row in await query.get()) {
+      final event = row.readTable(_database.taskEvents);
+      events.putIfAbsent(event.taskId, () => []).add(event);
+    }
+    return [
+      for (final task in tasks)
+        initializeRollingTask(task, events: events[task.id] ?? []),
+    ];
+  }
+
+  Future<String> _changeRolling({
+    required String tankId,
+    required String taskId,
+    required List<MaintenanceTask> Function(List<MaintenanceTask>, DateTime)
+    change,
+    String? eventType,
+    String? note,
+  }) async {
+    final eventId = _uuid.v4();
+    await _database.transaction(() async {
+      await _requireActiveTank(tankId);
+      await _requireTask(tankId, taskId, allowArchived: false);
+      final now = _now().toUtc(), before = await _rollingTasks(tankId);
+      final after = change(before, now);
+      final originals = {for (final task in before) task.id: task};
+      for (final task in after) {
+        if (identical(task, originals[task.id])) continue;
+        await (_database.update(
+          _database.maintenanceTasks,
+        )..where((t) => t.id.equals(task.id) & t.tankId.equals(tankId))).write(
+          MaintenanceTasksCompanion(
+            rollingJson: Value(task.rollingJson),
+            status: Value(task.status),
+            updatedAt: Value(now),
+          ),
+        );
+      }
+      if (eventType != null) {
+        final eventTasks = eventType == 'skipped'
+            ? after.where(
+                (task) =>
+                    !identical(task, originals[task.id]) &&
+                    task.status == 'skipped',
+              )
+            : after.where((task) => task.id == taskId);
+        for (final eventTask in eventTasks) {
+          await _database
+              .into(_database.taskEvents)
+              .insert(
+                TaskEventsCompanion.insert(
+                  id: eventTask.id == taskId ? eventId : _uuid.v4(),
+                  taskId: eventTask.id,
+                  type: eventType,
+                  occurredAt: now,
+                  note: Value(note),
+                ),
+              );
+        }
+      }
+    });
+    return eventId;
+  }
+
+  Future<void> delayTask({
+    required String tankId,
+    required String taskId,
+    required int days,
+    int? expectedRevision,
+  }) async {
+    await _changeRolling(
+      tankId: tankId,
+      taskId: taskId,
+      change: (tasks, now) => delayRollingTasks(
+        tasks,
+        taskId,
+        days,
+        now,
+        expectedRevision: expectedRevision,
+      ),
+    );
+  }
+
+  Future<void> correctCompletion({
+    required String tankId,
+    required String taskId,
+    required DateTime completedDate,
+    required DateTime newDate,
+    int? expectedRevision,
+  }) async {
+    await _changeRolling(
+      tankId: tankId,
+      taskId: taskId,
+      change: (tasks, now) => correctRollingTasks(
+        tasks,
+        taskId,
+        dateKey(completedDate),
+        dateKey(newDate),
+        now,
+        expectedRevision: expectedRevision,
+      ),
+    );
+  }
 
   /// Read the current per-tank target, not a cached page/provider value.
   /// Called both before showing a plan and inside the write transaction.
@@ -94,12 +218,12 @@ class MaintenanceRepository {
             ))
             .getSingleOrNull();
     if (range == null) return;
-    if (targetValue < range.minValue) {
+    if (range.minValue != null && targetValue < range.minValue!) {
       throw FormatException(
         '${po4 ? 'PO4' : 'KH'} 目标不得低于当前海缸目标下限 ${range.minValue} ${range.unit}。',
       );
     }
-    if (!po4 && targetValue > range.maxValue) {
+    if (!po4 && range.maxValue != null && targetValue > range.maxValue!) {
       throw FormatException(
         'KH 目标不得高于当前海缸目标上限 ${range.maxValue} ${range.unit}。',
       );
@@ -110,15 +234,23 @@ class MaintenanceRepository {
     String tankId,
     String source,
     DateTime start,
+  ) async => (await _replaceablePlanTasks(tankId, source, start)).isNotEmpty;
+
+  Future<List<MaintenanceTask>> _replaceablePlanTasks(
+    String tankId,
+    String source,
+    DateTime start,
   ) async {
-    return (await (_database.select(_database.maintenanceTasks)..where(
-              (t) =>
-                  t.tankId.equals(tankId) &
-                  t.source.equals(source) &
-                  t.dueAt.isBiggerOrEqualValue(localDate(start).toUtc()),
-            ))
-            .get())
-        .isNotEmpty;
+    final tasks = await _rollingTasks(tankId);
+    final dates = projectRollingDates(tasks, _now());
+    return tasks
+        .where(
+          (t) =>
+              t.source == source &&
+              t.status == 'enabled' &&
+              dates[t.id]!.compareTo(dateKey(start)) >= 0,
+        )
+        .toList();
   }
 
   Future<void> _replacePlanFromDate(
@@ -127,17 +259,18 @@ class MaintenanceRepository {
     DateTime start,
     bool replace,
   ) async {
-    final old =
-        await (_database.select(_database.maintenanceTasks)..where(
-              (t) =>
-                  t.tankId.equals(tankId) &
-                  t.source.equals(source) &
-                  t.dueAt.isBiggerOrEqualValue(localDate(start).toUtc()),
-            ))
-            .get();
+    final old = await _replaceablePlanTasks(tankId, source, start);
     if (old.isNotEmpty && !replace) throw StateError('当前海缸已有同类计划，请确认覆盖');
     for (final task in old) {
-      await deleteTask(tankId: tankId, taskId: task.id);
+      await (_database.update(
+        _database.maintenanceTasks,
+      )..where((t) => t.id.equals(task.id) & t.tankId.equals(tankId))).write(
+        MaintenanceTasksCompanion(
+          status: const Value('archived'),
+          rollingJson: Value(task.rollingJson),
+          updatedAt: Value(_now().toUtc()),
+        ),
+      );
     }
   }
 
@@ -207,6 +340,16 @@ class MaintenanceRepository {
     required String state,
     DateTime? until,
   }) async {
+    if (state == 'completed') {
+      return complete(tankId: tankId, taskId: taskId, completedDate: date);
+    }
+    if (state == 'pending') {
+      await reopen(tankId: tankId, taskId: taskId, occurrenceDate: date);
+      return taskId;
+    }
+    if (state == 'skipped') {
+      return skip(tankId: tankId, taskId: taskId, occurrenceDate: date);
+    }
     final eventId = _uuid.v4();
     await _database.transaction(() async {
       final task = await _requireEnabledTask(tankId, taskId);
@@ -260,30 +403,28 @@ class MaintenanceRepository {
     required String tankId,
     required String taskId,
     DateTime? occurrenceDate,
+    int? expectedRevision,
   }) async {
-    if (occurrenceDate != null) {
-      await handleOccurrence(
-        tankId: tankId,
-        taskId: taskId,
-        date: occurrenceDate,
-        state: 'pending',
-      );
-      return;
-    }
-    await _database.transaction(() async {
-      final task = await _requireTask(tankId, taskId);
-      if (!task.isOneOff || task.status != 'completed') {
-        throw StateError('只能恢复已完成的单次任务');
-      }
-      await (_database.update(
-        _database.maintenanceTasks,
-      )..where((t) => t.id.equals(taskId))).write(
-        MaintenanceTasksCompanion(
-          status: const Value('enabled'),
-          updatedAt: Value(_now().toUtc()),
-        ),
-      );
-    });
+    await _changeRolling(
+      tankId: tankId,
+      taskId: taskId,
+      change: (tasks, now) {
+        final task = tasks.firstWhere((t) => t.id == taskId),
+            schedule = rollingSchedule(tasks.firstWhere((t) => t.id == taskId));
+        final date = occurrenceDate == null
+            ? schedule.completed.lastOrNull?.completedDate ??
+                  schedule.legacyCompletedDates.lastOrNull ??
+                  schedule.startDate
+            : dateKey(occurrenceDate);
+        return reopenRollingTasks(
+          tasks,
+          task.id,
+          date,
+          now,
+          expectedRevision: expectedRevision,
+        );
+      },
+    );
   }
 
   Future<void> stopRecurring({
@@ -291,23 +432,12 @@ class MaintenanceRepository {
     required String taskId,
     required DateTime from,
   }) async {
-    await _database.transaction(() async {
-      final task = await _requireEnabledTask(tankId, taskId);
-      if (task.recurrenceJson == null) {
-        await setEnabled(tankId: tankId, taskId: taskId, enabled: false);
-        return;
-      }
-      final rule = Recurrence.decode(task.recurrenceJson!)
-        ..stoppedAfter = dateKey(from);
-      await (_database.update(
-        _database.maintenanceTasks,
-      )..where((t) => t.id.equals(taskId))).write(
-        MaintenanceTasksCompanion(
-          recurrenceJson: Value(rule.encode()),
-          updatedAt: Value(_now().toUtc()),
-        ),
-      );
-    });
+    await _changeRolling(
+      tankId: tankId,
+      taskId: taskId,
+      change: (tasks, now) => stopRollingTasks(tasks, taskId, now),
+      eventType: 'skipped',
+    );
   }
 
   Stream<List<MaintenanceTask>> watchAllTasks(String tankId) {
@@ -319,6 +449,12 @@ class MaintenanceRepository {
       ]);
     return query.watch();
   }
+
+  Stream<Set<String>> watchActiveTankIds() =>
+      (_database.select(_database.tanks)
+            ..where((t) => t.isArchived.equals(false)))
+          .watch()
+          .map((tanks) => tanks.map((tank) => tank.id).toSet());
 
   Stream<List<MaintenanceTask>> watchEnabledTasks({String? tankId}) {
     final query = _database.select(_database.maintenanceTasks)
@@ -351,26 +487,26 @@ class MaintenanceRepository {
     return query.watch().map((rows) {
       final tasks = <String, MaintenanceTask>{};
       final latestEvents = <String, TaskEvent?>{};
+      final history = <String, List<TaskEvent>>{};
       for (final row in rows) {
         final task = row.readTable(_database.maintenanceTasks);
         tasks.putIfAbsent(task.id, () => task);
+        final event = row.readTableOrNull(_database.taskEvents);
+        if (event != null) history.putIfAbsent(task.id, () => []).add(event);
         latestEvents.putIfAbsent(
           task.id,
           () => row.readTableOrNull(_database.taskEvents),
         );
       }
       final now = (referenceTime ?? _now()).toUtc();
-      return [
+      return prepareMaintenanceTaskItems([
         for (final task in tasks.values)
-          notificationOccurrence(
-            MaintenanceTaskItem(
-              task: task,
-              latestEvent: latestEvents[task.id],
-              state: _viewState(task, latestEvents[task.id], now),
-            ),
-            now,
+          MaintenanceTaskItem(
+            task: initializeRollingTask(task, events: history[task.id] ?? []),
+            latestEvent: latestEvents[task.id],
+            state: _viewState(task, latestEvents[task.id], now),
           ),
-      ];
+      ], now);
     });
   }
 
@@ -408,26 +544,29 @@ class MaintenanceRepository {
     return query.watch().map((rows) {
       final tasks = <String, MaintenanceTask>{};
       final latestEvents = <String, TaskEvent?>{};
+      final history = <String, List<TaskEvent>>{};
       for (final row in rows) {
         final task = row.readTable(_database.maintenanceTasks);
         tasks.putIfAbsent(task.id, () => task);
+        final event = row.readTableOrNull(_database.taskEvents);
+        if (event != null) history.putIfAbsent(task.id, () => []).add(event);
         if (!latestEvents.containsKey(task.id)) {
           latestEvents[task.id] = row.readTableOrNull(_database.taskEvents);
         }
       }
 
       final now = (referenceTime ?? _now()).toUtc();
-      final items = [
+      final items = prepareMaintenanceTaskItems([
         for (final task in tasks.values)
           MaintenanceTaskItem(
-            task: task,
+            task: initializeRollingTask(task, events: history[task.id] ?? []),
             latestEvent: latestEvents[task.id],
             state: _viewState(task, latestEvents[task.id], now),
           ),
-      ];
+      ], now);
       return switch (filter) {
         MaintenanceTaskFilter.pending =>
-          items
+          calendarOccurrences(items, localDate(now), 1, now: now)
               .where(
                 (item) => {
                   MaintenanceTaskViewState.upcoming,
@@ -437,7 +576,7 @@ class MaintenanceRepository {
               )
               .toList(),
         MaintenanceTaskFilter.completed =>
-          items
+          calendarOccurrences(items, localDate(now), 1, now: now)
               .where((item) => item.state == MaintenanceTaskViewState.completed)
               .toList(),
         MaintenanceTaskFilter.all => items,
@@ -494,11 +633,17 @@ class MaintenanceRepository {
             dueAt: dueAt.toUtc(),
             preferredReminderTime: Value(preferredReminderTime),
             isOneOff: Value(isOneOff),
+            rollingJson: Value(
+              RollingSchedule(
+                startDate: dateKey(dueAt),
+                nextDate: dateKey(dueAt),
+              ).encode(),
+            ),
             recurrenceJson: Value(
               calendarRecurrence && !isOneOff
                   ? Recurrence(
                       start: dateKey(dueAt),
-                      completedBefore: dateKey(now),
+                      completedBefore: dateKey(dueAt),
                     ).encode()
                   : null,
             ),
@@ -573,6 +718,12 @@ class MaintenanceRepository {
                 dueAt: dueLocal.toUtc(),
                 preferredReminderTime: Value(preferredReminderTime),
                 isOneOff: const Value(true),
+                rollingJson: Value(
+                  RollingSchedule(
+                    startDate: dateKey(dueLocal),
+                    nextDate: dateKey(dueLocal),
+                  ).encode(),
+                ),
                 source: const Value('lanthanum-plan'),
                 planId: Value(planId),
                 planDayIndex: Value(day.day),
@@ -600,10 +751,11 @@ class MaintenanceRepository {
     final normalizedTitle = _requireTitle(title);
     _validateInterval(intervalAmount);
     _validateReminderTime(preferredReminderTime);
-    final existing = await _requireTask(tankId, taskId, allowArchived: false);
-    final previous = existing.recurrenceJson == null
-        ? null
-        : Recurrence.decode(existing.recurrenceJson!);
+    await _requireTask(tankId, taskId, allowArchived: false);
+    final stored = (await _rollingTasks(
+      tankId,
+    )).firstWhere((t) => t.id == taskId);
+    final rolling = rollingSchedule(stored);
 
     final changed =
         await (_database.update(_database.maintenanceTasks)..where(
@@ -615,17 +767,15 @@ class MaintenanceRepository {
                 notes: Value(_trimToNull(notes)),
                 intervalAmount: Value(intervalAmount),
                 intervalUnit: Value(intervalUnit.name),
-                dueAt: Value(dueAt.toUtc()),
-                recurrenceJson: calendarRecurrence && !existing.isOneOff
-                    ? Value(
-                        Recurrence(
-                          start: dateKey(dueAt),
-                          completedBefore: dateKey(_now()),
-                          states: previous?.states,
-                          snoozes: previous?.snoozes,
-                        ).encode(),
+                // The original date and old rule remain historical evidence.
+                rollingJson: Value(
+                  rolling
+                      .copyWith(
+                        nextDate: dateKey(dueAt),
+                        revision: rolling.revision + 1,
                       )
-                    : const Value.absent(),
+                      .encode(),
+                ),
                 preferredReminderTime: Value(preferredReminderTime),
                 updatedAt: Value(_now().toUtc()),
               ),
@@ -719,20 +869,21 @@ class MaintenanceRepository {
     required String taskId,
     String? note,
     DateTime? occurrenceDate,
+    DateTime? completedDate,
+    int? expectedRevision,
   }) {
-    if (occurrenceDate != null) {
-      return handleOccurrence(
-        tankId: tankId,
-        taskId: taskId,
-        date: occurrenceDate,
-        state: 'completed',
-      );
-    }
-    return _handleTask(
+    return _changeRolling(
       tankId: tankId,
       taskId: taskId,
-      type: TaskEventType.completed,
-      note: note,
+      change: (tasks, now) => completeRollingTasks(
+        tasks,
+        taskId,
+        dateKey(completedDate ?? now),
+        now,
+        expectedRevision: expectedRevision,
+      ),
+      eventType: 'completed',
+      note: note ?? '实际完成日期 ${dateKey(completedDate ?? _now())}',
     );
   }
 
@@ -741,19 +892,18 @@ class MaintenanceRepository {
     required String taskId,
     String? note,
     DateTime? occurrenceDate,
+    int? expectedRevision,
   }) {
-    if (occurrenceDate != null) {
-      return handleOccurrence(
-        tankId: tankId,
-        taskId: taskId,
-        date: occurrenceDate,
-        state: 'skipped',
-      );
-    }
-    return _handleTask(
+    return _changeRolling(
       tankId: tankId,
       taskId: taskId,
-      type: TaskEventType.skipped,
+      change: (tasks, now) => stopRollingTasks(
+        tasks,
+        taskId,
+        now,
+        expectedRevision: expectedRevision,
+      ),
+      eventType: 'skipped',
       note: note,
     );
   }
@@ -807,127 +957,6 @@ class MaintenanceRepository {
           );
     });
     return eventId;
-  }
-
-  Future<String> _handleTask({
-    required String tankId,
-    required String taskId,
-    required TaskEventType type,
-    String? note,
-  }) async {
-    assert(type != TaskEventType.snoozed);
-    final occurredAt = _now().toUtc();
-    final eventId = _uuid.v4();
-    await _database.transaction(() async {
-      final task = await _requireEnabledTask(tankId, taskId);
-      if (task.recurrenceJson != null) {
-        await handleOccurrence(
-          tankId: tankId,
-          taskId: taskId,
-          date: _now().toLocal(),
-          state: type.name,
-        );
-        return;
-      }
-      if (task.isOneOff) {
-        if (type == TaskEventType.skipped &&
-            isChemicalPlan(task) &&
-            task.planId != null &&
-            task.planDayIndex != null) {
-          final remaining =
-              await (_database.select(_database.maintenanceTasks)..where(
-                    (row) =>
-                        row.tankId.equals(tankId) &
-                        row.planId.equals(task.planId!) &
-                        row.planDayIndex.isBiggerOrEqualValue(
-                          task.planDayIndex!,
-                        ) &
-                        row.status.equals(MaintenanceTaskStatus.enabled.name),
-                  ))
-                  .get();
-          for (final plannedTask in remaining) {
-            await _recordOneOffResult(
-              plannedTask,
-              type: TaskEventType.skipped,
-              occurredAt: occurredAt,
-              note: plannedTask.id == taskId ? note : '前序计划已停止',
-              eventId: plannedTask.id == taskId ? eventId : _uuid.v4(),
-            );
-          }
-        } else {
-          await _recordOneOffResult(
-            task,
-            type: type,
-            occurredAt: occurredAt,
-            note: note,
-            eventId: eventId,
-          );
-        }
-        return;
-      }
-      final intervalUnit = _parseIntervalUnit(task.intervalUnit);
-      final nextDueAt = calculateNextDueAt(
-        occurredAt,
-        task.intervalAmount,
-        intervalUnit,
-      );
-      await _database
-          .into(_database.taskEvents)
-          .insert(
-            TaskEventsCompanion.insert(
-              id: eventId,
-              taskId: taskId,
-              type: type.name,
-              occurredAt: occurredAt,
-              note: Value(_trimToNull(note)),
-            ),
-          );
-      final changed =
-          await (_database.update(_database.maintenanceTasks)..where(
-                (row) => row.id.equals(taskId) & row.tankId.equals(tankId),
-              ))
-              .write(
-                MaintenanceTasksCompanion(
-                  dueAt: Value(nextDueAt),
-                  updatedAt: Value(occurredAt),
-                ),
-              );
-      if (changed != 1) throw StateError('维护任务不存在');
-    });
-    return eventId;
-  }
-
-  Future<void> _recordOneOffResult(
-    MaintenanceTask task, {
-    required TaskEventType type,
-    required DateTime occurredAt,
-    required String eventId,
-    String? note,
-  }) async {
-    await _database
-        .into(_database.taskEvents)
-        .insert(
-          TaskEventsCompanion.insert(
-            id: eventId,
-            taskId: task.id,
-            type: type.name,
-            occurredAt: occurredAt,
-            note: Value(_trimToNull(note)),
-          ),
-        );
-    final status = type == TaskEventType.completed
-        ? MaintenanceTaskStatus.completed
-        : MaintenanceTaskStatus.skipped;
-    final changed =
-        await (_database.update(
-          _database.maintenanceTasks,
-        )..where((row) => row.id.equals(task.id))).write(
-          MaintenanceTasksCompanion(
-            status: Value(status.name),
-            updatedAt: Value(occurredAt),
-          ),
-        );
-    if (changed != 1) throw StateError('维护任务不存在');
   }
 
   Stream<List<MaintenanceTaskHistoryEntry>> _watchHistory(
@@ -1036,7 +1065,8 @@ MaintenanceTaskViewState _viewState(
     throw StateError('未知维护任务状态：${task.status}');
   }
 
-  if (!task.isOneOff &&
+  if (task.rollingJson == null &&
+      !task.isOneOff &&
       latestEvent != null &&
       latestEvent.occurredAt.isAtSameMomentAs(task.updatedAt) &&
       now.isBefore(task.dueAt)) {
@@ -1047,7 +1077,8 @@ MaintenanceTaskViewState _viewState(
       return MaintenanceTaskViewState.skipped;
     }
   }
-  if (activeMaintenanceSnoozeUntilUtc(latestEvent, now.toUtc()) != null) {
+  if ((task.rollingJson == null || rollingSchedule(task).revision == 0) &&
+      activeMaintenanceSnoozeUntilUtc(latestEvent, now.toUtc()) != null) {
     return MaintenanceTaskViewState.snoozed;
   }
   return task.dueAt.isAfter(now)
@@ -1084,6 +1115,9 @@ DateTime effectiveMaintenanceDueAtUtc(
   TaskEvent? latestEvent,
   DateTime nowUtc,
 ) {
+  if (task.rollingJson != null && rollingSchedule(task).revision > 0) {
+    return task.dueAt.toUtc();
+  }
   return activeMaintenanceSnoozeUntilUtc(latestEvent, nowUtc) ??
       task.dueAt.toUtc();
 }
@@ -1102,13 +1136,6 @@ DateTime _addUtcMonthsClamped(DateTime value, int months) {
     value.second,
     value.millisecond,
     value.microsecond,
-  );
-}
-
-MaintenanceIntervalUnit _parseIntervalUnit(String value) {
-  return MaintenanceIntervalUnit.values.firstWhere(
-    (unit) => unit.name == value,
-    orElse: () => throw StateError('未知重复间隔单位：$value'),
   );
 }
 
@@ -1144,34 +1171,65 @@ bool isChemicalPlan(MaintenanceTask task) =>
     {'lanthanum-plan', 'alkalinity-plan'}.contains(task.source) &&
     task.planId != null;
 
+List<MaintenanceTaskItem> prepareMaintenanceTaskItems(
+  List<MaintenanceTaskItem> items,
+  DateTime now,
+) {
+  final tasks = [
+    for (final item in items)
+      initializeRollingTask(
+        item.task,
+        events: item.latestEvent == null ? [] : [item.latestEvent!],
+      ),
+  ];
+  final dates = projectRollingDates(tasks, now);
+  return [
+    for (var i = 0; i < tasks.length; i++)
+      MaintenanceTaskItem(
+        task: tasks[i].copyWith(
+          dueAt: rollingDueOn(tasks[i], dates[tasks[i].id]!),
+        ),
+        latestEvent: items[i].latestEvent,
+        state: _viewState(
+          tasks[i].copyWith(dueAt: rollingDueOn(tasks[i], dates[tasks[i].id]!)),
+          items[i].latestEvent,
+          now.toUtc(),
+        ),
+      ),
+  ];
+}
+
 MaintenanceTaskItem notificationOccurrence(
   MaintenanceTaskItem item,
   DateTime now,
 ) {
-  final task = item.task;
-  if (task.recurrenceJson == null || task.status != 'enabled') return item;
-  final rule = Recurrence.decode(task.recurrenceJson!);
-  var date = rule.nextDate(task, localDate(now));
-  for (var i = 0; i <= rule.states.length + 1; i++) {
-    if (rule.stoppedAfter != null &&
-        dateKey(date).compareTo(rule.stoppedAfter!) >= 0) {
-      return MaintenanceTaskItem(
-        task: task.copyWith(status: 'disabled'),
-        state: MaintenanceTaskViewState.disabled,
-      );
-    }
-    if (rule.stateOn(date) == 'pending') {
-      return calendarOccurrences([item], date, 1, now: now).single;
-    }
-    date = rule.nextDate(task, DateTime(date.year, date.month, date.day + 1));
+  if (item.task.source == 'maintenance-cycle') return item;
+  if (item.task.status != 'enabled') return item;
+  final task = initializeRollingTask(
+    item.task,
+    events: item.latestEvent == null ? [] : [item.latestEvent!],
+  );
+  // A chemical queue is projected together by its caller. Do not independently
+  // move its later members back to their stored base dates.
+  final date = rollingChemicalKey(task) == null
+      ? projectRollingDates([task], now)[task.id]!
+      : dateKey(task.dueAt);
+  if (!rollingPendingOnDate(task, date, date)) {
+    return MaintenanceTaskItem(
+      task: task.copyWith(status: 'disabled'),
+      state: MaintenanceTaskViewState.disabled,
+    );
   }
+  final due = rollingDueOn(task, date);
   return MaintenanceTaskItem(
-    task: task.copyWith(status: 'disabled'),
-    state: MaintenanceTaskViewState.disabled,
+    task: task.copyWith(dueAt: due),
+    latestEvent: item.latestEvent,
+    occurrenceDate: DateTime.parse(date),
+    state: _viewState(task.copyWith(dueAt: due), item.latestEvent, now.toUtc()),
   );
 }
 
-/// Expand only a bounded visible range. No future task rows are persisted.
+/// Expand only the visible date window, with a single completion-driven head.
 List<MaintenanceTaskItem> calendarOccurrences(
   List<MaintenanceTaskItem> items,
   DateTime start,
@@ -1179,67 +1237,76 @@ List<MaintenanceTaskItem> calendarOccurrences(
   DateTime? now,
 }) {
   if (days < 0 || days > 366) throw ArgumentError('日历窗口须为 0–366 天');
-  final result = <MaintenanceTaskItem>[];
-  final clock = (now ?? DateTime.now()).toUtc();
-  for (final item in items) {
-    final task = item.task;
-    if (task.status == 'skipped' ||
-        task.status == 'archived' ||
-        task.status == 'disabled') {
-      continue;
-    }
-    if (task.recurrenceJson == null) {
-      final offset = DateTime.utc(
-        task.dueAt.toLocal().year,
-        task.dueAt.toLocal().month,
-        task.dueAt.toLocal().day,
-      ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
-      if (offset >= 0 && offset < days) {
+  final clock = now ?? DateTime.now(), result = <MaintenanceTaskItem>[];
+  final tasks = [
+    for (final item in items)
+      initializeRollingTask(
+        item.task,
+        events: item.latestEvent == null ? [] : [item.latestEvent!],
+      ),
+  ];
+  final dates = projectRollingDates(tasks, clock);
+  final related = <String, List<MaintenanceTask>>{};
+  String groupKey(MaintenanceTask task) {
+    final chemical = rollingChemicalKey(task);
+    return chemical == null ? 'task:${task.id}' : 'chemical:$chemical';
+  }
+
+  for (final task in tasks) {
+    related.putIfAbsent(groupKey(task), () => []).add(task);
+  }
+  for (var index = 0; index < tasks.length; index++) {
+    final task = tasks[index], item = items[index];
+    if (task.status == 'archived') continue;
+    final schedule = rollingSchedule(task);
+    final latest = schedule.completed.lastOrNull?.completedDate;
+    final editableDate =
+        latest != null &&
+            canEditRollingCompletion(related[groupKey(task)]!, task, latest)
+        ? latest
+        : null;
+    for (var i = 0; i < days; i++) {
+      final date = DateTime(start.year, start.month, start.day + i),
+          key = dateKey(date);
+      final pending = rollingPendingOnDate(task, key, dates[task.id]!);
+      final history = rollingHistoryState(task, key);
+      if (!pending && history != 'completed') continue;
+      final due = rollingDueOn(task, key);
+      // A pending head may land on an existing historical date after editing.
+      // Keep both facts, just as Web's separate pending/completed selectors do.
+      for (final done in [
+        if (history == 'completed') true,
+        if (pending) false,
+      ]) {
+        final snoozed =
+            !done &&
+            dateKey(clock) == key &&
+            activeMaintenanceSnoozeUntilUtc(item.latestEvent, clock.toUtc()) !=
+                null &&
+            schedule.revision == 0;
         result.add(
           MaintenanceTaskItem(
-            task: task,
-            latestEvent: item.latestEvent,
-            state: _viewState(task, item.latestEvent, clock),
+            task: task.copyWith(dueAt: due),
+            occurrenceDate: date,
+            latestEvent: snoozed ? item.latestEvent : null,
+            state: done
+                ? MaintenanceTaskViewState.completed
+                : snoozed
+                ? MaintenanceTaskViewState.snoozed
+                : due.isAfter(clock)
+                ? MaintenanceTaskViewState.upcoming
+                : MaintenanceTaskViewState.overdue,
+            canEditCompletion: done && editableDate == key,
+            canReopen:
+                done &&
+                (editableDate == key ||
+                    (schedule.completed.isEmpty &&
+                        schedule.legacyCompletedDates.every(
+                          (d) => d.compareTo(key) <= 0,
+                        ))),
           ),
         );
       }
-      continue;
-    }
-    final rule = Recurrence.decode(task.recurrenceJson!);
-    for (var i = 0; i < days; i++) {
-      final date = DateTime(start.year, start.month, start.day + i);
-      if (!rule.occurs(task, date)) continue;
-      final state = rule.stateOn(date);
-      if (state == 'skipped') continue;
-      final due = rule.dueOn(task, date);
-      final until = DateTime.tryParse(rule.snoozes[dateKey(date)] ?? '');
-      final snoozed =
-          state == 'pending' &&
-          until != null &&
-          until.isAfter(clock) &&
-          dateKey(date) == dateKey(clock);
-      result.add(
-        MaintenanceTaskItem(
-          task: task.copyWith(dueAt: due),
-          occurrenceDate: date,
-          state: state == 'completed'
-              ? MaintenanceTaskViewState.completed
-              : snoozed
-              ? MaintenanceTaskViewState.snoozed
-              : due.isAfter(clock)
-              ? MaintenanceTaskViewState.upcoming
-              : MaintenanceTaskViewState.overdue,
-          latestEvent: snoozed
-              ? TaskEvent(
-                  id: 'calendar-${task.id}',
-                  taskId: task.id,
-                  type: 'snoozed',
-                  occurredAt: clock,
-                  snoozedUntil: until,
-                )
-              : null,
-        ),
-      );
     }
   }
   result.sort((a, b) => a.task.dueAt.compareTo(b.task.dueAt));

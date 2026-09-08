@@ -12,7 +12,7 @@ import 'package:lanjiao_water_quality/features/test_timer/data/test_session_repo
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
-  test('v7 数据快照覆盖全部 11 张业务表并以备份状态权威恢复', () async {
+  test('完整数据快照按备份状态权威恢复业务内容', () async {
     final source = AppDatabase(NativeDatabase.memory());
     final destination = AppDatabase(NativeDatabase.memory());
     addTearDown(source.close);
@@ -119,7 +119,7 @@ void main() {
     final service = LocalBackupService(source);
     final sourceJson = await service.exportJson();
     final sourceMap = jsonDecode(sourceJson) as Map<String, dynamic>;
-    expect(sourceMap['formatVersion'], 10);
+    expect(sourceMap['formatVersion'], 11);
     expect(
       sourceMap.keys.toSet(),
       containsAll(<String>{

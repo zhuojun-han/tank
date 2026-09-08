@@ -6,6 +6,10 @@ import '../../../core/notifications/local_notification.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../data/maintenance_repository.dart';
 import '../domain/recurrence.dart';
+import '../domain/rolling_schedule.dart';
+import '../../calculators/data/maintenance_cycle_repository.dart';
+import '../../calculators/domain/maintenance_cycle.dart';
+import 'maintenance_cycle_items.dart';
 
 abstract interface class MaintenanceNotificationTaskStore {
   Stream<List<MaintenanceTaskItem>> watchAllTaskItems();
@@ -19,13 +23,67 @@ abstract interface class MaintenanceNotificationTaskStore {
 
 final class RepositoryMaintenanceNotificationTaskStore
     implements MaintenanceNotificationTaskStore {
-  const RepositoryMaintenanceNotificationTaskStore(this._repository);
+  const RepositoryMaintenanceNotificationTaskStore(
+    this._repository, {
+    this.cycles,
+  });
 
   final MaintenanceRepository _repository;
+  final MaintenanceCycleRepository? cycles;
 
   @override
-  Stream<List<MaintenanceTaskItem>> watchAllTaskItems() =>
-      _repository.watchAllTaskItems();
+  Stream<List<MaintenanceTaskItem>> watchAllTaskItems() {
+    List<MaintenanceTaskItem>? tasks;
+    List<MaintenanceCycle>? reservoirs = cycles == null ? [] : null;
+    Set<String>? activeTanks;
+    StreamSubscription<Set<String>>? tankSub;
+    StreamSubscription<List<MaintenanceTaskItem>>? taskSub;
+    StreamSubscription<List<MaintenanceCycle>>? cycleSub;
+    late StreamController<List<MaintenanceTaskItem>> controller;
+    void emit() {
+      if (tasks != null &&
+          reservoirs != null &&
+          activeTanks != null &&
+          !controller.isClosed) {
+        controller.add([
+          for (final item in [
+            ...tasks!,
+            ...maintenanceCycleNotificationItems(reservoirs!, DateTime.now()),
+          ])
+            if (activeTanks!.contains(item.task.tankId))
+              item
+            else
+              MaintenanceTaskItem(
+                task: item.task.copyWith(status: 'disabled'),
+                state: MaintenanceTaskViewState.disabled,
+              ),
+        ]);
+      }
+    }
+
+    controller = StreamController(
+      onListen: () {
+        taskSub = _repository.watchAllTaskItems().listen((value) {
+          tasks = value;
+          emit();
+        }, onError: controller.addError);
+        tankSub = _repository.watchActiveTankIds().listen((value) {
+          activeTanks = value;
+          emit();
+        }, onError: controller.addError);
+        cycleSub = cycles?.watchCycles().listen((value) {
+          reservoirs = value;
+          emit();
+        }, onError: controller.addError);
+      },
+      onCancel: () async {
+        await taskSub?.cancel();
+        await cycleSub?.cancel();
+        await tankSub?.cancel();
+      },
+    );
+    return controller.stream;
+  }
 
   @override
   Future<void> persistNotificationId({
@@ -33,6 +91,9 @@ final class RepositoryMaintenanceNotificationTaskStore
     required String taskId,
     required int notificationId,
   }) {
+    if (taskId.startsWith('cycle-') && cycles != null) {
+      return cycles!.setNotificationId(taskId.substring(6), notificationId);
+    }
     return _repository.setNotificationId(
       tankId: tankId,
       taskId: taskId,
@@ -183,6 +244,9 @@ final class MaintenanceNotificationCoordinator {
   StreamSubscription<List<MaintenanceTaskItem>>? _subscription;
   StreamSubscription<bool>? _enabledSubscription;
   Future<void> _queue = Future<void>.value();
+  List<MaintenanceTaskItem>? _pendingItems;
+  bool _pendingForce = false;
+  bool _draining = false;
   List<MaintenanceTaskItem>? _latestItems;
   final Map<String, String> _appliedPlanSignatures = <String, String>{};
   final Map<String, int> _knownNotificationIds = <String, int>{};
@@ -261,27 +325,41 @@ final class MaintenanceNotificationCoordinator {
     List<MaintenanceTaskItem> items, {
     required bool force,
   }) {
-    final operation = _queue.then((_) async {
-      if (!_disposed) {
-        await _reconcile(items, force: force);
+    if (_disposed) return Future.value();
+    _pendingItems = items;
+    _pendingForce = _pendingForce || force;
+    if (_draining) return _queue;
+    _draining = true;
+    _queue = Future<void>(() async {
+      try {
+        while (!_disposed && _pendingItems != null) {
+          final latest = _pendingItems!, forced = _pendingForce;
+          _pendingItems = null;
+          _pendingForce = false;
+          try {
+            await _reconcile(latest, force: forced);
+          } catch (error, stackTrace) {
+            _logger.error(
+              'maintenance_notification_reconcile_failed',
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _emit(
+              const MaintenanceNotificationSyncState(
+                phase: MaintenanceNotificationSyncPhase.failed,
+                failedCount: 1,
+              ),
+            );
+          }
+        }
+      } finally {
+        _draining = false;
+        if (_disposed) {
+          _pendingItems = null;
+          _latestItems = null;
+        }
       }
     });
-    _queue = operation.then<void>(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {
-        _logger.error(
-          'maintenance_notification_reconcile_failed',
-          error: error,
-          stackTrace: stackTrace,
-        );
-        _emit(
-          const MaintenanceNotificationSyncState(
-            phase: MaintenanceNotificationSyncPhase.failed,
-            failedCount: 1,
-          ),
-        );
-      },
-    );
     return _queue;
   }
 
@@ -379,15 +457,49 @@ final class MaintenanceNotificationCoordinator {
       }
     }
 
-    final sortedItems = [...items]
-      ..sort((left, right) {
-        final statusComparison = _statusPriority(
-          left.task.status,
-        ).compareTo(_statusPriority(right.task.status));
-        return statusComparison != 0
-            ? statusComparison
-            : left.task.id.compareTo(right.task.id);
-      });
+    final projectionNow = _nowUtc().toUtc();
+    final projected = prepareMaintenanceTaskItems(
+      items.where((item) => item.task.source != 'maintenance-cycle').toList(),
+      projectionNow,
+    );
+    final chemicalHeads = <String, String>{};
+    for (final item in [
+      ...projected,
+    ]..sort((a, b) => a.task.dueAt.compareTo(b.task.dueAt))) {
+      final key = rollingChemicalKey(item.task);
+      if (key != null && item.task.status == 'enabled') {
+        chemicalHeads.putIfAbsent(key, () => item.task.id);
+      }
+    }
+    final sortedItems =
+        [
+          for (final item in projected)
+            if (rollingChemicalKey(item.task) != null &&
+                item.task.status == 'enabled' &&
+                chemicalHeads[rollingChemicalKey(item.task)] != item.task.id)
+              MaintenanceTaskItem(
+                task: item.task.copyWith(status: 'disabled'),
+                state: MaintenanceTaskViewState.disabled,
+              )
+            else
+              item,
+          for (final item in items.where(
+            (item) => item.task.source == 'maintenance-cycle',
+          ))
+            if (item.cycleOccurrence != null)
+              ...maintenanceCycleNotificationItems([
+                item.cycleOccurrence!.cycle,
+              ], projectionNow)
+            else
+              item,
+        ]..sort((left, right) {
+          final statusComparison = _statusPriority(
+            left.task.status,
+          ).compareTo(_statusPriority(right.task.status));
+          return statusComparison != 0
+              ? statusComparison
+              : left.task.id.compareTo(right.task.id);
+        });
     final reservedIds = <int>{
       for (final item in sortedItems)
         if (_isValidMaintenanceBaseNotificationId(item.task.notificationId))
@@ -507,6 +619,7 @@ final class MaintenanceNotificationCoordinator {
         plan.dueReminderAtUtc?.microsecondsSinceEpoch ?? 'overdue',
         plan.dailyReminderStartsAtDeviceLocal.microsecondsSinceEpoch,
         task.recurrenceJson ?? 'legacy',
+        task.rollingJson ?? 'legacy-schedule',
       ].join(':');
       if (!force && _appliedPlanSignatures[task.id] == signature) {
         continue;
@@ -523,7 +636,7 @@ final class MaintenanceNotificationCoordinator {
           id: notificationId,
           taskId: task.id,
           title: task.title,
-          body: '维护任务已到计划时间。打开 App 可完成、稍后提醒或跳过本周期。',
+          body: '维护任务已到计划时间。打开 App 查看并处理。',
         );
         final result = await _notificationService.scheduleAtUtc(
           dueRequest,
@@ -536,9 +649,9 @@ final class MaintenanceNotificationCoordinator {
         id: dailyNotificationId,
         taskId: task.id,
         title: task.title,
-        body: '维护任务仍待处理。打开 App 可完成、稍后提醒或跳过本周期。',
+        body: '维护任务仍待处理。打开 App 查看并处理。',
       );
-      if (task.recurrenceJson != null) {
+      if (task.recurrenceJson != null && task.rollingJson == null) {
         // Two bounded exact occurrences, never daily alerts on non-occurrence
         // dates. Opening/resuming the app or a task mutation refills this window.
         final dueDate = localDate(task.dueAt);
@@ -590,6 +703,8 @@ final class MaintenanceNotificationCoordinator {
       return;
     }
     _disposed = true;
+    _pendingItems = null;
+    _latestItems = null;
     await _subscription?.cancel();
     await _enabledSubscription?.cancel();
     await _queue;

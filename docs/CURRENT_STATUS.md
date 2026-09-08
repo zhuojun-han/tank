@@ -1,66 +1,25 @@
 # 当前状态
 
-更新时间：2026-09-08。这里仅维护最新快照和开放项；历史结果按批次报告引用，不自动作为当前修改树的验证证明。
+更新时间：2026-09-08。本页仅维护最新快照和开放项；历史测试结果不自动证明后续修改树通过。
 
-## 本轮工作：两端内存风险修复
+## 本轮：网页版功能同步到 App
 
-已修复大图完整解码峰值、App ZIP/PNG 解压输出越界、细长立绘放大、网页全历史挂载、鱼只提前展开、任务重复扫描及遗留提醒即时循环风险。详见 [内存实证](coordination/memory-audit-2026-09-08.md)。
+用户已授权 WEB-005–008 与 PARITY-004。App 已实现补液周期与残液续配、KH 无计时查表、目标范围联动、任务延期与实际完成日期；最终验证进行中，见 [本轮交付报告](coordination/app-sync-followup-2026-09-08.md)。平台差异统一在 [同步清单](coordination/app-sync-backlog.md) 维护。
 
-- 相同 5000 条记录，网页版趋势页回收后 JS 堆从 13.65 MiB 降到 4.34 MiB，DOM 节点从 57833 降到 447；不是浏览器进程总内存或手机峰值。
-- Web：155 项单元测试、类型/lint、构建、2 项 SSR、19 项浏览器流程通过。App：216 项全量测试、分析、格式与 Android debug 构建通过。[Web 云端](https://github.com/zhuojun-han/tank/actions/runs/34211717940) 和 [Flutter 云端](https://github.com/zhuojun-han/tank/actions/runs/34211881216) 完整检查均通过。
-- 用户已授权本轮缺陷修复；未清用户数据、未安装 App、未验证真机峰值。WEB-005–008 新功能同步范围不变。
+旧数据通过 v11 迁移保留，备份继续支持旧版本。补液和普通任务共用日期展示与通知重排；未把网页演示数据导入 App，也未同步独立设计任务中的候选立绘。数据合同见 [技术设计](TECHNICAL_DESIGN.md)。
 
-## 前项：Web CI 预览退出修复
+## 近期已完成工作
 
-截图中的 15 项失败由预览服务提前退出引起连带连接失败。已升级并锁定包含官方修复的 Cloudflare 工具组合，固定原 Worker 兼容日期，并补齐 CI 失败日志，详见 [本轮实证](coordination/web-ci-preview-2026-09-08.md)。
-
-- 本地类型、lint、142 项单元测试、生产构建、2 项 SSR、16 项浏览器流程通过；修复提交 `07e1915` 的 [云端 Web 完整检查](https://github.com/zhuojun-han/tank/actions/runs/34208362526) 和 Workspace checks 均通过。
-- 本地网页已恢复；未改 App、页面业务、用户数据或同步清单。完整依赖审计剩余 `vinext → image-size` 的 2 个 high 包节点。
-
-## 近期功能：网页任务顺延与实际完成日期
-
-已接入自定义延迟、未完成自动顺延、按实际完成日期重排及补液联动，详见 [本轮实证](coordination/task-postponement-web-2026-09-08.md)。通用排期归 WEB-008，补液联动归 WEB-005；App 暂未同步。
-
-- 延迟默认 1 天，可自定义；重复任务保留一个最近待办，确认后按实际完成日加间隔继续。可补记、修改最新完成日期，并保留旧历史。
-- 有限 PO4/KH 加药计划整体顺延剩余安排，不增加剂量或次数。补液提醒同样可顺延，实际配液日可补选；同缸同药新配方关闭旧提醒。
-- 原液剩余天数、残量和午夜/前台刷新沿用逐日计算；延迟仅改变提醒，不延长原液寿命。
-- 顺延功能批次已通过 142 项单元测试、类型、全项目 lint、生产构建、2 项 SSR 和 7 项相关浏览器流程，见本轮实证；这些结果不替代后续修改的定向验证。
-- 后续修正未来任务按钮布局：移除旧跨行样式，“完成”整行、“延迟/停止”下排等宽；本次类型、页面 lint、生产构建及 4 种宽度的 24 张任务卡布局/弹窗取消检查通过，详见本轮实证的布局修正段。
-- WEB-005/008 规范与待同步范围已更新，WEB-006/007 状态不变；没有修改 App 或发布网站。
-
-上一项补液倒计时、残液预填与有限日程见 [倒计时实证](coordination/maintenance-countdown-web-2026-09-08.md)；其“逾期只在独立列表”的旧行为由本轮顺延到有效日历日期取代。
-
-上一项目标范围中值联动与 KH 默认范围见 [目标联动实证](coordination/target-linkage-web-2026-09-08.md)。
-
-KH 无计时滴定查表与一位小数记录见 [KH 检测实证](coordination/kh-titration-web-2026-09-08.md)，本轮没有改动其计算规则。
-
-此前模拟器 CPU、App 计时修复、根仓和 CI 整理见 [上一批实证](coordination/android-cpu-and-repository-2026-09-08.md)；存储、分页、备份与依赖验证见 [优化收尾](coordination/project-optimization-followup-2026-09-08.md)。历史测试数不替代当前修改的验证。
-
-## 已交付基线
-
-| 范围 | 最近已记录的结果 | 证据与限制 |
-| --- | --- | --- |
-| 网页每日平衡补液周期 | 本地实现；当轮 94 项测试、生产构建与浏览器流程通过 | [网页工作记录](coordination/maintenance-cycle-web-2026-09-08.md)；未发布，App 未同步 |
-| 此前网页功能 → App | 已同步并保留数据覆盖安装 Android 模拟器；当轮 200 项全量与最后 6 项相关回归通过 | [同步验收](coordination/app-sync-2026-09-08.md)；真实相机、真机通知、iOS 未验证 |
-| 公开网站 | 最近记录为 Sites 第 38 版 | [当轮报告](coordination/web-verification.md)；此后本地功能未据此宣称上线 |
-
-当前平台差异仅由 [App 同步清单](coordination/app-sync-backlog.md) 管理；数据库与备份合同由 [技术设计](TECHNICAL_DESIGN.md) 管理。
+- 大图解码、PNG/ZIP 解压、长历史挂载及遗留提醒循环的资源保护：[内存修复实证](coordination/memory-audit-2026-09-08.md)。本次继续保留，并限制 App 通知队列仅处理当前与最新快照。
+- Web CI 预览退出修复：[实证与云端结果](coordination/web-ci-preview-2026-09-08.md)。本地功能不等于公开网站已发布，公开网站最近记录仍为 [Sites 第 38 版](coordination/web-verification.md)。
+- 此前拍照、趋势、记录与配方同步：[上一批 App 验收](coordination/app-sync-2026-09-08.md)；模拟器 CPU 与工程整理：[工作记录](coordination/android-cpu-and-repository-2026-09-08.md)。
 
 ## 开放项
 
-- **WEB-005**：每日平衡补液周期仅网页完成，等待用户确认该功能并要求同步 App；后续需要 App 持久化、备份、日期发生项和通知实现。
-- **WEB-006**：KH 无计时滴定查表、插值与可选记录仅网页完成，等待用户确认并要求同步 App。
-- **WEB-007**：PO4/KH 目标范围中值联动、KH 默认范围与旧存档初始化仅网页完成，等待用户确认并要求同步 App。
-- **WEB-008**：通用任务自定义延迟、自动顺延、实际完成日期与后续重排仅网页版，等待用户确认并要求同步 App。
-- 拍照：已收到 NO3/PO4 色卡与多张样本，仍缺独立测试液批次、受控真值和充分设备/光照覆盖；不得报告准确率或确定误差。按 [拍照规范](IMAGE_ESTIMATION.md) 继续数据审计与独立评估。
-- Android 真机：相机权限、真实拍摄、缓存清理、通知栏/后台限制、低存储、备份分享恢复；模拟器不能替代。
-- iOS：macOS/Xcode 构建、启动、相机/通知和设备验收；Windows 不具备该验证条件。
-- 发布：正式签名、应用标识及商店资料、16 KB 原生库兼容性、隐私公开地址等见 [发布清单](RELEASE_CHECKLIST.md)。
-- NO3 编号 3 的当前候选范围与人工标签不一致，已如实保留在本轮实图审计中；本轮未调整阈值。
-- 依赖维护：`image-size` 静态素材解析链仍待兼容处理，触发边界见 [此前依赖审计](coordination/project-optimization-followup-2026-09-08.md#剩余依赖与实际使用路径)；原 undici 依赖链已随 [本轮工具升级](coordination/web-ci-preview-2026-09-08.md) 更新并通过审计。生产包审计为 0 不代表全部运行路径无风险。
+- 拍照估算仍缺独立测试液批次、受控真值和充分设备/光照覆盖；NO3 编号 3 候选范围与人工标签不一致，未调整阈值。按 [拍照规范](IMAGE_ESTIMATION.md) 继续独立评估，不报告准确率或确定误差。
+- Android 真机：真实相机/权限、不同厂商后台通知、真机内存峰值、低存储和备份分享恢复；模拟器不能替代。
+- iOS：需 macOS/Xcode 构建及实际设备相机、通知验收。
+- 发布：正式签名、应用标识、16 KB 原生库兼容性、隐私地址和商店资料等见 [发布清单](RELEASE_CHECKLIST.md)。
+- Web 依赖：`vinext → image-size` 静态素材解析链仍待兼容处理，边界见 [依赖审计](coordination/project-optimization-followup-2026-09-08.md#剩余依赖与实际使用路径)。生产包审计为 0 不代表全部路径无风险。
 
-## 环境与历史
-
-Windows 中文路径及 JBR 临时目录问题的当前命令统一见 [App README](../app/README.md)，不从旧日志复制环境变量。Java native access 和 flutter_timezone Kotlin 迁移警告须在相关升级时复核，不等同于本轮构建失败。
-
-整理前完整状态、用户决策和旧验收结果保存在 [归档索引](archive/2026-09-08-before-workflow-cleanup/INDEX.md)。每次重要交付在 `coordination/` 保留日期、范围、命令、结果和未测边界；本页只链接最新证据。
+Windows 路径/JBR 命令统一见 [App README](../app/README.md)。旧决策和结果保存在 [归档索引](archive/2026-09-08-before-workflow-cleanup/INDEX.md)；每次重要交付在 `coordination/` 保留实际命令、结果和未测边界，本页只链接证据。

@@ -10,6 +10,18 @@ import '../../test_records/presentation/test_records_page.dart';
 import '../data/record_history_source.dart';
 import 'database_record_history_widgets.dart';
 
+String _targetLabel(WaterQualityTarget? target) {
+  final lower = target?.minValue;
+  final upper = target?.maxValue;
+  if (target == null || (lower == null && upper == null)) return '尚未设置目标范围';
+  final bounds = lower == null
+      ? '≤${trendNumber(upper!)}'
+      : upper == null
+      ? '≥${trendNumber(lower)}'
+      : '${trendNumber(lower)}–${trendNumber(upper)}';
+  return '目标 $bounds ${target.unit}';
+}
+
 class TrendsPage extends ConsumerStatefulWidget {
   const TrendsPage({this.initialParameterId, super.key});
 
@@ -149,12 +161,17 @@ class _TrendContent extends ConsumerWidget {
                 DropdownButtonFormField<String>(
                   key: const Key('trend-parameter-selector'),
                   initialValue: selectedId,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: '趋势参数'),
                   items: [
                     for (final item in parameters)
                       DropdownMenuItem(
                         value: item.id,
-                        child: Text('${item.code} · ${item.displayName}'),
+                        child: Text(
+                          '${item.code} · ${item.displayName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                   ],
                   onChanged: (value) {
@@ -169,11 +186,25 @@ class _TrendContent extends ConsumerWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '${parameter.code} 趋势',
-              style: Theme.of(context).textTheme.titleMedium,
+            Expanded(
+              child: Text(
+                '${parameter.code} 趋势',
+                style: Theme.of(context).textTheme.titleMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            Text('${overview.count} 条记录'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${overview.count} 条记录'),
+                TextButton(
+                  onPressed: () =>
+                      context.push('/test-flow?parameterId=${parameter.id}'),
+                  child: const Text('添加检测'),
+                ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -190,19 +221,23 @@ class _TrendContent extends ConsumerWidget {
 
                       const SizedBox(height: 12),
                       FilledButton(
-                        onPressed: () => context.go('/test'),
-                        child: const Text('手动添加记录'),
+                        onPressed: () => parameter.code.toUpperCase() == 'KH'
+                            ? context.push(
+                                '/test-flow?parameterId=${parameter.id}',
+                              )
+                            : context.go('/test'),
+                        child: Text(
+                          parameter.code.toUpperCase() == 'KH'
+                              ? '开始 KH 检测'
+                              : '手动添加记录',
+                        ),
                       ),
                     ],
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        target == null
-                            ? '尚未设置目标范围'
-                            : '目标 ${trendNumber(target!.minValue)}–${trendNumber(target!.maxValue)} ${target!.unit}',
-                      ),
+                      Text(_targetLabel(target)),
                       const SizedBox(height: 12),
                       DatabaseRecordChart(
                         key: const Key('trend-chart'),

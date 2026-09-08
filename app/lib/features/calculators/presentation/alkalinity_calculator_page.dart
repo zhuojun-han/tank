@@ -6,6 +6,7 @@ import '../../maintenance/application/maintenance_providers.dart';
 import '../../tanks/application/tank_providers.dart';
 import '../domain/alkalinity_calculator.dart';
 import '../domain/calculator_session.dart';
+import '../domain/target_default.dart';
 import 'plan_confirmation.dart';
 
 class AlkalinityCalculatorPage extends ConsumerStatefulWidget {
@@ -26,6 +27,8 @@ class _AlkalinityCalculatorPageState
   String? _planTankId;
   String? _error;
   bool _saving = false;
+  String? _targetTankId;
+  bool _targetEdited = false;
   @override
   void dispose() {
     for (final field in _fields) {
@@ -37,6 +40,30 @@ class _AlkalinityCalculatorPageState
   @override
   Widget build(BuildContext context) {
     final tank = ref.watch(currentTankProvider).value;
+    final targets = tank == null
+        ? null
+        : ref.watch(waterQualityTargetsProvider(tank.id)).value;
+    if (tank != null && targets != null) {
+      if (_targetTankId != tank.id) {
+        _targetTankId = tank.id;
+        _targetEdited = false;
+        _plan = null;
+      }
+      if (!_targetEdited) {
+        final target = targets
+            .where((row) => row.parameterId == AppDatabase.khId)
+            .firstOrNull;
+        final text = calculatorTargetDefault(
+          kh: true,
+          minimum: target?.minValue,
+          maximum: target?.maxValue,
+        );
+        if (_fields[1].text != text) {
+          _fields[1].text = text;
+          _plan = null;
+        }
+      }
+    }
     const labels = [
       '当前 KH（dKH）',
       '目标 KH（dKH）',
@@ -66,7 +93,10 @@ class _AlkalinityCalculatorPageState
                   decimal: true,
                 ),
                 decoration: InputDecoration(labelText: labels[i]),
-                onChanged: (_) => setState(() => _plan = null),
+                onChanged: (_) => setState(() {
+                  if (i == 1) _targetEdited = true;
+                  _plan = null;
+                }),
               ),
             ),
           DropdownButtonFormField<int>(
@@ -88,7 +118,9 @@ class _AlkalinityCalculatorPageState
           const SizedBox(height: 12),
           FilledButton(
             key: const Key('calculate-alkalinity'),
-            onPressed: _saving || tank == null ? null : _calculate,
+            onPressed: _saving || tank == null || targets == null
+                ? null
+                : _calculate,
             child: const Text('计算 KH 母液与分日计划'),
           ),
           if (_error != null)

@@ -99,7 +99,12 @@ class _ScrollableRecordChartState extends State<ScrollableRecordChart> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           TextButton(onPressed: () => _move(-1), child: const Text('← 较早')),
-          Text(widget.bars ? '插值 / 单值' : '范围与插值'),
+          Expanded(
+            child: Text(
+              widget.bars ? '插值 / 单值' : '范围与插值',
+              textAlign: TextAlign.center,
+            ),
+          ),
           TextButton(onPressed: () => _move(1), child: const Text('最近 →')),
         ],
       ),

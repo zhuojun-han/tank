@@ -10,6 +10,10 @@ import '../../aquarium/presentation/aquarium_card.dart';
 import '../../aquarium/presentation/fish_manager_sheet.dart';
 import '../../maintenance/application/maintenance_providers.dart';
 import '../../maintenance/data/maintenance_repository.dart';
+import '../../maintenance/domain/rolling_schedule.dart';
+import '../../maintenance/presentation/task_schedule_dialogs.dart';
+import '../../calculators/application/maintenance_cycle_providers.dart';
+import '../../calculators/domain/maintenance_cycle.dart';
 import '../../tanks/application/tank_providers.dart';
 import '../../test_records/application/test_record_providers.dart';
 import '../../trends/data/record_history_source.dart';
@@ -101,6 +105,13 @@ class _HomeContent extends ConsumerWidget {
     final targetByParameter = {
       for (final target in targets) target.parameterId: target,
     };
+    final refillDue = maintenanceCycleOccurrences(
+      ref.watch(maintenanceCyclesProvider(tank.id)).value ?? const [],
+      tankId: tank.id,
+      start: now,
+      days: 1,
+      now: now,
+    ).any((item) => item.isDue);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -179,13 +190,15 @@ class _HomeContent extends ConsumerWidget {
                   ),
                 ),
                 data: (items) => items.isEmpty
-                    ? const Card(
-                        child: ListTile(
-                          leading: Icon(Icons.task_alt),
-                          title: Text('当前没有未完成维护事项'),
-                          subtitle: Text('可在“任务”页新增周期维护提醒。'),
-                        ),
-                      )
+                    ? refillDue
+                          ? const SizedBox.shrink()
+                          : const Card(
+                              child: ListTile(
+                                leading: Icon(Icons.task_alt),
+                                title: Text('当前没有未完成维护事项'),
+                                subtitle: Text('可在“任务”页新增周期维护提醒。'),
+                              ),
+                            )
                     : Card(
                         child: Column(
                           children: [
@@ -197,12 +210,24 @@ class _HomeContent extends ConsumerWidget {
                               _HomeTaskTile(
                                 item: items[index],
                                 onComplete: () async {
+                                  final item = items[index];
+                                  final schedule = rollingSchedule(item.task);
+                                  final completed =
+                                      await showTaskCompletionDate(
+                                        context,
+                                        firstDate: DateTime.parse(
+                                          schedule.startDate,
+                                        ),
+                                      );
+                                  if (completed == null) return;
                                   try {
                                     await ref
                                         .read(maintenanceRepositoryProvider)
                                         .complete(
                                           tankId: tank.id,
                                           taskId: items[index].task.id,
+                                          completedDate: completed,
+                                          expectedRevision: schedule.revision,
                                           occurrenceDate:
                                               items[index].occurrenceDate,
                                         );
@@ -227,6 +252,7 @@ class _HomeContent extends ConsumerWidget {
                       ),
               ),
         ),
+        _HomeCycles(tankId: tank.id, date: now),
         const SizedBox(height: 20),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -274,102 +300,195 @@ class _HomeContent extends ConsumerWidget {
 
 class _HomeTaskTile extends ConsumerWidget {
   const _HomeTaskTile({required this.item, required this.onComplete});
-
   final MaintenanceTaskItem item;
   final Future<void> Function() onComplete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final overdue = item.state == MaintenanceTaskViewState.overdue;
-    return ListTile(
+    final planned = isChemicalPlan(item.task) || !item.task.isOneOff;
+    Future<void> change(bool delay) async {
+      try {
+        final revision = rollingSchedule(item.task).revision;
+        final repo = ref.read(maintenanceRepositoryProvider);
+        if (delay) {
+          final days = await showTaskDelayDays(context);
+          if (days == null) return;
+          await repo.delayTask(
+            tankId: item.task.tankId,
+            taskId: item.task.id,
+            days: days,
+            expectedRevision: revision,
+          );
+        } else {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (dialog) => AlertDialog(
+              title: Text(planned ? '停止后续计划？' : '跳过任务？'),
+              content: Text(planned ? '今天及后续未完成事项将停止，历史记录保留。' : '此任务将标记为跳过。'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialog, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialog, true),
+                  child: const Text('确认'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+          await repo.skip(
+            tankId: item.task.tankId,
+            taskId: item.task.id,
+            expectedRevision: revision,
+          );
+        }
+      } catch (error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('操作失败：$error')));
+        }
+      }
+    }
+
+    return Padding(
       key: Key('home-maintenance-${item.task.id}'),
-      leading: Icon(
-        overdue ? Icons.warning_amber : Icons.schedule,
-        color: overdue ? Theme.of(context).colorScheme.error : null,
-      ),
-      title: Text(
-        isChemicalPlan(item.task)
-            ? '${item.task.source == 'alkalinity-plan' ? 'KH' : 'PO4'} 总计划 · 今日事项'
-            : item.task.title,
-      ),
-      subtitle: Text(
-        '${overdue
-            ? '已逾期'
-            : item.state == MaintenanceTaskViewState.snoozed
-            ? '已稍后提醒'
-            : '待处理'}'
-        ' · ${_dateTime(item.task.dueAt)}',
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          IconButton(
-            tooltip: '标记完成',
-            onPressed: onComplete,
-            icon: const Icon(Icons.check_circle_outline),
+          Text(
+            isChemicalPlan(item.task)
+                ? '${item.task.source == 'alkalinity-plan' ? 'KH' : 'PO4'} 总计划 · 今日事项'
+                : item.task.title,
+            style: Theme.of(context).textTheme.titleSmall,
           ),
-          PopupMenuButton<String>(
-            onSelected: (action) async {
-              try {
-                final repo = ref.read(maintenanceRepositoryProvider);
-                if (action == 'snooze') {
-                  await repo.snooze(
-                    tankId: item.task.tankId,
-                    taskId: item.task.id,
-                    occurrenceDate: item.occurrenceDate,
-                    until: DateTime.now().add(const Duration(hours: 1)),
-                  );
-                } else {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (dialog) => AlertDialog(
-                      title: const Text('停止后续计划？'),
-                      content: const Text('今天及后续未完成事项将停止，历史记录保留。'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(dialog, false),
-                          child: const Text('取消'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(dialog, true),
-                          child: const Text('停止计划'),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed != true) return;
-                  if (item.task.isOneOff) {
-                    await repo.skip(
-                      tankId: item.task.tankId,
-                      taskId: item.task.id,
-                    );
-                  } else {
-                    await repo.stopRecurring(
-                      tankId: item.task.tankId,
-                      taskId: item.task.id,
-                      from: item.occurrenceDate ?? DateTime.now(),
-                    );
-                  }
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text('操作失败：$e')));
-                }
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'snooze', child: Text('稍后 1 小时')),
-              if (isChemicalPlan(item.task) || !item.task.isOneOff)
-                const PopupMenuItem(value: 'stop', child: Text('停止后续计划')),
+          const SizedBox(height: 4),
+          Text(_dateTime(item.task.dueAt)),
+          const SizedBox(height: 8),
+          FilledButton(onPressed: onComplete, child: const Text('完成任务')),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => change(true),
+                  child: const Text('延迟'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => change(false),
+                  child: Text(planned ? '停止后续计划' : '跳过'),
+                ),
+              ),
             ],
           ),
         ],
       ),
-      onTap: () => context.go('/maintenance'),
     );
   }
+}
+
+class _HomeCycles extends ConsumerWidget {
+  const _HomeCycles({required this.tankId, required this.date});
+  final String tankId;
+  final DateTime date;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(maintenanceCyclesProvider(tankId))
+      .when(
+        loading: () => const SizedBox.shrink(),
+        error: (error, _) => Text('无法读取每日平衡：$error'),
+        data: (cycles) {
+          final items = maintenanceCycleOccurrences(
+            cycles,
+            tankId: tankId,
+            start: date,
+            days: 1,
+            now: date,
+          );
+          if (items.isEmpty) return const SizedBox.shrink();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 16),
+              Text('每日平衡', style: Theme.of(context).textTheme.titleMedium),
+              for (final item in items)
+                Card(
+                  child: Padding(
+                    key: Key('home-cycle-${item.cycle.id}'),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          item.title,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(item.remainingLabel),
+                        Text(item.detail),
+                        const SizedBox(height: 8),
+                        if (item.isCompleted)
+                          Row(
+                            children: [
+                              const Icon(Icons.check_circle_outline, size: 18),
+                              const SizedBox(width: 4),
+                              const Text('已完成'),
+                              const Spacer(),
+                              if (item.cycle.closedOnDate == null)
+                                TextButton(
+                                  onPressed: () => context.push(
+                                    '/maintenance-dosing?chemical=${item.cycle.chemical.name}',
+                                  ),
+                                  child: const Text('提前配液'),
+                                ),
+                            ],
+                          )
+                        else ...[
+                          FilledButton(
+                            onPressed: () => context.push(
+                              '/maintenance-dosing?chemical=${item.cycle.chemical.name}',
+                            ),
+                            child: const Text('添加滴定液'),
+                          ),
+                          OutlinedButton(
+                            onPressed: () async {
+                              final days = await showTaskDelayDays(context);
+                              if (days == null) return;
+                              try {
+                                await ref
+                                    .read(maintenanceCycleRepositoryProvider)
+                                    .delay(
+                                      item.cycle.id,
+                                      days,
+                                      expectedDeferredUntil:
+                                          item.cycle.refillDeferredUntil,
+                                    );
+                              } catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('延迟失败：$error')),
+                                  );
+                                }
+                              }
+                            },
+                            child: const Text('延迟'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
 }
 
 class _LatestRecordCard extends ConsumerWidget {
@@ -458,17 +577,24 @@ class _LatestRecordCard extends ConsumerWidget {
 }
 
 String _targetDescription(TestRecord record, WaterQualityTarget? target) {
-  if (target == null) return '尚未设置目标范围';
+  final min = target?.minValue;
+  final max = target?.maxValue;
+  if (target == null || (min == null && max == null)) return '尚未设置目标范围';
   final lower = record.confirmedMinValue;
   final upper = record.confirmedMaxValue ?? lower;
-  final status = upper < target.minValue
+  final status = min != null && upper < min
       ? '低于目标'
-      : lower > target.maxValue
+      : max != null && lower > max
       ? '高于目标'
-      : lower >= target.minValue && upper <= target.maxValue
+      : (min == null || lower >= min) && (max == null || upper <= max)
       ? '目标范围内'
       : '部分跨越目标范围';
-  return '$status · 目标 ${_number(target.minValue)}–${_number(target.maxValue)} ${target.unit}';
+  final bounds = min == null
+      ? '≤${_number(max!)}'
+      : max == null
+      ? '≥${_number(min)}'
+      : '${_number(min)}–${_number(max)}';
+  return '$status · 目标 $bounds ${target.unit}';
 }
 
 String _recordValue(TestRecord record) => record.confirmedMaxValue == null

@@ -1277,9 +1277,9 @@ class $WaterQualityTargetsTable extends WaterQualityTargets
   late final GeneratedColumn<double> minValue = GeneratedColumn<double>(
     'min_value',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.double,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _maxValueMeta = const VerificationMeta(
     'maxValue',
@@ -1288,9 +1288,9 @@ class $WaterQualityTargetsTable extends WaterQualityTargets
   late final GeneratedColumn<double> maxValue = GeneratedColumn<double>(
     'max_value',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.double,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _unitMeta = const VerificationMeta('unit');
   @override
@@ -1367,16 +1367,12 @@ class $WaterQualityTargetsTable extends WaterQualityTargets
         _minValueMeta,
         minValue.isAcceptableOrUnknown(data['min_value']!, _minValueMeta),
       );
-    } else if (isInserting) {
-      context.missing(_minValueMeta);
     }
     if (data.containsKey('max_value')) {
       context.handle(
         _maxValueMeta,
         maxValue.isAcceptableOrUnknown(data['max_value']!, _maxValueMeta),
       );
-    } else if (isInserting) {
-      context.missing(_maxValueMeta);
     }
     if (data.containsKey('unit')) {
       context.handle(
@@ -1422,11 +1418,11 @@ class $WaterQualityTargetsTable extends WaterQualityTargets
       minValue: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}min_value'],
-      )!,
+      ),
       maxValue: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}max_value'],
-      )!,
+      ),
       unit: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}unit'],
@@ -1449,16 +1445,16 @@ class WaterQualityTarget extends DataClass
   final String id;
   final String tankId;
   final String parameterId;
-  final double minValue;
-  final double maxValue;
+  final double? minValue;
+  final double? maxValue;
   final String unit;
   final DateTime updatedAt;
   const WaterQualityTarget({
     required this.id,
     required this.tankId,
     required this.parameterId,
-    required this.minValue,
-    required this.maxValue,
+    this.minValue,
+    this.maxValue,
     required this.unit,
     required this.updatedAt,
   });
@@ -1468,8 +1464,12 @@ class WaterQualityTarget extends DataClass
     map['id'] = Variable<String>(id);
     map['tank_id'] = Variable<String>(tankId);
     map['parameter_id'] = Variable<String>(parameterId);
-    map['min_value'] = Variable<double>(minValue);
-    map['max_value'] = Variable<double>(maxValue);
+    if (!nullToAbsent || minValue != null) {
+      map['min_value'] = Variable<double>(minValue);
+    }
+    if (!nullToAbsent || maxValue != null) {
+      map['max_value'] = Variable<double>(maxValue);
+    }
     map['unit'] = Variable<String>(unit);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1480,8 +1480,12 @@ class WaterQualityTarget extends DataClass
       id: Value(id),
       tankId: Value(tankId),
       parameterId: Value(parameterId),
-      minValue: Value(minValue),
-      maxValue: Value(maxValue),
+      minValue: minValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(minValue),
+      maxValue: maxValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxValue),
       unit: Value(unit),
       updatedAt: Value(updatedAt),
     );
@@ -1496,8 +1500,8 @@ class WaterQualityTarget extends DataClass
       id: serializer.fromJson<String>(json['id']),
       tankId: serializer.fromJson<String>(json['tankId']),
       parameterId: serializer.fromJson<String>(json['parameterId']),
-      minValue: serializer.fromJson<double>(json['minValue']),
-      maxValue: serializer.fromJson<double>(json['maxValue']),
+      minValue: serializer.fromJson<double?>(json['minValue']),
+      maxValue: serializer.fromJson<double?>(json['maxValue']),
       unit: serializer.fromJson<String>(json['unit']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -1509,8 +1513,8 @@ class WaterQualityTarget extends DataClass
       'id': serializer.toJson<String>(id),
       'tankId': serializer.toJson<String>(tankId),
       'parameterId': serializer.toJson<String>(parameterId),
-      'minValue': serializer.toJson<double>(minValue),
-      'maxValue': serializer.toJson<double>(maxValue),
+      'minValue': serializer.toJson<double?>(minValue),
+      'maxValue': serializer.toJson<double?>(maxValue),
       'unit': serializer.toJson<String>(unit),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -1520,16 +1524,16 @@ class WaterQualityTarget extends DataClass
     String? id,
     String? tankId,
     String? parameterId,
-    double? minValue,
-    double? maxValue,
+    Value<double?> minValue = const Value.absent(),
+    Value<double?> maxValue = const Value.absent(),
     String? unit,
     DateTime? updatedAt,
   }) => WaterQualityTarget(
     id: id ?? this.id,
     tankId: tankId ?? this.tankId,
     parameterId: parameterId ?? this.parameterId,
-    minValue: minValue ?? this.minValue,
-    maxValue: maxValue ?? this.maxValue,
+    minValue: minValue.present ? minValue.value : this.minValue,
+    maxValue: maxValue.present ? maxValue.value : this.maxValue,
     unit: unit ?? this.unit,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -1581,8 +1585,8 @@ class WaterQualityTargetsCompanion extends UpdateCompanion<WaterQualityTarget> {
   final Value<String> id;
   final Value<String> tankId;
   final Value<String> parameterId;
-  final Value<double> minValue;
-  final Value<double> maxValue;
+  final Value<double?> minValue;
+  final Value<double?> maxValue;
   final Value<String> unit;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -1600,16 +1604,14 @@ class WaterQualityTargetsCompanion extends UpdateCompanion<WaterQualityTarget> {
     required String id,
     required String tankId,
     required String parameterId,
-    required double minValue,
-    required double maxValue,
+    this.minValue = const Value.absent(),
+    this.maxValue = const Value.absent(),
     required String unit,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        tankId = Value(tankId),
        parameterId = Value(parameterId),
-       minValue = Value(minValue),
-       maxValue = Value(maxValue),
        unit = Value(unit),
        updatedAt = Value(updatedAt);
   static Insertable<WaterQualityTarget> custom({
@@ -1638,8 +1640,8 @@ class WaterQualityTargetsCompanion extends UpdateCompanion<WaterQualityTarget> {
     Value<String>? id,
     Value<String>? tankId,
     Value<String>? parameterId,
-    Value<double>? minValue,
-    Value<double>? maxValue,
+    Value<double?>? minValue,
+    Value<double?>? maxValue,
     Value<String>? unit,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -2371,6 +2373,21 @@ class $AppPreferencesTable extends AppPreferences
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _khTargetDefaultsAppliedMeta =
+      const VerificationMeta('khTargetDefaultsApplied');
+  @override
+  late final GeneratedColumn<bool> khTargetDefaultsApplied =
+      GeneratedColumn<bool>(
+        'kh_target_defaults_applied',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("kh_target_defaults_applied" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
   );
@@ -2389,6 +2406,7 @@ class $AppPreferencesTable extends AppPreferences
     themeMode,
     maintenanceNotificationsEnabled,
     fishStockJson,
+    khTargetDefaultsApplied,
     updatedAt,
   ];
   @override
@@ -2439,6 +2457,15 @@ class $AppPreferencesTable extends AppPreferences
         ),
       );
     }
+    if (data.containsKey('kh_target_defaults_applied')) {
+      context.handle(
+        _khTargetDefaultsAppliedMeta,
+        khTargetDefaultsApplied.isAcceptableOrUnknown(
+          data['kh_target_defaults_applied']!,
+          _khTargetDefaultsAppliedMeta,
+        ),
+      );
+    }
     if (data.containsKey('updated_at')) {
       context.handle(
         _updatedAtMeta,
@@ -2476,6 +2503,10 @@ class $AppPreferencesTable extends AppPreferences
         DriftSqlType.string,
         data['${effectivePrefix}fish_stock_json'],
       )!,
+      khTargetDefaultsApplied: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}kh_target_defaults_applied'],
+      )!,
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -2495,6 +2526,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
   final String themeMode;
   final bool maintenanceNotificationsEnabled;
   final String fishStockJson;
+  final bool khTargetDefaultsApplied;
   final DateTime updatedAt;
   const AppPreference({
     required this.id,
@@ -2502,6 +2534,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
     required this.themeMode,
     required this.maintenanceNotificationsEnabled,
     required this.fishStockJson,
+    required this.khTargetDefaultsApplied,
     required this.updatedAt,
   });
   @override
@@ -2516,6 +2549,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
       maintenanceNotificationsEnabled,
     );
     map['fish_stock_json'] = Variable<String>(fishStockJson);
+    map['kh_target_defaults_applied'] = Variable<bool>(khTargetDefaultsApplied);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -2529,6 +2563,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
       themeMode: Value(themeMode),
       maintenanceNotificationsEnabled: Value(maintenanceNotificationsEnabled),
       fishStockJson: Value(fishStockJson),
+      khTargetDefaultsApplied: Value(khTargetDefaultsApplied),
       updatedAt: Value(updatedAt),
     );
   }
@@ -2546,6 +2581,9 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
         json['maintenanceNotificationsEnabled'],
       ),
       fishStockJson: serializer.fromJson<String>(json['fishStockJson']),
+      khTargetDefaultsApplied: serializer.fromJson<bool>(
+        json['khTargetDefaultsApplied'],
+      ),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -2560,6 +2598,9 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
         maintenanceNotificationsEnabled,
       ),
       'fishStockJson': serializer.toJson<String>(fishStockJson),
+      'khTargetDefaultsApplied': serializer.toJson<bool>(
+        khTargetDefaultsApplied,
+      ),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -2570,6 +2611,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
     String? themeMode,
     bool? maintenanceNotificationsEnabled,
     String? fishStockJson,
+    bool? khTargetDefaultsApplied,
     DateTime? updatedAt,
   }) => AppPreference(
     id: id ?? this.id,
@@ -2580,6 +2622,8 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
     maintenanceNotificationsEnabled:
         maintenanceNotificationsEnabled ?? this.maintenanceNotificationsEnabled,
     fishStockJson: fishStockJson ?? this.fishStockJson,
+    khTargetDefaultsApplied:
+        khTargetDefaultsApplied ?? this.khTargetDefaultsApplied,
     updatedAt: updatedAt ?? this.updatedAt,
   );
   AppPreference copyWithCompanion(AppPreferencesCompanion data) {
@@ -2596,6 +2640,9 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
       fishStockJson: data.fishStockJson.present
           ? data.fishStockJson.value
           : this.fishStockJson,
+      khTargetDefaultsApplied: data.khTargetDefaultsApplied.present
+          ? data.khTargetDefaultsApplied.value
+          : this.khTargetDefaultsApplied,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -2610,6 +2657,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
             'maintenanceNotificationsEnabled: $maintenanceNotificationsEnabled, ',
           )
           ..write('fishStockJson: $fishStockJson, ')
+          ..write('khTargetDefaultsApplied: $khTargetDefaultsApplied, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -2622,6 +2670,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
     themeMode,
     maintenanceNotificationsEnabled,
     fishStockJson,
+    khTargetDefaultsApplied,
     updatedAt,
   );
   @override
@@ -2634,6 +2683,7 @@ class AppPreference extends DataClass implements Insertable<AppPreference> {
           other.maintenanceNotificationsEnabled ==
               this.maintenanceNotificationsEnabled &&
           other.fishStockJson == this.fishStockJson &&
+          other.khTargetDefaultsApplied == this.khTargetDefaultsApplied &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -2643,6 +2693,7 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
   final Value<String> themeMode;
   final Value<bool> maintenanceNotificationsEnabled;
   final Value<String> fishStockJson;
+  final Value<bool> khTargetDefaultsApplied;
   final Value<DateTime> updatedAt;
   const AppPreferencesCompanion({
     this.id = const Value.absent(),
@@ -2650,6 +2701,7 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
     this.themeMode = const Value.absent(),
     this.maintenanceNotificationsEnabled = const Value.absent(),
     this.fishStockJson = const Value.absent(),
+    this.khTargetDefaultsApplied = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
   AppPreferencesCompanion.insert({
@@ -2658,6 +2710,7 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
     this.themeMode = const Value.absent(),
     this.maintenanceNotificationsEnabled = const Value.absent(),
     this.fishStockJson = const Value.absent(),
+    this.khTargetDefaultsApplied = const Value.absent(),
     required DateTime updatedAt,
   }) : updatedAt = Value(updatedAt);
   static Insertable<AppPreference> custom({
@@ -2666,6 +2719,7 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
     Expression<String>? themeMode,
     Expression<bool>? maintenanceNotificationsEnabled,
     Expression<String>? fishStockJson,
+    Expression<bool>? khTargetDefaultsApplied,
     Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
@@ -2675,6 +2729,8 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
       if (maintenanceNotificationsEnabled != null)
         'maintenance_notifications_enabled': maintenanceNotificationsEnabled,
       if (fishStockJson != null) 'fish_stock_json': fishStockJson,
+      if (khTargetDefaultsApplied != null)
+        'kh_target_defaults_applied': khTargetDefaultsApplied,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
@@ -2685,6 +2741,7 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
     Value<String>? themeMode,
     Value<bool>? maintenanceNotificationsEnabled,
     Value<String>? fishStockJson,
+    Value<bool>? khTargetDefaultsApplied,
     Value<DateTime>? updatedAt,
   }) {
     return AppPreferencesCompanion(
@@ -2695,6 +2752,8 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
           maintenanceNotificationsEnabled ??
           this.maintenanceNotificationsEnabled,
       fishStockJson: fishStockJson ?? this.fishStockJson,
+      khTargetDefaultsApplied:
+          khTargetDefaultsApplied ?? this.khTargetDefaultsApplied,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -2719,6 +2778,11 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
     if (fishStockJson.present) {
       map['fish_stock_json'] = Variable<String>(fishStockJson.value);
     }
+    if (khTargetDefaultsApplied.present) {
+      map['kh_target_defaults_applied'] = Variable<bool>(
+        khTargetDefaultsApplied.value,
+      );
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -2735,6 +2799,7 @@ class AppPreferencesCompanion extends UpdateCompanion<AppPreference> {
             'maintenanceNotificationsEnabled: $maintenanceNotificationsEnabled, ',
           )
           ..write('fishStockJson: $fishStockJson, ')
+          ..write('khTargetDefaultsApplied: $khTargetDefaultsApplied, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -2882,6 +2947,17 @@ class $TestRecordsTable extends TestRecords
   @override
   late final GeneratedColumn<String> failureReason = GeneratedColumn<String>(
     'failure_reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _khTitrationJsonMeta = const VerificationMeta(
+    'khTitrationJson',
+  );
+  @override
+  late final GeneratedColumn<String> khTitrationJson = GeneratedColumn<String>(
+    'kh_titration_json',
     aliasedName,
     true,
     type: DriftSqlType.string,
@@ -3039,6 +3115,7 @@ class $TestRecordsTable extends TestRecords
     qualityScore,
     confidence,
     failureReason,
+    khTitrationJson,
     confirmedMinValue,
     confirmedInterpolation,
     estimatedInterpolation,
@@ -3160,6 +3237,15 @@ class $TestRecordsTable extends TestRecords
         failureReason.isAcceptableOrUnknown(
           data['failure_reason']!,
           _failureReasonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('kh_titration_json')) {
+      context.handle(
+        _khTitrationJsonMeta,
+        khTitrationJson.isAcceptableOrUnknown(
+          data['kh_titration_json']!,
+          _khTitrationJsonMeta,
         ),
       );
     }
@@ -3320,6 +3406,10 @@ class $TestRecordsTable extends TestRecords
         DriftSqlType.string,
         data['${effectivePrefix}failure_reason'],
       ),
+      khTitrationJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kh_titration_json'],
+      ),
       confirmedMinValue: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}confirmed_min_value'],
@@ -3390,6 +3480,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
   final double? qualityScore;
   final String? confidence;
   final String? failureReason;
+  final String? khTitrationJson;
   final double confirmedMinValue;
   final double? confirmedInterpolation;
   final double? estimatedInterpolation;
@@ -3415,6 +3506,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
     this.qualityScore,
     this.confidence,
     this.failureReason,
+    this.khTitrationJson,
     required this.confirmedMinValue,
     this.confirmedInterpolation,
     this.estimatedInterpolation,
@@ -3460,6 +3552,9 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
     }
     if (!nullToAbsent || failureReason != null) {
       map['failure_reason'] = Variable<String>(failureReason);
+    }
+    if (!nullToAbsent || khTitrationJson != null) {
+      map['kh_titration_json'] = Variable<String>(khTitrationJson);
     }
     map['confirmed_min_value'] = Variable<double>(confirmedMinValue);
     if (!nullToAbsent || confirmedInterpolation != null) {
@@ -3520,6 +3615,9 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
       failureReason: failureReason == null && nullToAbsent
           ? const Value.absent()
           : Value(failureReason),
+      khTitrationJson: khTitrationJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(khTitrationJson),
       confirmedMinValue: Value(confirmedMinValue),
       confirmedInterpolation: confirmedInterpolation == null && nullToAbsent
           ? const Value.absent()
@@ -3571,6 +3669,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
       qualityScore: serializer.fromJson<double?>(json['qualityScore']),
       confidence: serializer.fromJson<String?>(json['confidence']),
       failureReason: serializer.fromJson<String?>(json['failureReason']),
+      khTitrationJson: serializer.fromJson<String?>(json['khTitrationJson']),
       confirmedMinValue: serializer.fromJson<double>(json['confirmedMinValue']),
       confirmedInterpolation: serializer.fromJson<double?>(
         json['confirmedInterpolation'],
@@ -3607,6 +3706,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
       'qualityScore': serializer.toJson<double?>(qualityScore),
       'confidence': serializer.toJson<String?>(confidence),
       'failureReason': serializer.toJson<String?>(failureReason),
+      'khTitrationJson': serializer.toJson<String?>(khTitrationJson),
       'confirmedMinValue': serializer.toJson<double>(confirmedMinValue),
       'confirmedInterpolation': serializer.toJson<double?>(
         confirmedInterpolation,
@@ -3639,6 +3739,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
     Value<double?> qualityScore = const Value.absent(),
     Value<String?> confidence = const Value.absent(),
     Value<String?> failureReason = const Value.absent(),
+    Value<String?> khTitrationJson = const Value.absent(),
     double? confirmedMinValue,
     Value<double?> confirmedInterpolation = const Value.absent(),
     Value<double?> estimatedInterpolation = const Value.absent(),
@@ -3676,6 +3777,9 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
     failureReason: failureReason.present
         ? failureReason.value
         : this.failureReason,
+    khTitrationJson: khTitrationJson.present
+        ? khTitrationJson.value
+        : this.khTitrationJson,
     confirmedMinValue: confirmedMinValue ?? this.confirmedMinValue,
     confirmedInterpolation: confirmedInterpolation.present
         ? confirmedInterpolation.value
@@ -3729,6 +3833,9 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
       failureReason: data.failureReason.present
           ? data.failureReason.value
           : this.failureReason,
+      khTitrationJson: data.khTitrationJson.present
+          ? data.khTitrationJson.value
+          : this.khTitrationJson,
       confirmedMinValue: data.confirmedMinValue.present
           ? data.confirmedMinValue.value
           : this.confirmedMinValue,
@@ -3773,6 +3880,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
           ..write('qualityScore: $qualityScore, ')
           ..write('confidence: $confidence, ')
           ..write('failureReason: $failureReason, ')
+          ..write('khTitrationJson: $khTitrationJson, ')
           ..write('confirmedMinValue: $confirmedMinValue, ')
           ..write('confirmedInterpolation: $confirmedInterpolation, ')
           ..write('estimatedInterpolation: $estimatedInterpolation, ')
@@ -3803,6 +3911,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
     qualityScore,
     confidence,
     failureReason,
+    khTitrationJson,
     confirmedMinValue,
     confirmedInterpolation,
     estimatedInterpolation,
@@ -3832,6 +3941,7 @@ class TestRecord extends DataClass implements Insertable<TestRecord> {
           other.qualityScore == this.qualityScore &&
           other.confidence == this.confidence &&
           other.failureReason == this.failureReason &&
+          other.khTitrationJson == this.khTitrationJson &&
           other.confirmedMinValue == this.confirmedMinValue &&
           other.confirmedInterpolation == this.confirmedInterpolation &&
           other.estimatedInterpolation == this.estimatedInterpolation &&
@@ -3859,6 +3969,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
   final Value<double?> qualityScore;
   final Value<String?> confidence;
   final Value<String?> failureReason;
+  final Value<String?> khTitrationJson;
   final Value<double> confirmedMinValue;
   final Value<double?> confirmedInterpolation;
   final Value<double?> estimatedInterpolation;
@@ -3885,6 +3996,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
     this.qualityScore = const Value.absent(),
     this.confidence = const Value.absent(),
     this.failureReason = const Value.absent(),
+    this.khTitrationJson = const Value.absent(),
     this.confirmedMinValue = const Value.absent(),
     this.confirmedInterpolation = const Value.absent(),
     this.estimatedInterpolation = const Value.absent(),
@@ -3912,6 +4024,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
     this.qualityScore = const Value.absent(),
     this.confidence = const Value.absent(),
     this.failureReason = const Value.absent(),
+    this.khTitrationJson = const Value.absent(),
     required double confirmedMinValue,
     this.confirmedInterpolation = const Value.absent(),
     this.estimatedInterpolation = const Value.absent(),
@@ -3946,6 +4059,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
     Expression<double>? qualityScore,
     Expression<String>? confidence,
     Expression<String>? failureReason,
+    Expression<String>? khTitrationJson,
     Expression<double>? confirmedMinValue,
     Expression<double>? confirmedInterpolation,
     Expression<double>? estimatedInterpolation,
@@ -3973,6 +4087,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
       if (qualityScore != null) 'quality_score': qualityScore,
       if (confidence != null) 'confidence': confidence,
       if (failureReason != null) 'failure_reason': failureReason,
+      if (khTitrationJson != null) 'kh_titration_json': khTitrationJson,
       if (confirmedMinValue != null) 'confirmed_min_value': confirmedMinValue,
       if (confirmedInterpolation != null)
         'confirmed_interpolation': confirmedInterpolation,
@@ -4004,6 +4119,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
     Value<double?>? qualityScore,
     Value<String?>? confidence,
     Value<String?>? failureReason,
+    Value<String?>? khTitrationJson,
     Value<double>? confirmedMinValue,
     Value<double?>? confirmedInterpolation,
     Value<double?>? estimatedInterpolation,
@@ -4031,6 +4147,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
       qualityScore: qualityScore ?? this.qualityScore,
       confidence: confidence ?? this.confidence,
       failureReason: failureReason ?? this.failureReason,
+      khTitrationJson: khTitrationJson ?? this.khTitrationJson,
       confirmedMinValue: confirmedMinValue ?? this.confirmedMinValue,
       confirmedInterpolation:
           confirmedInterpolation ?? this.confirmedInterpolation,
@@ -4087,6 +4204,9 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
     }
     if (failureReason.present) {
       map['failure_reason'] = Variable<String>(failureReason.value);
+    }
+    if (khTitrationJson.present) {
+      map['kh_titration_json'] = Variable<String>(khTitrationJson.value);
     }
     if (confirmedMinValue.present) {
       map['confirmed_min_value'] = Variable<double>(confirmedMinValue.value);
@@ -4149,6 +4269,7 @@ class TestRecordsCompanion extends UpdateCompanion<TestRecord> {
           ..write('qualityScore: $qualityScore, ')
           ..write('confidence: $confidence, ')
           ..write('failureReason: $failureReason, ')
+          ..write('khTitrationJson: $khTitrationJson, ')
           ..write('confirmedMinValue: $confirmedMinValue, ')
           ..write('confirmedInterpolation: $confirmedInterpolation, ')
           ..write('estimatedInterpolation: $estimatedInterpolation, ')
@@ -4343,6 +4464,17 @@ class $MaintenanceTasksTable extends MaintenanceTasks
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _rollingJsonMeta = const VerificationMeta(
+    'rollingJson',
+  );
+  @override
+  late final GeneratedColumn<String> rollingJson = GeneratedColumn<String>(
+    'rolling_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _notificationIdMeta = const VerificationMeta(
     'notificationId',
   );
@@ -4393,6 +4525,7 @@ class $MaintenanceTasksTable extends MaintenanceTasks
     planDayIndex,
     planTotalDays,
     recurrenceJson,
+    rollingJson,
     notificationId,
     createdAt,
     updatedAt,
@@ -4526,6 +4659,15 @@ class $MaintenanceTasksTable extends MaintenanceTasks
         ),
       );
     }
+    if (data.containsKey('rolling_json')) {
+      context.handle(
+        _rollingJsonMeta,
+        rollingJson.isAcceptableOrUnknown(
+          data['rolling_json']!,
+          _rollingJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('notification_id')) {
       context.handle(
         _notificationIdMeta,
@@ -4620,6 +4762,10 @@ class $MaintenanceTasksTable extends MaintenanceTasks
         DriftSqlType.string,
         data['${effectivePrefix}recurrence_json'],
       ),
+      rollingJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rolling_json'],
+      ),
       notificationId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}notification_id'],
@@ -4657,6 +4803,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
   final int? planDayIndex;
   final int? planTotalDays;
   final String? recurrenceJson;
+  final String? rollingJson;
   final int? notificationId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -4676,6 +4823,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
     this.planDayIndex,
     this.planTotalDays,
     this.recurrenceJson,
+    this.rollingJson,
     this.notificationId,
     required this.createdAt,
     required this.updatedAt,
@@ -4709,6 +4857,9 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
     }
     if (!nullToAbsent || recurrenceJson != null) {
       map['recurrence_json'] = Variable<String>(recurrenceJson);
+    }
+    if (!nullToAbsent || rollingJson != null) {
+      map['rolling_json'] = Variable<String>(rollingJson);
     }
     if (!nullToAbsent || notificationId != null) {
       map['notification_id'] = Variable<int>(notificationId);
@@ -4747,6 +4898,9 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
       recurrenceJson: recurrenceJson == null && nullToAbsent
           ? const Value.absent()
           : Value(recurrenceJson),
+      rollingJson: rollingJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rollingJson),
       notificationId: notificationId == null && nullToAbsent
           ? const Value.absent()
           : Value(notificationId),
@@ -4778,6 +4932,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
       planDayIndex: serializer.fromJson<int?>(json['planDayIndex']),
       planTotalDays: serializer.fromJson<int?>(json['planTotalDays']),
       recurrenceJson: serializer.fromJson<String?>(json['recurrenceJson']),
+      rollingJson: serializer.fromJson<String?>(json['rollingJson']),
       notificationId: serializer.fromJson<int?>(json['notificationId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -4802,6 +4957,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
       'planDayIndex': serializer.toJson<int?>(planDayIndex),
       'planTotalDays': serializer.toJson<int?>(planTotalDays),
       'recurrenceJson': serializer.toJson<String?>(recurrenceJson),
+      'rollingJson': serializer.toJson<String?>(rollingJson),
       'notificationId': serializer.toJson<int?>(notificationId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -4824,6 +4980,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
     Value<int?> planDayIndex = const Value.absent(),
     Value<int?> planTotalDays = const Value.absent(),
     Value<String?> recurrenceJson = const Value.absent(),
+    Value<String?> rollingJson = const Value.absent(),
     Value<int?> notificationId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -4847,6 +5004,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
     recurrenceJson: recurrenceJson.present
         ? recurrenceJson.value
         : this.recurrenceJson,
+    rollingJson: rollingJson.present ? rollingJson.value : this.rollingJson,
     notificationId: notificationId.present
         ? notificationId.value
         : this.notificationId,
@@ -4882,6 +5040,9 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
       recurrenceJson: data.recurrenceJson.present
           ? data.recurrenceJson.value
           : this.recurrenceJson,
+      rollingJson: data.rollingJson.present
+          ? data.rollingJson.value
+          : this.rollingJson,
       notificationId: data.notificationId.present
           ? data.notificationId.value
           : this.notificationId,
@@ -4908,6 +5069,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
           ..write('planDayIndex: $planDayIndex, ')
           ..write('planTotalDays: $planTotalDays, ')
           ..write('recurrenceJson: $recurrenceJson, ')
+          ..write('rollingJson: $rollingJson, ')
           ..write('notificationId: $notificationId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -4932,6 +5094,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
     planDayIndex,
     planTotalDays,
     recurrenceJson,
+    rollingJson,
     notificationId,
     createdAt,
     updatedAt,
@@ -4955,6 +5118,7 @@ class MaintenanceTask extends DataClass implements Insertable<MaintenanceTask> {
           other.planDayIndex == this.planDayIndex &&
           other.planTotalDays == this.planTotalDays &&
           other.recurrenceJson == this.recurrenceJson &&
+          other.rollingJson == this.rollingJson &&
           other.notificationId == this.notificationId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -4976,6 +5140,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
   final Value<int?> planDayIndex;
   final Value<int?> planTotalDays;
   final Value<String?> recurrenceJson;
+  final Value<String?> rollingJson;
   final Value<int?> notificationId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -4996,6 +5161,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
     this.planDayIndex = const Value.absent(),
     this.planTotalDays = const Value.absent(),
     this.recurrenceJson = const Value.absent(),
+    this.rollingJson = const Value.absent(),
     this.notificationId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -5017,6 +5183,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
     this.planDayIndex = const Value.absent(),
     this.planTotalDays = const Value.absent(),
     this.recurrenceJson = const Value.absent(),
+    this.rollingJson = const Value.absent(),
     this.notificationId = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
@@ -5045,6 +5212,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
     Expression<int>? planDayIndex,
     Expression<int>? planTotalDays,
     Expression<String>? recurrenceJson,
+    Expression<String>? rollingJson,
     Expression<int>? notificationId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -5067,6 +5235,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
       if (planDayIndex != null) 'plan_day_index': planDayIndex,
       if (planTotalDays != null) 'plan_total_days': planTotalDays,
       if (recurrenceJson != null) 'recurrence_json': recurrenceJson,
+      if (rollingJson != null) 'rolling_json': rollingJson,
       if (notificationId != null) 'notification_id': notificationId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -5090,6 +5259,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
     Value<int?>? planDayIndex,
     Value<int?>? planTotalDays,
     Value<String?>? recurrenceJson,
+    Value<String?>? rollingJson,
     Value<int?>? notificationId,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -5112,6 +5282,7 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
       planDayIndex: planDayIndex ?? this.planDayIndex,
       planTotalDays: planTotalDays ?? this.planTotalDays,
       recurrenceJson: recurrenceJson ?? this.recurrenceJson,
+      rollingJson: rollingJson ?? this.rollingJson,
       notificationId: notificationId ?? this.notificationId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -5169,6 +5340,9 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
     if (recurrenceJson.present) {
       map['recurrence_json'] = Variable<String>(recurrenceJson.value);
     }
+    if (rollingJson.present) {
+      map['rolling_json'] = Variable<String>(rollingJson.value);
+    }
     if (notificationId.present) {
       map['notification_id'] = Variable<int>(notificationId.value);
     }
@@ -5202,6 +5376,1062 @@ class MaintenanceTasksCompanion extends UpdateCompanion<MaintenanceTask> {
           ..write('planDayIndex: $planDayIndex, ')
           ..write('planTotalDays: $planTotalDays, ')
           ..write('recurrenceJson: $recurrenceJson, ')
+          ..write('rollingJson: $rollingJson, ')
+          ..write('notificationId: $notificationId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MaintenanceCyclesTable extends MaintenanceCycles
+    with TableInfo<$MaintenanceCyclesTable, MaintenanceCycleRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MaintenanceCyclesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tankIdMeta = const VerificationMeta('tankId');
+  @override
+  late final GeneratedColumn<String> tankId = GeneratedColumn<String>(
+    'tank_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tanks (id)',
+    ),
+  );
+  static const VerificationMeta _chemicalMeta = const VerificationMeta(
+    'chemical',
+  );
+  @override
+  late final GeneratedColumn<String> chemical = GeneratedColumn<String>(
+    'chemical',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<String> startDate = GeneratedColumn<String>(
+    'start_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _refillDateMeta = const VerificationMeta(
+    'refillDate',
+  );
+  @override
+  late final GeneratedColumn<String> refillDate = GeneratedColumn<String>(
+    'refill_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _solutionMlMeta = const VerificationMeta(
+    'solutionMl',
+  );
+  @override
+  late final GeneratedColumn<double> solutionMl = GeneratedColumn<double>(
+    'solution_ml',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dailyLiquidMlMeta = const VerificationMeta(
+    'dailyLiquidMl',
+  );
+  @override
+  late final GeneratedColumn<double> dailyLiquidMl = GeneratedColumn<double>(
+    'daily_liquid_ml',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _effectPerMlMeta = const VerificationMeta(
+    'effectPerMl',
+  );
+  @override
+  late final GeneratedColumn<double> effectPerMl = GeneratedColumn<double>(
+    'effect_per_ml',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _retainedMlMeta = const VerificationMeta(
+    'retainedMl',
+  );
+  @override
+  late final GeneratedColumn<double> retainedMl = GeneratedColumn<double>(
+    'retained_ml',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedStockMlMeta = const VerificationMeta(
+    'addedStockMl',
+  );
+  @override
+  late final GeneratedColumn<double> addedStockMl = GeneratedColumn<double>(
+    'added_stock_ml',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedWaterMlMeta = const VerificationMeta(
+    'addedWaterMl',
+  );
+  @override
+  late final GeneratedColumn<double> addedWaterMl = GeneratedColumn<double>(
+    'added_water_ml',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _inputJsonMeta = const VerificationMeta(
+    'inputJson',
+  );
+  @override
+  late final GeneratedColumn<String> inputJson = GeneratedColumn<String>(
+    'input_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _previousCycleIdMeta = const VerificationMeta(
+    'previousCycleId',
+  );
+  @override
+  late final GeneratedColumn<String> previousCycleId = GeneratedColumn<String>(
+    'previous_cycle_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _closedOnDateMeta = const VerificationMeta(
+    'closedOnDate',
+  );
+  @override
+  late final GeneratedColumn<String> closedOnDate = GeneratedColumn<String>(
+    'closed_on_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _refillDeferredUntilMeta =
+      const VerificationMeta('refillDeferredUntil');
+  @override
+  late final GeneratedColumn<String> refillDeferredUntil =
+      GeneratedColumn<String>(
+        'refill_deferred_until',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _notificationIdMeta = const VerificationMeta(
+    'notificationId',
+  );
+  @override
+  late final GeneratedColumn<int> notificationId = GeneratedColumn<int>(
+    'notification_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    tankId,
+    chemical,
+    startDate,
+    refillDate,
+    solutionMl,
+    dailyLiquidMl,
+    effectPerMl,
+    retainedMl,
+    addedStockMl,
+    addedWaterMl,
+    inputJson,
+    previousCycleId,
+    closedOnDate,
+    refillDeferredUntil,
+    notificationId,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'maintenance_cycles';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MaintenanceCycleRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('tank_id')) {
+      context.handle(
+        _tankIdMeta,
+        tankId.isAcceptableOrUnknown(data['tank_id']!, _tankIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tankIdMeta);
+    }
+    if (data.containsKey('chemical')) {
+      context.handle(
+        _chemicalMeta,
+        chemical.isAcceptableOrUnknown(data['chemical']!, _chemicalMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_chemicalMeta);
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startDateMeta);
+    }
+    if (data.containsKey('refill_date')) {
+      context.handle(
+        _refillDateMeta,
+        refillDate.isAcceptableOrUnknown(data['refill_date']!, _refillDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_refillDateMeta);
+    }
+    if (data.containsKey('solution_ml')) {
+      context.handle(
+        _solutionMlMeta,
+        solutionMl.isAcceptableOrUnknown(data['solution_ml']!, _solutionMlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_solutionMlMeta);
+    }
+    if (data.containsKey('daily_liquid_ml')) {
+      context.handle(
+        _dailyLiquidMlMeta,
+        dailyLiquidMl.isAcceptableOrUnknown(
+          data['daily_liquid_ml']!,
+          _dailyLiquidMlMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_dailyLiquidMlMeta);
+    }
+    if (data.containsKey('effect_per_ml')) {
+      context.handle(
+        _effectPerMlMeta,
+        effectPerMl.isAcceptableOrUnknown(
+          data['effect_per_ml']!,
+          _effectPerMlMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_effectPerMlMeta);
+    }
+    if (data.containsKey('retained_ml')) {
+      context.handle(
+        _retainedMlMeta,
+        retainedMl.isAcceptableOrUnknown(data['retained_ml']!, _retainedMlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_retainedMlMeta);
+    }
+    if (data.containsKey('added_stock_ml')) {
+      context.handle(
+        _addedStockMlMeta,
+        addedStockMl.isAcceptableOrUnknown(
+          data['added_stock_ml']!,
+          _addedStockMlMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_addedStockMlMeta);
+    }
+    if (data.containsKey('added_water_ml')) {
+      context.handle(
+        _addedWaterMlMeta,
+        addedWaterMl.isAcceptableOrUnknown(
+          data['added_water_ml']!,
+          _addedWaterMlMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_addedWaterMlMeta);
+    }
+    if (data.containsKey('input_json')) {
+      context.handle(
+        _inputJsonMeta,
+        inputJson.isAcceptableOrUnknown(data['input_json']!, _inputJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_inputJsonMeta);
+    }
+    if (data.containsKey('previous_cycle_id')) {
+      context.handle(
+        _previousCycleIdMeta,
+        previousCycleId.isAcceptableOrUnknown(
+          data['previous_cycle_id']!,
+          _previousCycleIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('closed_on_date')) {
+      context.handle(
+        _closedOnDateMeta,
+        closedOnDate.isAcceptableOrUnknown(
+          data['closed_on_date']!,
+          _closedOnDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('refill_deferred_until')) {
+      context.handle(
+        _refillDeferredUntilMeta,
+        refillDeferredUntil.isAcceptableOrUnknown(
+          data['refill_deferred_until']!,
+          _refillDeferredUntilMeta,
+        ),
+      );
+    }
+    if (data.containsKey('notification_id')) {
+      context.handle(
+        _notificationIdMeta,
+        notificationId.isAcceptableOrUnknown(
+          data['notification_id']!,
+          _notificationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MaintenanceCycleRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MaintenanceCycleRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      tankId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tank_id'],
+      )!,
+      chemical: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chemical'],
+      )!,
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}start_date'],
+      )!,
+      refillDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refill_date'],
+      )!,
+      solutionMl: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}solution_ml'],
+      )!,
+      dailyLiquidMl: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}daily_liquid_ml'],
+      )!,
+      effectPerMl: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}effect_per_ml'],
+      )!,
+      retainedMl: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}retained_ml'],
+      )!,
+      addedStockMl: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}added_stock_ml'],
+      )!,
+      addedWaterMl: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}added_water_ml'],
+      )!,
+      inputJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}input_json'],
+      )!,
+      previousCycleId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}previous_cycle_id'],
+      ),
+      closedOnDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}closed_on_date'],
+      ),
+      refillDeferredUntil: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}refill_deferred_until'],
+      ),
+      notificationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}notification_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $MaintenanceCyclesTable createAlias(String alias) {
+    return $MaintenanceCyclesTable(attachedDatabase, alias);
+  }
+}
+
+class MaintenanceCycleRow extends DataClass
+    implements Insertable<MaintenanceCycleRow> {
+  final String id;
+  final String tankId;
+  final String chemical;
+  final String startDate;
+  final String refillDate;
+  final double solutionMl;
+  final double dailyLiquidMl;
+  final double effectPerMl;
+  final double retainedMl;
+  final double addedStockMl;
+  final double addedWaterMl;
+  final String inputJson;
+  final String? previousCycleId;
+  final String? closedOnDate;
+  final String? refillDeferredUntil;
+  final int? notificationId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const MaintenanceCycleRow({
+    required this.id,
+    required this.tankId,
+    required this.chemical,
+    required this.startDate,
+    required this.refillDate,
+    required this.solutionMl,
+    required this.dailyLiquidMl,
+    required this.effectPerMl,
+    required this.retainedMl,
+    required this.addedStockMl,
+    required this.addedWaterMl,
+    required this.inputJson,
+    this.previousCycleId,
+    this.closedOnDate,
+    this.refillDeferredUntil,
+    this.notificationId,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['tank_id'] = Variable<String>(tankId);
+    map['chemical'] = Variable<String>(chemical);
+    map['start_date'] = Variable<String>(startDate);
+    map['refill_date'] = Variable<String>(refillDate);
+    map['solution_ml'] = Variable<double>(solutionMl);
+    map['daily_liquid_ml'] = Variable<double>(dailyLiquidMl);
+    map['effect_per_ml'] = Variable<double>(effectPerMl);
+    map['retained_ml'] = Variable<double>(retainedMl);
+    map['added_stock_ml'] = Variable<double>(addedStockMl);
+    map['added_water_ml'] = Variable<double>(addedWaterMl);
+    map['input_json'] = Variable<String>(inputJson);
+    if (!nullToAbsent || previousCycleId != null) {
+      map['previous_cycle_id'] = Variable<String>(previousCycleId);
+    }
+    if (!nullToAbsent || closedOnDate != null) {
+      map['closed_on_date'] = Variable<String>(closedOnDate);
+    }
+    if (!nullToAbsent || refillDeferredUntil != null) {
+      map['refill_deferred_until'] = Variable<String>(refillDeferredUntil);
+    }
+    if (!nullToAbsent || notificationId != null) {
+      map['notification_id'] = Variable<int>(notificationId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  MaintenanceCyclesCompanion toCompanion(bool nullToAbsent) {
+    return MaintenanceCyclesCompanion(
+      id: Value(id),
+      tankId: Value(tankId),
+      chemical: Value(chemical),
+      startDate: Value(startDate),
+      refillDate: Value(refillDate),
+      solutionMl: Value(solutionMl),
+      dailyLiquidMl: Value(dailyLiquidMl),
+      effectPerMl: Value(effectPerMl),
+      retainedMl: Value(retainedMl),
+      addedStockMl: Value(addedStockMl),
+      addedWaterMl: Value(addedWaterMl),
+      inputJson: Value(inputJson),
+      previousCycleId: previousCycleId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousCycleId),
+      closedOnDate: closedOnDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(closedOnDate),
+      refillDeferredUntil: refillDeferredUntil == null && nullToAbsent
+          ? const Value.absent()
+          : Value(refillDeferredUntil),
+      notificationId: notificationId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notificationId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory MaintenanceCycleRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MaintenanceCycleRow(
+      id: serializer.fromJson<String>(json['id']),
+      tankId: serializer.fromJson<String>(json['tankId']),
+      chemical: serializer.fromJson<String>(json['chemical']),
+      startDate: serializer.fromJson<String>(json['startDate']),
+      refillDate: serializer.fromJson<String>(json['refillDate']),
+      solutionMl: serializer.fromJson<double>(json['solutionMl']),
+      dailyLiquidMl: serializer.fromJson<double>(json['dailyLiquidMl']),
+      effectPerMl: serializer.fromJson<double>(json['effectPerMl']),
+      retainedMl: serializer.fromJson<double>(json['retainedMl']),
+      addedStockMl: serializer.fromJson<double>(json['addedStockMl']),
+      addedWaterMl: serializer.fromJson<double>(json['addedWaterMl']),
+      inputJson: serializer.fromJson<String>(json['inputJson']),
+      previousCycleId: serializer.fromJson<String?>(json['previousCycleId']),
+      closedOnDate: serializer.fromJson<String?>(json['closedOnDate']),
+      refillDeferredUntil: serializer.fromJson<String?>(
+        json['refillDeferredUntil'],
+      ),
+      notificationId: serializer.fromJson<int?>(json['notificationId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'tankId': serializer.toJson<String>(tankId),
+      'chemical': serializer.toJson<String>(chemical),
+      'startDate': serializer.toJson<String>(startDate),
+      'refillDate': serializer.toJson<String>(refillDate),
+      'solutionMl': serializer.toJson<double>(solutionMl),
+      'dailyLiquidMl': serializer.toJson<double>(dailyLiquidMl),
+      'effectPerMl': serializer.toJson<double>(effectPerMl),
+      'retainedMl': serializer.toJson<double>(retainedMl),
+      'addedStockMl': serializer.toJson<double>(addedStockMl),
+      'addedWaterMl': serializer.toJson<double>(addedWaterMl),
+      'inputJson': serializer.toJson<String>(inputJson),
+      'previousCycleId': serializer.toJson<String?>(previousCycleId),
+      'closedOnDate': serializer.toJson<String?>(closedOnDate),
+      'refillDeferredUntil': serializer.toJson<String?>(refillDeferredUntil),
+      'notificationId': serializer.toJson<int?>(notificationId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  MaintenanceCycleRow copyWith({
+    String? id,
+    String? tankId,
+    String? chemical,
+    String? startDate,
+    String? refillDate,
+    double? solutionMl,
+    double? dailyLiquidMl,
+    double? effectPerMl,
+    double? retainedMl,
+    double? addedStockMl,
+    double? addedWaterMl,
+    String? inputJson,
+    Value<String?> previousCycleId = const Value.absent(),
+    Value<String?> closedOnDate = const Value.absent(),
+    Value<String?> refillDeferredUntil = const Value.absent(),
+    Value<int?> notificationId = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => MaintenanceCycleRow(
+    id: id ?? this.id,
+    tankId: tankId ?? this.tankId,
+    chemical: chemical ?? this.chemical,
+    startDate: startDate ?? this.startDate,
+    refillDate: refillDate ?? this.refillDate,
+    solutionMl: solutionMl ?? this.solutionMl,
+    dailyLiquidMl: dailyLiquidMl ?? this.dailyLiquidMl,
+    effectPerMl: effectPerMl ?? this.effectPerMl,
+    retainedMl: retainedMl ?? this.retainedMl,
+    addedStockMl: addedStockMl ?? this.addedStockMl,
+    addedWaterMl: addedWaterMl ?? this.addedWaterMl,
+    inputJson: inputJson ?? this.inputJson,
+    previousCycleId: previousCycleId.present
+        ? previousCycleId.value
+        : this.previousCycleId,
+    closedOnDate: closedOnDate.present ? closedOnDate.value : this.closedOnDate,
+    refillDeferredUntil: refillDeferredUntil.present
+        ? refillDeferredUntil.value
+        : this.refillDeferredUntil,
+    notificationId: notificationId.present
+        ? notificationId.value
+        : this.notificationId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  MaintenanceCycleRow copyWithCompanion(MaintenanceCyclesCompanion data) {
+    return MaintenanceCycleRow(
+      id: data.id.present ? data.id.value : this.id,
+      tankId: data.tankId.present ? data.tankId.value : this.tankId,
+      chemical: data.chemical.present ? data.chemical.value : this.chemical,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      refillDate: data.refillDate.present
+          ? data.refillDate.value
+          : this.refillDate,
+      solutionMl: data.solutionMl.present
+          ? data.solutionMl.value
+          : this.solutionMl,
+      dailyLiquidMl: data.dailyLiquidMl.present
+          ? data.dailyLiquidMl.value
+          : this.dailyLiquidMl,
+      effectPerMl: data.effectPerMl.present
+          ? data.effectPerMl.value
+          : this.effectPerMl,
+      retainedMl: data.retainedMl.present
+          ? data.retainedMl.value
+          : this.retainedMl,
+      addedStockMl: data.addedStockMl.present
+          ? data.addedStockMl.value
+          : this.addedStockMl,
+      addedWaterMl: data.addedWaterMl.present
+          ? data.addedWaterMl.value
+          : this.addedWaterMl,
+      inputJson: data.inputJson.present ? data.inputJson.value : this.inputJson,
+      previousCycleId: data.previousCycleId.present
+          ? data.previousCycleId.value
+          : this.previousCycleId,
+      closedOnDate: data.closedOnDate.present
+          ? data.closedOnDate.value
+          : this.closedOnDate,
+      refillDeferredUntil: data.refillDeferredUntil.present
+          ? data.refillDeferredUntil.value
+          : this.refillDeferredUntil,
+      notificationId: data.notificationId.present
+          ? data.notificationId.value
+          : this.notificationId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MaintenanceCycleRow(')
+          ..write('id: $id, ')
+          ..write('tankId: $tankId, ')
+          ..write('chemical: $chemical, ')
+          ..write('startDate: $startDate, ')
+          ..write('refillDate: $refillDate, ')
+          ..write('solutionMl: $solutionMl, ')
+          ..write('dailyLiquidMl: $dailyLiquidMl, ')
+          ..write('effectPerMl: $effectPerMl, ')
+          ..write('retainedMl: $retainedMl, ')
+          ..write('addedStockMl: $addedStockMl, ')
+          ..write('addedWaterMl: $addedWaterMl, ')
+          ..write('inputJson: $inputJson, ')
+          ..write('previousCycleId: $previousCycleId, ')
+          ..write('closedOnDate: $closedOnDate, ')
+          ..write('refillDeferredUntil: $refillDeferredUntil, ')
+          ..write('notificationId: $notificationId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    tankId,
+    chemical,
+    startDate,
+    refillDate,
+    solutionMl,
+    dailyLiquidMl,
+    effectPerMl,
+    retainedMl,
+    addedStockMl,
+    addedWaterMl,
+    inputJson,
+    previousCycleId,
+    closedOnDate,
+    refillDeferredUntil,
+    notificationId,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MaintenanceCycleRow &&
+          other.id == this.id &&
+          other.tankId == this.tankId &&
+          other.chemical == this.chemical &&
+          other.startDate == this.startDate &&
+          other.refillDate == this.refillDate &&
+          other.solutionMl == this.solutionMl &&
+          other.dailyLiquidMl == this.dailyLiquidMl &&
+          other.effectPerMl == this.effectPerMl &&
+          other.retainedMl == this.retainedMl &&
+          other.addedStockMl == this.addedStockMl &&
+          other.addedWaterMl == this.addedWaterMl &&
+          other.inputJson == this.inputJson &&
+          other.previousCycleId == this.previousCycleId &&
+          other.closedOnDate == this.closedOnDate &&
+          other.refillDeferredUntil == this.refillDeferredUntil &&
+          other.notificationId == this.notificationId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class MaintenanceCyclesCompanion extends UpdateCompanion<MaintenanceCycleRow> {
+  final Value<String> id;
+  final Value<String> tankId;
+  final Value<String> chemical;
+  final Value<String> startDate;
+  final Value<String> refillDate;
+  final Value<double> solutionMl;
+  final Value<double> dailyLiquidMl;
+  final Value<double> effectPerMl;
+  final Value<double> retainedMl;
+  final Value<double> addedStockMl;
+  final Value<double> addedWaterMl;
+  final Value<String> inputJson;
+  final Value<String?> previousCycleId;
+  final Value<String?> closedOnDate;
+  final Value<String?> refillDeferredUntil;
+  final Value<int?> notificationId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const MaintenanceCyclesCompanion({
+    this.id = const Value.absent(),
+    this.tankId = const Value.absent(),
+    this.chemical = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.refillDate = const Value.absent(),
+    this.solutionMl = const Value.absent(),
+    this.dailyLiquidMl = const Value.absent(),
+    this.effectPerMl = const Value.absent(),
+    this.retainedMl = const Value.absent(),
+    this.addedStockMl = const Value.absent(),
+    this.addedWaterMl = const Value.absent(),
+    this.inputJson = const Value.absent(),
+    this.previousCycleId = const Value.absent(),
+    this.closedOnDate = const Value.absent(),
+    this.refillDeferredUntil = const Value.absent(),
+    this.notificationId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MaintenanceCyclesCompanion.insert({
+    required String id,
+    required String tankId,
+    required String chemical,
+    required String startDate,
+    required String refillDate,
+    required double solutionMl,
+    required double dailyLiquidMl,
+    required double effectPerMl,
+    required double retainedMl,
+    required double addedStockMl,
+    required double addedWaterMl,
+    required String inputJson,
+    this.previousCycleId = const Value.absent(),
+    this.closedOnDate = const Value.absent(),
+    this.refillDeferredUntil = const Value.absent(),
+    this.notificationId = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       tankId = Value(tankId),
+       chemical = Value(chemical),
+       startDate = Value(startDate),
+       refillDate = Value(refillDate),
+       solutionMl = Value(solutionMl),
+       dailyLiquidMl = Value(dailyLiquidMl),
+       effectPerMl = Value(effectPerMl),
+       retainedMl = Value(retainedMl),
+       addedStockMl = Value(addedStockMl),
+       addedWaterMl = Value(addedWaterMl),
+       inputJson = Value(inputJson),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<MaintenanceCycleRow> custom({
+    Expression<String>? id,
+    Expression<String>? tankId,
+    Expression<String>? chemical,
+    Expression<String>? startDate,
+    Expression<String>? refillDate,
+    Expression<double>? solutionMl,
+    Expression<double>? dailyLiquidMl,
+    Expression<double>? effectPerMl,
+    Expression<double>? retainedMl,
+    Expression<double>? addedStockMl,
+    Expression<double>? addedWaterMl,
+    Expression<String>? inputJson,
+    Expression<String>? previousCycleId,
+    Expression<String>? closedOnDate,
+    Expression<String>? refillDeferredUntil,
+    Expression<int>? notificationId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (tankId != null) 'tank_id': tankId,
+      if (chemical != null) 'chemical': chemical,
+      if (startDate != null) 'start_date': startDate,
+      if (refillDate != null) 'refill_date': refillDate,
+      if (solutionMl != null) 'solution_ml': solutionMl,
+      if (dailyLiquidMl != null) 'daily_liquid_ml': dailyLiquidMl,
+      if (effectPerMl != null) 'effect_per_ml': effectPerMl,
+      if (retainedMl != null) 'retained_ml': retainedMl,
+      if (addedStockMl != null) 'added_stock_ml': addedStockMl,
+      if (addedWaterMl != null) 'added_water_ml': addedWaterMl,
+      if (inputJson != null) 'input_json': inputJson,
+      if (previousCycleId != null) 'previous_cycle_id': previousCycleId,
+      if (closedOnDate != null) 'closed_on_date': closedOnDate,
+      if (refillDeferredUntil != null)
+        'refill_deferred_until': refillDeferredUntil,
+      if (notificationId != null) 'notification_id': notificationId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MaintenanceCyclesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? tankId,
+    Value<String>? chemical,
+    Value<String>? startDate,
+    Value<String>? refillDate,
+    Value<double>? solutionMl,
+    Value<double>? dailyLiquidMl,
+    Value<double>? effectPerMl,
+    Value<double>? retainedMl,
+    Value<double>? addedStockMl,
+    Value<double>? addedWaterMl,
+    Value<String>? inputJson,
+    Value<String?>? previousCycleId,
+    Value<String?>? closedOnDate,
+    Value<String?>? refillDeferredUntil,
+    Value<int?>? notificationId,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return MaintenanceCyclesCompanion(
+      id: id ?? this.id,
+      tankId: tankId ?? this.tankId,
+      chemical: chemical ?? this.chemical,
+      startDate: startDate ?? this.startDate,
+      refillDate: refillDate ?? this.refillDate,
+      solutionMl: solutionMl ?? this.solutionMl,
+      dailyLiquidMl: dailyLiquidMl ?? this.dailyLiquidMl,
+      effectPerMl: effectPerMl ?? this.effectPerMl,
+      retainedMl: retainedMl ?? this.retainedMl,
+      addedStockMl: addedStockMl ?? this.addedStockMl,
+      addedWaterMl: addedWaterMl ?? this.addedWaterMl,
+      inputJson: inputJson ?? this.inputJson,
+      previousCycleId: previousCycleId ?? this.previousCycleId,
+      closedOnDate: closedOnDate ?? this.closedOnDate,
+      refillDeferredUntil: refillDeferredUntil ?? this.refillDeferredUntil,
+      notificationId: notificationId ?? this.notificationId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (tankId.present) {
+      map['tank_id'] = Variable<String>(tankId.value);
+    }
+    if (chemical.present) {
+      map['chemical'] = Variable<String>(chemical.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<String>(startDate.value);
+    }
+    if (refillDate.present) {
+      map['refill_date'] = Variable<String>(refillDate.value);
+    }
+    if (solutionMl.present) {
+      map['solution_ml'] = Variable<double>(solutionMl.value);
+    }
+    if (dailyLiquidMl.present) {
+      map['daily_liquid_ml'] = Variable<double>(dailyLiquidMl.value);
+    }
+    if (effectPerMl.present) {
+      map['effect_per_ml'] = Variable<double>(effectPerMl.value);
+    }
+    if (retainedMl.present) {
+      map['retained_ml'] = Variable<double>(retainedMl.value);
+    }
+    if (addedStockMl.present) {
+      map['added_stock_ml'] = Variable<double>(addedStockMl.value);
+    }
+    if (addedWaterMl.present) {
+      map['added_water_ml'] = Variable<double>(addedWaterMl.value);
+    }
+    if (inputJson.present) {
+      map['input_json'] = Variable<String>(inputJson.value);
+    }
+    if (previousCycleId.present) {
+      map['previous_cycle_id'] = Variable<String>(previousCycleId.value);
+    }
+    if (closedOnDate.present) {
+      map['closed_on_date'] = Variable<String>(closedOnDate.value);
+    }
+    if (refillDeferredUntil.present) {
+      map['refill_deferred_until'] = Variable<String>(
+        refillDeferredUntil.value,
+      );
+    }
+    if (notificationId.present) {
+      map['notification_id'] = Variable<int>(notificationId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MaintenanceCyclesCompanion(')
+          ..write('id: $id, ')
+          ..write('tankId: $tankId, ')
+          ..write('chemical: $chemical, ')
+          ..write('startDate: $startDate, ')
+          ..write('refillDate: $refillDate, ')
+          ..write('solutionMl: $solutionMl, ')
+          ..write('dailyLiquidMl: $dailyLiquidMl, ')
+          ..write('effectPerMl: $effectPerMl, ')
+          ..write('retainedMl: $retainedMl, ')
+          ..write('addedStockMl: $addedStockMl, ')
+          ..write('addedWaterMl: $addedWaterMl, ')
+          ..write('inputJson: $inputJson, ')
+          ..write('previousCycleId: $previousCycleId, ')
+          ..write('closedOnDate: $closedOnDate, ')
+          ..write('refillDeferredUntil: $refillDeferredUntil, ')
           ..write('notificationId: $notificationId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -7619,6 +8849,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MaintenanceTasksTable maintenanceTasks = $MaintenanceTasksTable(
     this,
   );
+  late final $MaintenanceCyclesTable maintenanceCycles =
+      $MaintenanceCyclesTable(this);
   late final $TaskEventsTable taskEvents = $TaskEventsTable(this);
   late final $TestTimerDefaultsTable testTimerDefaults =
       $TestTimerDefaultsTable(this);
@@ -7637,6 +8869,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     appPreferences,
     testRecords,
     maintenanceTasks,
+    maintenanceCycles,
     taskEvents,
     testTimerDefaults,
     activeTestSessions,
@@ -7760,6 +8993,27 @@ final class $$TanksTableReferences
 
     final cache = $_typedResult.readTableOrNull(
       _maintenanceTasksRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$MaintenanceCyclesTable, List<MaintenanceCycleRow>>
+  _maintenanceCyclesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.maintenanceCycles,
+        aliasName: 'tanks__id__maintenance_cycles__tank_id',
+      );
+
+  $$MaintenanceCyclesTableProcessedTableManager get maintenanceCyclesRefs {
+    final manager = $$MaintenanceCyclesTableTableManager(
+      $_db,
+      $_db.maintenanceCycles,
+    ).filter((f) => f.tankId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _maintenanceCyclesRefsTable($_db),
     );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
@@ -7963,6 +9217,31 @@ class $$TanksTableFilterComposer extends Composer<_$AppDatabase, $TanksTable> {
           }) => $$MaintenanceTasksTableFilterComposer(
             $db: $db,
             $table: $db.maintenanceTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> maintenanceCyclesRefs(
+    Expression<bool> Function($$MaintenanceCyclesTableFilterComposer f) f,
+  ) {
+    final $$MaintenanceCyclesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.maintenanceCycles,
+      getReferencedColumn: (t) => t.tankId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MaintenanceCyclesTableFilterComposer(
+            $db: $db,
+            $table: $db.maintenanceCycles,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8218,6 +9497,32 @@ class $$TanksTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> maintenanceCyclesRefs<T extends Object>(
+    Expression<T> Function($$MaintenanceCyclesTableAnnotationComposer a) f,
+  ) {
+    final $$MaintenanceCyclesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.maintenanceCycles,
+          getReferencedColumn: (t) => t.tankId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$MaintenanceCyclesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.maintenanceCycles,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> testTimerDefaultsRefs<T extends Object>(
     Expression<T> Function($$TestTimerDefaultsTableAnnotationComposer a) f,
   ) {
@@ -8290,6 +9595,7 @@ class $$TanksTableTableManager
             bool appPreferencesRefs,
             bool testRecordsRefs,
             bool maintenanceTasksRefs,
+            bool maintenanceCyclesRefs,
             bool testTimerDefaultsRefs,
             bool activeTestSessionsRefs,
           })
@@ -8354,6 +9660,7 @@ class $$TanksTableTableManager
                 appPreferencesRefs = false,
                 testRecordsRefs = false,
                 maintenanceTasksRefs = false,
+                maintenanceCyclesRefs = false,
                 testTimerDefaultsRefs = false,
                 activeTestSessionsRefs = false,
               }) {
@@ -8365,6 +9672,7 @@ class $$TanksTableTableManager
                     if (appPreferencesRefs) db.appPreferences,
                     if (testRecordsRefs) db.testRecords,
                     if (maintenanceTasksRefs) db.maintenanceTasks,
+                    if (maintenanceCyclesRefs) db.maintenanceCycles,
                     if (testTimerDefaultsRefs) db.testTimerDefaults,
                     if (activeTestSessionsRefs) db.activeTestSessions,
                   ],
@@ -8476,6 +9784,27 @@ class $$TanksTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (maintenanceCyclesRefs)
+                        await $_getPrefetchedData<
+                          Tank,
+                          $TanksTable,
+                          MaintenanceCycleRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TanksTableReferences
+                              ._maintenanceCyclesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TanksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).maintenanceCyclesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.tankId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (testTimerDefaultsRefs)
                         await $_getPrefetchedData<
                           Tank,
@@ -8544,6 +9873,7 @@ typedef $$TanksTableProcessedTableManager =
         bool appPreferencesRefs,
         bool testRecordsRefs,
         bool maintenanceTasksRefs,
+        bool maintenanceCyclesRefs,
         bool testTimerDefaultsRefs,
         bool activeTestSessionsRefs,
       })
@@ -9789,8 +11119,8 @@ typedef $$WaterQualityTargetsTableCreateCompanionBuilder =
       required String id,
       required String tankId,
       required String parameterId,
-      required double minValue,
-      required double maxValue,
+      Value<double?> minValue,
+      Value<double?> maxValue,
       required String unit,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -9800,8 +11130,8 @@ typedef $$WaterQualityTargetsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> tankId,
       Value<String> parameterId,
-      Value<double> minValue,
-      Value<double> maxValue,
+      Value<double?> minValue,
+      Value<double?> maxValue,
       Value<String> unit,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -10128,8 +11458,8 @@ class $$WaterQualityTargetsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> tankId = const Value.absent(),
                 Value<String> parameterId = const Value.absent(),
-                Value<double> minValue = const Value.absent(),
-                Value<double> maxValue = const Value.absent(),
+                Value<double?> minValue = const Value.absent(),
+                Value<double?> maxValue = const Value.absent(),
                 Value<String> unit = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10148,8 +11478,8 @@ class $$WaterQualityTargetsTableTableManager
                 required String id,
                 required String tankId,
                 required String parameterId,
-                required double minValue,
-                required double maxValue,
+                Value<double?> minValue = const Value.absent(),
+                Value<double?> maxValue = const Value.absent(),
                 required String unit,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -10866,6 +12196,7 @@ typedef $$AppPreferencesTableCreateCompanionBuilder =
       Value<String> themeMode,
       Value<bool> maintenanceNotificationsEnabled,
       Value<String> fishStockJson,
+      Value<bool> khTargetDefaultsApplied,
       required DateTime updatedAt,
     });
 typedef $$AppPreferencesTableUpdateCompanionBuilder =
@@ -10875,6 +12206,7 @@ typedef $$AppPreferencesTableUpdateCompanionBuilder =
       Value<String> themeMode,
       Value<bool> maintenanceNotificationsEnabled,
       Value<String> fishStockJson,
+      Value<bool> khTargetDefaultsApplied,
       Value<DateTime> updatedAt,
     });
 
@@ -10930,6 +12262,11 @@ class $$AppPreferencesTableFilterComposer
 
   ColumnFilters<String> get fishStockJson => $composableBuilder(
     column: $table.fishStockJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get khTargetDefaultsApplied => $composableBuilder(
+    column: $table.khTargetDefaultsApplied,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10992,6 +12329,11 @@ class $$AppPreferencesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get khTargetDefaultsApplied => $composableBuilder(
+    column: $table.khTargetDefaultsApplied,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -11044,6 +12386,11 @@ class $$AppPreferencesTableAnnotationComposer
 
   GeneratedColumn<String> get fishStockJson => $composableBuilder(
     column: $table.fishStockJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get khTargetDefaultsApplied => $composableBuilder(
+    column: $table.khTargetDefaultsApplied,
     builder: (column) => column,
   );
 
@@ -11110,6 +12457,7 @@ class $$AppPreferencesTableTableManager
                 Value<bool> maintenanceNotificationsEnabled =
                     const Value.absent(),
                 Value<String> fishStockJson = const Value.absent(),
+                Value<bool> khTargetDefaultsApplied = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => AppPreferencesCompanion(
                 id: id,
@@ -11118,6 +12466,7 @@ class $$AppPreferencesTableTableManager
                 maintenanceNotificationsEnabled:
                     maintenanceNotificationsEnabled,
                 fishStockJson: fishStockJson,
+                khTargetDefaultsApplied: khTargetDefaultsApplied,
                 updatedAt: updatedAt,
               ),
           createCompanionCallback:
@@ -11128,6 +12477,7 @@ class $$AppPreferencesTableTableManager
                 Value<bool> maintenanceNotificationsEnabled =
                     const Value.absent(),
                 Value<String> fishStockJson = const Value.absent(),
+                Value<bool> khTargetDefaultsApplied = const Value.absent(),
                 required DateTime updatedAt,
               }) => AppPreferencesCompanion.insert(
                 id: id,
@@ -11136,6 +12486,7 @@ class $$AppPreferencesTableTableManager
                 maintenanceNotificationsEnabled:
                     maintenanceNotificationsEnabled,
                 fishStockJson: fishStockJson,
+                khTargetDefaultsApplied: khTargetDefaultsApplied,
                 updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0
@@ -11220,6 +12571,7 @@ typedef $$TestRecordsTableCreateCompanionBuilder =
       Value<double?> qualityScore,
       Value<String?> confidence,
       Value<String?> failureReason,
+      Value<String?> khTitrationJson,
       required double confirmedMinValue,
       Value<double?> confirmedInterpolation,
       Value<double?> estimatedInterpolation,
@@ -11248,6 +12600,7 @@ typedef $$TestRecordsTableUpdateCompanionBuilder =
       Value<double?> qualityScore,
       Value<String?> confidence,
       Value<String?> failureReason,
+      Value<String?> khTitrationJson,
       Value<double> confirmedMinValue,
       Value<double?> confirmedInterpolation,
       Value<double?> estimatedInterpolation,
@@ -11372,6 +12725,11 @@ class $$TestRecordsTableFilterComposer
 
   ColumnFilters<String> get failureReason => $composableBuilder(
     column: $table.failureReason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get khTitrationJson => $composableBuilder(
+    column: $table.khTitrationJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11559,6 +12917,11 @@ class $$TestRecordsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get khTitrationJson => $composableBuilder(
+    column: $table.khTitrationJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get confirmedMinValue => $composableBuilder(
     column: $table.confirmedMinValue,
     builder: (column) => ColumnOrderings(column),
@@ -11741,6 +13104,11 @@ class $$TestRecordsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get khTitrationJson => $composableBuilder(
+    column: $table.khTitrationJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<double> get confirmedMinValue => $composableBuilder(
     column: $table.confirmedMinValue,
     builder: (column) => column,
@@ -11905,6 +13273,7 @@ class $$TestRecordsTableTableManager
                 Value<double?> qualityScore = const Value.absent(),
                 Value<String?> confidence = const Value.absent(),
                 Value<String?> failureReason = const Value.absent(),
+                Value<String?> khTitrationJson = const Value.absent(),
                 Value<double> confirmedMinValue = const Value.absent(),
                 Value<double?> confirmedInterpolation = const Value.absent(),
                 Value<double?> estimatedInterpolation = const Value.absent(),
@@ -11931,6 +13300,7 @@ class $$TestRecordsTableTableManager
                 qualityScore: qualityScore,
                 confidence: confidence,
                 failureReason: failureReason,
+                khTitrationJson: khTitrationJson,
                 confirmedMinValue: confirmedMinValue,
                 confirmedInterpolation: confirmedInterpolation,
                 estimatedInterpolation: estimatedInterpolation,
@@ -11959,6 +13329,7 @@ class $$TestRecordsTableTableManager
                 Value<double?> qualityScore = const Value.absent(),
                 Value<String?> confidence = const Value.absent(),
                 Value<String?> failureReason = const Value.absent(),
+                Value<String?> khTitrationJson = const Value.absent(),
                 required double confirmedMinValue,
                 Value<double?> confirmedInterpolation = const Value.absent(),
                 Value<double?> estimatedInterpolation = const Value.absent(),
@@ -11985,6 +13356,7 @@ class $$TestRecordsTableTableManager
                 qualityScore: qualityScore,
                 confidence: confidence,
                 failureReason: failureReason,
+                khTitrationJson: khTitrationJson,
                 confirmedMinValue: confirmedMinValue,
                 confirmedInterpolation: confirmedInterpolation,
                 estimatedInterpolation: estimatedInterpolation,
@@ -12124,6 +13496,7 @@ typedef $$MaintenanceTasksTableCreateCompanionBuilder =
       Value<int?> planDayIndex,
       Value<int?> planTotalDays,
       Value<String?> recurrenceJson,
+      Value<String?> rollingJson,
       Value<int?> notificationId,
       required DateTime createdAt,
       required DateTime updatedAt,
@@ -12146,6 +13519,7 @@ typedef $$MaintenanceTasksTableUpdateCompanionBuilder =
       Value<int?> planDayIndex,
       Value<int?> planTotalDays,
       Value<String?> recurrenceJson,
+      Value<String?> rollingJson,
       Value<int?> notificationId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -12273,6 +13647,11 @@ class $$MaintenanceTasksTableFilterComposer
 
   ColumnFilters<String> get recurrenceJson => $composableBuilder(
     column: $table.recurrenceJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rollingJson => $composableBuilder(
+    column: $table.rollingJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12419,6 +13798,11 @@ class $$MaintenanceTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get rollingJson => $composableBuilder(
+    column: $table.rollingJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get notificationId => $composableBuilder(
     column: $table.notificationId,
     builder: (column) => ColumnOrderings(column),
@@ -12518,6 +13902,11 @@ class $$MaintenanceTasksTableAnnotationComposer
 
   GeneratedColumn<String> get recurrenceJson => $composableBuilder(
     column: $table.recurrenceJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get rollingJson => $composableBuilder(
+    column: $table.rollingJson,
     builder: (column) => column,
   );
 
@@ -12626,6 +14015,7 @@ class $$MaintenanceTasksTableTableManager
                 Value<int?> planDayIndex = const Value.absent(),
                 Value<int?> planTotalDays = const Value.absent(),
                 Value<String?> recurrenceJson = const Value.absent(),
+                Value<String?> rollingJson = const Value.absent(),
                 Value<int?> notificationId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -12646,6 +14036,7 @@ class $$MaintenanceTasksTableTableManager
                 planDayIndex: planDayIndex,
                 planTotalDays: planTotalDays,
                 recurrenceJson: recurrenceJson,
+                rollingJson: rollingJson,
                 notificationId: notificationId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -12668,6 +14059,7 @@ class $$MaintenanceTasksTableTableManager
                 Value<int?> planDayIndex = const Value.absent(),
                 Value<int?> planTotalDays = const Value.absent(),
                 Value<String?> recurrenceJson = const Value.absent(),
+                Value<String?> rollingJson = const Value.absent(),
                 Value<int?> notificationId = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
@@ -12688,6 +14080,7 @@ class $$MaintenanceTasksTableTableManager
                 planDayIndex: planDayIndex,
                 planTotalDays: planTotalDays,
                 recurrenceJson: recurrenceJson,
+                rollingJson: rollingJson,
                 notificationId: notificationId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -12781,6 +14174,608 @@ typedef $$MaintenanceTasksTableProcessedTableManager =
       (MaintenanceTask, $$MaintenanceTasksTableReferences),
       MaintenanceTask,
       PrefetchHooks Function({bool tankId, bool taskEventsRefs})
+    >;
+typedef $$MaintenanceCyclesTableCreateCompanionBuilder =
+    MaintenanceCyclesCompanion Function({
+      required String id,
+      required String tankId,
+      required String chemical,
+      required String startDate,
+      required String refillDate,
+      required double solutionMl,
+      required double dailyLiquidMl,
+      required double effectPerMl,
+      required double retainedMl,
+      required double addedStockMl,
+      required double addedWaterMl,
+      required String inputJson,
+      Value<String?> previousCycleId,
+      Value<String?> closedOnDate,
+      Value<String?> refillDeferredUntil,
+      Value<int?> notificationId,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$MaintenanceCyclesTableUpdateCompanionBuilder =
+    MaintenanceCyclesCompanion Function({
+      Value<String> id,
+      Value<String> tankId,
+      Value<String> chemical,
+      Value<String> startDate,
+      Value<String> refillDate,
+      Value<double> solutionMl,
+      Value<double> dailyLiquidMl,
+      Value<double> effectPerMl,
+      Value<double> retainedMl,
+      Value<double> addedStockMl,
+      Value<double> addedWaterMl,
+      Value<String> inputJson,
+      Value<String?> previousCycleId,
+      Value<String?> closedOnDate,
+      Value<String?> refillDeferredUntil,
+      Value<int?> notificationId,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$MaintenanceCyclesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $MaintenanceCyclesTable,
+          MaintenanceCycleRow
+        > {
+  $$MaintenanceCyclesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $TanksTable _tankIdTable(_$AppDatabase db) =>
+      db.tanks.createAlias('maintenance_cycles__tank_id__tanks__id');
+
+  $$TanksTableProcessedTableManager get tankId {
+    final $_column = $_itemColumn<String>('tank_id')!;
+
+    final manager = $$TanksTableTableManager(
+      $_db,
+      $_db.tanks,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_tankIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$MaintenanceCyclesTableFilterComposer
+    extends Composer<_$AppDatabase, $MaintenanceCyclesTable> {
+  $$MaintenanceCyclesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chemical => $composableBuilder(
+    column: $table.chemical,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refillDate => $composableBuilder(
+    column: $table.refillDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get solutionMl => $composableBuilder(
+    column: $table.solutionMl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get dailyLiquidMl => $composableBuilder(
+    column: $table.dailyLiquidMl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get effectPerMl => $composableBuilder(
+    column: $table.effectPerMl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get retainedMl => $composableBuilder(
+    column: $table.retainedMl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get addedStockMl => $composableBuilder(
+    column: $table.addedStockMl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get addedWaterMl => $composableBuilder(
+    column: $table.addedWaterMl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get inputJson => $composableBuilder(
+    column: $table.inputJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get previousCycleId => $composableBuilder(
+    column: $table.previousCycleId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get closedOnDate => $composableBuilder(
+    column: $table.closedOnDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get refillDeferredUntil => $composableBuilder(
+    column: $table.refillDeferredUntil,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get notificationId => $composableBuilder(
+    column: $table.notificationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TanksTableFilterComposer get tankId {
+    final $$TanksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tankId,
+      referencedTable: $db.tanks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TanksTableFilterComposer(
+            $db: $db,
+            $table: $db.tanks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MaintenanceCyclesTableOrderingComposer
+    extends Composer<_$AppDatabase, $MaintenanceCyclesTable> {
+  $$MaintenanceCyclesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chemical => $composableBuilder(
+    column: $table.chemical,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refillDate => $composableBuilder(
+    column: $table.refillDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get solutionMl => $composableBuilder(
+    column: $table.solutionMl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get dailyLiquidMl => $composableBuilder(
+    column: $table.dailyLiquidMl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get effectPerMl => $composableBuilder(
+    column: $table.effectPerMl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get retainedMl => $composableBuilder(
+    column: $table.retainedMl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get addedStockMl => $composableBuilder(
+    column: $table.addedStockMl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get addedWaterMl => $composableBuilder(
+    column: $table.addedWaterMl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get inputJson => $composableBuilder(
+    column: $table.inputJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get previousCycleId => $composableBuilder(
+    column: $table.previousCycleId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get closedOnDate => $composableBuilder(
+    column: $table.closedOnDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get refillDeferredUntil => $composableBuilder(
+    column: $table.refillDeferredUntil,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get notificationId => $composableBuilder(
+    column: $table.notificationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TanksTableOrderingComposer get tankId {
+    final $$TanksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tankId,
+      referencedTable: $db.tanks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TanksTableOrderingComposer(
+            $db: $db,
+            $table: $db.tanks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MaintenanceCyclesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MaintenanceCyclesTable> {
+  $$MaintenanceCyclesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get chemical =>
+      $composableBuilder(column: $table.chemical, builder: (column) => column);
+
+  GeneratedColumn<String> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<String> get refillDate => $composableBuilder(
+    column: $table.refillDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get solutionMl => $composableBuilder(
+    column: $table.solutionMl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get dailyLiquidMl => $composableBuilder(
+    column: $table.dailyLiquidMl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get effectPerMl => $composableBuilder(
+    column: $table.effectPerMl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get retainedMl => $composableBuilder(
+    column: $table.retainedMl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get addedStockMl => $composableBuilder(
+    column: $table.addedStockMl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get addedWaterMl => $composableBuilder(
+    column: $table.addedWaterMl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get inputJson =>
+      $composableBuilder(column: $table.inputJson, builder: (column) => column);
+
+  GeneratedColumn<String> get previousCycleId => $composableBuilder(
+    column: $table.previousCycleId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get closedOnDate => $composableBuilder(
+    column: $table.closedOnDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get refillDeferredUntil => $composableBuilder(
+    column: $table.refillDeferredUntil,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get notificationId => $composableBuilder(
+    column: $table.notificationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$TanksTableAnnotationComposer get tankId {
+    final $$TanksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tankId,
+      referencedTable: $db.tanks,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TanksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tanks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$MaintenanceCyclesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MaintenanceCyclesTable,
+          MaintenanceCycleRow,
+          $$MaintenanceCyclesTableFilterComposer,
+          $$MaintenanceCyclesTableOrderingComposer,
+          $$MaintenanceCyclesTableAnnotationComposer,
+          $$MaintenanceCyclesTableCreateCompanionBuilder,
+          $$MaintenanceCyclesTableUpdateCompanionBuilder,
+          (MaintenanceCycleRow, $$MaintenanceCyclesTableReferences),
+          MaintenanceCycleRow,
+          PrefetchHooks Function({bool tankId})
+        > {
+  $$MaintenanceCyclesTableTableManager(
+    _$AppDatabase db,
+    $MaintenanceCyclesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MaintenanceCyclesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MaintenanceCyclesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MaintenanceCyclesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> tankId = const Value.absent(),
+                Value<String> chemical = const Value.absent(),
+                Value<String> startDate = const Value.absent(),
+                Value<String> refillDate = const Value.absent(),
+                Value<double> solutionMl = const Value.absent(),
+                Value<double> dailyLiquidMl = const Value.absent(),
+                Value<double> effectPerMl = const Value.absent(),
+                Value<double> retainedMl = const Value.absent(),
+                Value<double> addedStockMl = const Value.absent(),
+                Value<double> addedWaterMl = const Value.absent(),
+                Value<String> inputJson = const Value.absent(),
+                Value<String?> previousCycleId = const Value.absent(),
+                Value<String?> closedOnDate = const Value.absent(),
+                Value<String?> refillDeferredUntil = const Value.absent(),
+                Value<int?> notificationId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MaintenanceCyclesCompanion(
+                id: id,
+                tankId: tankId,
+                chemical: chemical,
+                startDate: startDate,
+                refillDate: refillDate,
+                solutionMl: solutionMl,
+                dailyLiquidMl: dailyLiquidMl,
+                effectPerMl: effectPerMl,
+                retainedMl: retainedMl,
+                addedStockMl: addedStockMl,
+                addedWaterMl: addedWaterMl,
+                inputJson: inputJson,
+                previousCycleId: previousCycleId,
+                closedOnDate: closedOnDate,
+                refillDeferredUntil: refillDeferredUntil,
+                notificationId: notificationId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String tankId,
+                required String chemical,
+                required String startDate,
+                required String refillDate,
+                required double solutionMl,
+                required double dailyLiquidMl,
+                required double effectPerMl,
+                required double retainedMl,
+                required double addedStockMl,
+                required double addedWaterMl,
+                required String inputJson,
+                Value<String?> previousCycleId = const Value.absent(),
+                Value<String?> closedOnDate = const Value.absent(),
+                Value<String?> refillDeferredUntil = const Value.absent(),
+                Value<int?> notificationId = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => MaintenanceCyclesCompanion.insert(
+                id: id,
+                tankId: tankId,
+                chemical: chemical,
+                startDate: startDate,
+                refillDate: refillDate,
+                solutionMl: solutionMl,
+                dailyLiquidMl: dailyLiquidMl,
+                effectPerMl: effectPerMl,
+                retainedMl: retainedMl,
+                addedStockMl: addedStockMl,
+                addedWaterMl: addedWaterMl,
+                inputJson: inputJson,
+                previousCycleId: previousCycleId,
+                closedOnDate: closedOnDate,
+                refillDeferredUntil: refillDeferredUntil,
+                notificationId: notificationId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$MaintenanceCyclesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({tankId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (tankId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.tankId,
+                                referencedTable:
+                                    $$MaintenanceCyclesTableReferences
+                                        ._tankIdTable(db),
+                                referencedColumn:
+                                    $$MaintenanceCyclesTableReferences
+                                        ._tankIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$MaintenanceCyclesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MaintenanceCyclesTable,
+      MaintenanceCycleRow,
+      $$MaintenanceCyclesTableFilterComposer,
+      $$MaintenanceCyclesTableOrderingComposer,
+      $$MaintenanceCyclesTableAnnotationComposer,
+      $$MaintenanceCyclesTableCreateCompanionBuilder,
+      $$MaintenanceCyclesTableUpdateCompanionBuilder,
+      (MaintenanceCycleRow, $$MaintenanceCyclesTableReferences),
+      MaintenanceCycleRow,
+      PrefetchHooks Function({bool tankId})
     >;
 typedef $$TaskEventsTableCreateCompanionBuilder =
     TaskEventsCompanion Function({
@@ -14512,6 +16507,8 @@ class $AppDatabaseManager {
       $$TestRecordsTableTableManager(_db, _db.testRecords);
   $$MaintenanceTasksTableTableManager get maintenanceTasks =>
       $$MaintenanceTasksTableTableManager(_db, _db.maintenanceTasks);
+  $$MaintenanceCyclesTableTableManager get maintenanceCycles =>
+      $$MaintenanceCyclesTableTableManager(_db, _db.maintenanceCycles);
   $$TaskEventsTableTableManager get taskEvents =>
       $$TaskEventsTableTableManager(_db, _db.taskEvents);
   $$TestTimerDefaultsTableTableManager get testTimerDefaults =>

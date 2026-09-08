@@ -27,6 +27,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          waterQualityTargetsProvider(
+            tank.id,
+          ).overrideWith((ref) => Stream.value(const <WaterQualityTarget>[])),
           currentTankProvider.overrideWith((ref) => Stream.value(tank)),
           maintenanceRepositoryProvider.overrideWithValue(repo),
         ],

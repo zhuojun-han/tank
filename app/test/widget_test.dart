@@ -10,6 +10,7 @@ import 'package:lanjiao_water_quality/app/router.dart';
 import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/aquarium/application/aquarium_providers.dart';
 import 'package:lanjiao_water_quality/features/aquarium/domain/fish_stock.dart';
+import 'package:lanjiao_water_quality/features/calculators/application/maintenance_cycle_providers.dart';
 import 'package:lanjiao_water_quality/features/tanks/application/tank_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_providers.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_notification_providers.dart';
@@ -35,6 +36,7 @@ void main() {
     for (final label in ['首页', '检测', '趋势', '任务']) {
       expect(find.text(label), findsWidgets);
     }
+    await _disposeApp(tester);
   });
 
   testWidgets('首页鱼缸可选择内置鱼种、数量和入缸日期并保存', (tester) async {
@@ -194,6 +196,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('算法与拍摄原始信息（只读）'));
     expect(find.text('5'), findsOneWidget);
     expect(find.text('检测时间'), findsOneWidget);
+    await _disposeApp(tester);
   });
 
   testWidgets('趋势页无记录时显示真实空状态', (tester) async {
@@ -204,6 +207,7 @@ void main() {
 
     expect(find.text('手动添加记录'), findsOneWidget);
     expect(find.byKey(const Key('trend-chart')), findsNothing);
+    await _disposeApp(tester);
   });
 
   testWidgets('范围趋势显示目标带说明和数据不足提示', (tester) async {
@@ -250,6 +254,7 @@ void main() {
     expect(find.text('目标 5–15 mg/L'), findsOneWidget);
     expect(find.text('范围与插值'), findsOneWidget);
     expect(find.textContaining('中点，仅用于绘图'), findsNothing);
+    await _disposeApp(tester);
   });
 
   testWidgets('点击首页 PO4 最近记录后趋势页选中 PO4', (tester) async {
@@ -303,6 +308,7 @@ void main() {
     expect(find.text('2 条记录'), findsOneWidget);
     expect(find.byKey(const Key('trend-chart')), findsOneWidget);
     expect(find.byKey(const Key('insufficient-trend-data')), findsNothing);
+    await _disposeApp(tester);
   });
 
   testWidgets('首页展示全部历史且范围不虚构插值', (tester) async {
@@ -357,6 +363,7 @@ void main() {
       find.byKey(Key('home-trend-chart-${AppDatabase.po4Id}')),
       findsOneWidget,
     );
+    await _disposeApp(tester);
   });
 
   testWidgets('趋势明细按当前缸精确记录进入详情和编辑', (tester) async {
@@ -424,6 +431,7 @@ void main() {
     expect(editButton, findsOneWidget);
     await tester.tap(editButton);
     await _pumpUntilFound(tester, find.text('算法与拍摄原始信息（只读）'));
+    await _disposeApp(tester);
   });
 
   testWidgets('大字体与窄屏下首屏可滚动且不发生布局异常', (tester) async {
@@ -446,6 +454,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('水质维护建议'), findsOneWidget);
+    await _disposeApp(tester);
   });
 }
 
@@ -493,6 +502,11 @@ Widget _testApp({
         return database;
       }),
       notificationsEnabledProvider.overrideWithValue(false),
+      maintenanceClockProvider.overrideWith((ref) => Stream.value(now)),
+      // These fixtures exercise navigation/records/fish, with no dosing cycles.
+      maintenanceCyclesProvider.overrideWith(
+        (ref, tankId) => Stream.value(const []),
+      ),
       allMaintenanceTaskItemsProvider.overrideWith(
         (ref) => Stream.value(const []),
       ),

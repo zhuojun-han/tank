@@ -14,6 +14,7 @@ class MaintenanceCalendar extends StatelessWidget {
     this.onSnooze,
     this.onReopen,
     this.onStop,
+    this.onCorrect,
     super.key,
   });
 
@@ -24,14 +25,18 @@ class MaintenanceCalendar extends StatelessWidget {
   final ValueChanged<DateTime> onDateSelected;
   final ValueChanged<MaintenanceTaskItem> onComplete;
   final ValueChanged<MaintenanceTaskItem> onSkip;
-  final ValueChanged<MaintenanceTaskItem>? onSnooze, onReopen, onStop;
+  final ValueChanged<MaintenanceTaskItem>? onSnooze,
+      onReopen,
+      onStop,
+      onCorrect;
 
   @override
   Widget build(BuildContext context) {
     final first = DateTime(month.year, month.month);
-    final gridStart = first.subtract(Duration(days: first.weekday - 1));
+    final gridStart = DateTime(first.year, first.month, 2 - first.weekday);
     final days = [
-      for (var i = 0; i < 42; i += 1) gridStart.add(Duration(days: i)),
+      for (var i = 0; i < 42; i += 1)
+        DateTime(gridStart.year, gridStart.month, gridStart.day + i),
     ];
     final selectedItems =
         items
@@ -124,14 +129,10 @@ class MaintenanceCalendar extends StatelessWidget {
                   onSnooze: onSnooze == null ? null : () => onSnooze!(item),
                   onReopen: onReopen == null ? null : () => onReopen!(item),
                   onStop: onStop == null ? null : () => onStop!(item),
+                  onCorrect: onCorrect == null ? null : () => onCorrect!(item),
                 ),
                 if (item != selectedItems.last) const Divider(height: 16),
               ],
-            const SizedBox(height: 4),
-            const Text(
-              '按开始日期重复的任务只展开可见六周，完成或恢复只影响所选日期。旧版任务保留原推进方式，可编辑后转为日期规则。',
-              style: TextStyle(fontSize: 12),
-            ),
           ],
         ),
       ),
@@ -209,12 +210,13 @@ class _CalendarTask extends StatelessWidget {
     this.onSnooze,
     this.onReopen,
     this.onStop,
+    this.onCorrect,
   });
 
   final MaintenanceTaskItem item;
   final VoidCallback onComplete;
   final VoidCallback onSkip;
-  final VoidCallback? onSnooze, onReopen, onStop;
+  final VoidCallback? onSnooze, onReopen, onStop, onCorrect;
 
   @override
   Widget build(BuildContext context) {
@@ -222,8 +224,7 @@ class _CalendarTask extends StatelessWidget {
         item.task.status == MaintenanceTaskStatus.enabled.name &&
         item.state != MaintenanceTaskViewState.completed;
     final lanthanum = isChemicalPlan(item.task);
-    final due = item.task.dueAt.toLocal();
-    final today = _sameDate(due, DateTime.now());
+    final cycle = item.cycleOccurrence != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -249,7 +250,7 @@ class _CalendarTask extends StatelessWidget {
                   key: Key('calendar-complete-${item.task.id}'),
                   onPressed: onComplete,
                   icon: const Icon(Icons.check),
-                  label: const Text('完成本次'),
+                  label: Text(cycle ? '添加滴定液' : '完成本次'),
                 ),
               ),
               const SizedBox(height: 8),
@@ -257,40 +258,35 @@ class _CalendarTask extends StatelessWidget {
                 Text('已推迟至 ${item.latestEvent?.snoozedUntil?.toLocal()}'),
               Row(
                 children: [
-                  if (today && onSnooze != null) ...[
+                  if (onSnooze != null) ...[
                     Expanded(
                       child: OutlinedButton(
                         onPressed: onSnooze,
-                        child: const Text('稍后 1 小时'),
+                        child: const Text('延迟'),
                       ),
                     ),
                     const SizedBox(width: 8),
                   ],
-                  Expanded(
-                    child: OutlinedButton(
-                      key: Key('calendar-skip-${item.task.id}'),
-                      onPressed: onSkip,
-                      child: Text(lanthanum ? '停止当天及后续' : '跳过本次'),
+                  if (!cycle)
+                    Expanded(
+                      child: OutlinedButton(
+                        key: Key('calendar-skip-${item.task.id}'),
+                        onPressed: onSkip,
+                        child: Text(lanthanum ? '停止当天及后续' : '停止'),
+                      ),
                     ),
-                  ),
                 ],
               ),
-              if (!item.task.isOneOff && onStop != null)
-                TextButton(onPressed: onStop, child: const Text('停止后续计划')),
             ],
           )
         else
-          Row(
+          Wrap(
             children: [
               const Text('已完成'),
-              if (onReopen != null &&
-                  (item.task.isOneOff || item.occurrenceDate != null))
-                Expanded(
-                  child: TextButton(
-                    onPressed: onReopen,
-                    child: const Text('重新标记为未完成'),
-                  ),
-                ),
+              if (onCorrect != null && item.canEditCompletion)
+                TextButton(onPressed: onCorrect, child: const Text('修改完成日期')),
+              if (onReopen != null && item.canReopen)
+                TextButton(onPressed: onReopen, child: const Text('撤销完成')),
             ],
           ),
       ],

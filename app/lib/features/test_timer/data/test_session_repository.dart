@@ -98,6 +98,18 @@ class TestSessionRepository {
     return query.getSingleOrNull();
   }
 
+  Future<List<ActiveTestSession>> readRunningTimersForTank(String tankId) {
+    return (_database.select(_database.activeTestSessions)..where(
+          (row) =>
+              row.tankId.equals(tankId) &
+              row.stage.isIn([
+                ActiveTestStage.timerRunning.name,
+                ActiveTestStage.timerPaused.name,
+              ]),
+        ))
+        .get();
+  }
+
   /// Resolves a persisted draft from a notification deep link.
   ///
   /// The returned row still carries its tank id, so all subsequent mutations

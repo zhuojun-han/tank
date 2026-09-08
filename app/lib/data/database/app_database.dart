@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 part 'app_database.g.dart';
 
@@ -47,8 +48,8 @@ class WaterQualityTargets extends Table {
   TextColumn get id => text()();
   TextColumn get tankId => text().references(Tanks, #id)();
   TextColumn get parameterId => text().references(WaterParameters, #id)();
-  RealColumn get minValue => real()();
-  RealColumn get maxValue => real()();
+  RealColumn get minValue => real().nullable()();
+  RealColumn get maxValue => real().nullable()();
   TextColumn get unit => text().withLength(min: 1, max: 20)();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -83,6 +84,8 @@ class AppPreferences extends Table {
   BoolColumn get maintenanceNotificationsEnabled =>
       boolean().withDefault(const Constant(true))();
   TextColumn get fishStockJson => text().withDefault(const Constant('[]'))();
+  BoolColumn get khTargetDefaultsApplied =>
+      boolean().withDefault(const Constant(false))();
   DateTimeColumn get updatedAt => dateTime()();
 
   @override
@@ -103,6 +106,7 @@ class TestRecords extends Table {
   RealColumn get qualityScore => real().nullable()();
   TextColumn get confidence => text().nullable()();
   TextColumn get failureReason => text().nullable()();
+  TextColumn get khTitrationJson => text().nullable()();
   RealColumn get confirmedMinValue => real()();
   RealColumn get confirmedInterpolation => real().nullable()();
   RealColumn get estimatedInterpolation => real().nullable()();
@@ -142,6 +146,33 @@ class MaintenanceTasks extends Table {
   IntColumn get planDayIndex => integer().nullable()();
   IntColumn get planTotalDays => integer().nullable()();
   TextColumn get recurrenceJson => text().nullable()();
+  TextColumn get rollingJson => text().nullable()();
+  IntColumn get notificationId => integer().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+@DataClassName('MaintenanceCycleRow')
+class MaintenanceCycles extends Table {
+  TextColumn get id => text()();
+  TextColumn get tankId => text().references(Tanks, #id)();
+  TextColumn get chemical => text()();
+  TextColumn get startDate => text()();
+  TextColumn get refillDate => text()();
+  RealColumn get solutionMl => real()();
+  RealColumn get dailyLiquidMl => real()();
+  RealColumn get effectPerMl => real()();
+  RealColumn get retainedMl => real()();
+  RealColumn get addedStockMl => real()();
+  RealColumn get addedWaterMl => real()();
+  TextColumn get inputJson => text()();
+  // Checked as a same-tank/reagent history link by the repository and backup.
+  TextColumn get previousCycleId => text().nullable()();
+  TextColumn get closedOnDate => text().nullable()();
+  TextColumn get refillDeferredUntil => text().nullable()();
   IntColumn get notificationId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -222,6 +253,7 @@ class ActiveTestSessions extends Table {
     AppPreferences,
     TestRecords,
     MaintenanceTasks,
+    MaintenanceCycles,
     TaskEvents,
     TestTimerDefaults,
     ActiveTestSessions,
@@ -242,7 +274,7 @@ class AppDatabase extends _$AppDatabase {
   static const ealNo3ReagentId = '00000000-0000-4000-8000-000000000201';
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -397,11 +429,99 @@ class AppDatabase extends _$AppDatabase {
           );
         }
       }
+      if (from < 11) {
+        if (!await _tableExists('maintenance_cycles')) {
+          await migrator.createTable(maintenanceCycles);
+        }
+        if (await _tableExists('water_quality_targets')) {
+          await migrator.alterTable(TableMigration(waterQualityTargets));
+        } else {
+          await migrator.createTable(waterQualityTargets);
+        }
+        if (!await _columnExists(
+          'app_preferences',
+          'kh_target_defaults_applied',
+        )) {
+          await migrator.addColumn(
+            appPreferences,
+            appPreferences.khTargetDefaultsApplied,
+          );
+        }
+        if (!await _columnExists('test_records', 'kh_titration_json')) {
+          await migrator.addColumn(testRecords, testRecords.khTitrationJson);
+        }
+        if (!await _columnExists('maintenance_tasks', 'rolling_json')) {
+          await migrator.addColumn(
+            maintenanceTasks,
+            maintenanceTasks.rollingJson,
+          );
+        }
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
+      await initializeKhTargetDefaults();
     },
   );
+
+  /// Run once per persisted state, including after an older backup is restored.
+  /// Keep empty target rows so an intentional later clear is distinguishable.
+  Future<void> initializeKhTargetDefaults() => transaction(() async {
+    final preference = await select(appPreferences).getSingleOrNull();
+    if (preference == null || preference.khTargetDefaultsApplied) return;
+    if (!await _tableExists('water_parameters') ||
+        !await _tableExists('tank_parameters')) {
+      return;
+    }
+    final parameters = await (select(
+      waterParameters,
+    )..where((p) => p.code.upper().equals('KH'))).get();
+    final now = DateTime.now().toUtc();
+    for (final parameter in parameters) {
+      final enabled =
+          await (select(tankParameters)..where(
+                (p) =>
+                    p.parameterId.equals(parameter.id) &
+                    p.isEnabled.equals(true),
+              ))
+              .get();
+      for (final scope in enabled) {
+        final existing =
+            await (select(waterQualityTargets)..where(
+                  (t) =>
+                      t.tankId.equals(scope.tankId) &
+                      t.parameterId.equals(parameter.id),
+                ))
+                .getSingleOrNull();
+        if (existing == null) {
+          await into(waterQualityTargets).insert(
+            WaterQualityTargetsCompanion.insert(
+              id: const Uuid().v4(),
+              tankId: scope.tankId,
+              parameterId: parameter.id,
+              minValue: const Value(7),
+              maxValue: const Value(9),
+              unit: parameter.unit,
+              updatedAt: now,
+            ),
+          );
+        } else if (existing.minValue == null && existing.maxValue == null) {
+          await (update(
+            waterQualityTargets,
+          )..where((t) => t.id.equals(existing.id))).write(
+            WaterQualityTargetsCompanion(
+              minValue: const Value(7),
+              maxValue: const Value(9),
+              updatedAt: Value(now),
+            ),
+          );
+        }
+      }
+    }
+    await (update(appPreferences)..where((p) => p.id.equals(1))).write(
+      const AppPreferencesCompanion(khTargetDefaultsApplied: Value(true)),
+    );
+  });
 
   Future<bool> _tableExists(String tableName) async {
     final result = await customSelect(
