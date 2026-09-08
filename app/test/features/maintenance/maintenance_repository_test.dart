@@ -309,6 +309,7 @@ void main() {
   });
 
   test('到期边界恢复待处理，非法输入不写入数据', () async {
+    clock = DateTime(2026, 8, 12, 14).toUtc();
     final taskId = await repository.createTask(
       tankId: AppDatabase.defaultTankId,
       title: '检查设备',
@@ -320,7 +321,16 @@ void main() {
       tankId: AppDatabase.defaultTankId,
       taskId: taskId,
     );
-    final nextDue = clock.add(const Duration(days: 1));
+    // Completion chooses the next local date; the reminder retains 09:00,
+    // independently of the completion time or the runner's UTC offset.
+    final nextDue = DateTime(2026, 8, 13, 9).toUtc();
+    final beforeBoundary = await repository
+        .watchPendingTasks(
+          AppDatabase.defaultTankId,
+          referenceTime: nextDue.subtract(const Duration(milliseconds: 1)),
+        )
+        .first;
+    expect(beforeBoundary.single.state, MaintenanceTaskViewState.upcoming);
     final atBoundary = await repository
         .watchPendingTasks(AppDatabase.defaultTankId, referenceTime: nextDue)
         .first;
