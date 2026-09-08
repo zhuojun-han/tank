@@ -18,6 +18,10 @@ type Row = Record<string, unknown>;
 function object(v: unknown): v is Row { return Boolean(v) && typeof v === 'object' && !Array.isArray(v); }
 function finite(v: unknown): v is number { return typeof v === 'number' && Number.isFinite(v); }
 function string(v: unknown): v is string { return typeof v === 'string'; }
+function khTitration(v: unknown): boolean {
+  return object(v) && string(v.tableId) && string(v.displayDkh) && typeof v.interpolated === 'boolean'
+    && ['initialMl', 'remainingMl', 'usedMl', 'tableReadingMl', 'dkh'].every(key => finite(v[key]));
+}
 function date(v: unknown): v is string {
   if (!string(v) || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const parsed = Date.parse(`${v}T00:00:00Z`);
@@ -76,7 +80,7 @@ export function validateDemoState(state: unknown): asserts state is DemoState {
   rows(state.parameters, '参数', r => string(r.id) && string(r.name) && string(r.label) && string(r.unit) && typeof r.builtIn === 'boolean' && typeof r.photoSupported === 'boolean');
   requireValid((state.parameters as Parameter[]).length > 0, '参数列表');
   rows(state.targets, '目标范围', r => finite(r.tankId) && string(r.parameterId) && (r.min === null || finite(r.min)) && (r.max === null || finite(r.max)));
-  rows(state.records, '检测记录', r => finite(r.id) && finite(r.tankId) && string(r.parameterId) && finite(r.low) && finite(r.high) && r.low <= r.high && string(r.date) && string(r.note) && optional(r, 'interpolation', v => v === null || finite(v)) && optional(r, 'photoEstimate', object));
+  rows(state.records, '检测记录', r => finite(r.id) && finite(r.tankId) && string(r.parameterId) && finite(r.low) && finite(r.high) && r.low <= r.high && string(r.date) && string(r.note) && optional(r, 'interpolation', v => v === null || finite(v)) && optional(r, 'photoEstimate', object) && optional(r, 'khTitration', khTitration));
   rows(state.tasks, '任务', r => finite(r.id) && finite(r.tankId) && string(r.title) && string(r.cycle) && string(r.due) && ['due', 'soon', 'done', 'snoozed', 'skipped'].includes(String(r.state))
     && optional(r, 'scheduledDate', date) && optional(r, 'intervalDays', v => finite(v) && v > 0)
     && ['completedDates', 'skippedDates', 'reopenedDates', 'snoozedDates'].every(k => optional(r, k, v => Array.isArray(v) && v.every(date)))

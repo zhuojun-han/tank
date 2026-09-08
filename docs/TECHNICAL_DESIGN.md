@@ -52,8 +52,12 @@ v10 增加确认/原始插值和对应草稿字段，并为已有 PO4 参数启�
 
 当前浏览器业务状态保存在 `reef-demo-state-v10`。保留旧状态兼容；新增字段提供安全默认值，不把演示记录自动当用户实测。`maintenanceCycles` 保存配方快照和残液当量，日历发生项即时生成，普通 tasks 不被物化为每日自动完成事件。补液数据合同见 [滴定规范](MAINTENANCE_DOSING_CALCULATOR.md)；此新增结构尚未同步 App。
 
+KH 滴定确认值按 `low = high = Number(displayDkh)` 保存一位小数的单值。可选 `khTitration` 保留 `initialMl`、`remainingMl`、`usedMl`、`tableReadingMl`、未按展示精度取整的 `dkh`，以及 `displayDkh`、`interpolated`、`tableId`；人工编辑确认值时保留这份原始计算信息。无此字段的旧记录继续兼容，沿用现有存储键。
+
 网页 localStorage 与 App JSON/ZIP 不是兼容格式；同步功能不得顺带导入演示历史。网页只在打开时提醒，系统通知由 Flutter 独立实现和验证。
 
 ## 计算与算法
 
 公式、单位、数值限制由 [PO4](LANTHANUM_CHLORIDE_CALCULATOR.md)、[KH](SODIUM_BICARBONATE_KH_CALCULATOR.md)、[海盐](SALINITY_CALCULATOR.md)、[稳定滴定](MAINTENANCE_DOSING_CALCULATOR.md) 维护。颜色比较合同在 [拍照规范](IMAGE_ESTIMATION.md)。两端使用共同的参考数据验证行为一致，不由此推定真实化学效果或浓度准确率。稳定滴定的同输入/输出样例只维护根 [contracts/maintenance-dosing.json](../contracts/maintenance-dosing.json)，App 与 Web 测试直接读取此文件。变更合同须审阅期望值并运行两端相关测试，不从某端实现临时生成期望而跳过审阅。
+
+网页 KH 检测使用 [contracts/kh-titration.json](../contracts/kh-titration.json)，数据来自用户的 [KH 数值表](../resource/KH/数值表.jpg)。按用户指定公式以 `1 − (初始针筒容积 − 剩余溶液)`（mL）作为查表读数，档点间线性插值；初始值须大于 0 且不超过 1 mL，剩余量须在 0 至初始值内，输入须为有限数。原表仅覆盖 0.00–0.98 mL，末档 0.98 mL 对应 0 dKH；超出表域拒绝计算，不补 1.00 mL 档、不外推。结果显示一位小数，原始计算与确认记录按上述网页数据合同分开保存；本项 App 同步授权见 [WEB-006](coordination/app-sync-backlog.md#web-006-验收范围)。

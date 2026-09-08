@@ -4,10 +4,12 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { defaultTanks, defaultParameters, defaultTargets, defaultRecords, defaultTasks, type Tank, type Parameter, type Target, type RecordItem, type TaskItem, type TimerDefaults } from "./demo-state";
 import { loadDemoState, saveDemoState, type DemoState } from "./demo-storage";
 import { TimerRing, useDetectionTimer } from "./detection-timer";
+import { KhTitrationPanel } from "./kh-titration-panel";
+import { calculateKhTitration, KH_TITRATION_TABLE_ID, type KhTitrationResult } from "./kh-titration";
 import { HomeHistoryBars } from "./home-history-bars";
 import { Po4ColorMatchPanel } from "./po4-color-match/page";
 import { ColorMatchPanel, type PhotoReview } from "./color-match/page";
-import { readRecordValues, recordPoint } from "./record-values";
+import { readRecordValues, recordPoint, recordValueText } from "./record-values";
 import { PagedRecordList } from "./paged-record-list";
 import { historyDate, recordDateLabel } from "./history-date";
 import { RecordTrend } from "./record-trend";
@@ -183,7 +185,7 @@ export default function Home() {
   const [reminderOpen, setReminderOpen] = useState(false);
   const [reminderDismissedDate, setReminderDismissedDate] = useState("");
 
-  const { clock: detectionClock, setTimer } = useDetectionTimer(timerRunning, () => {
+  const { clock: detectionClock, setTimer } = useDetectionTimer(timerRunning && selectedParameterId !== "kh", () => {
     setTimerRunning(false);
     const canPhoto = ["no3", "po4"].includes(selectedParameterId);
     setTestStage(canPhoto ? "setup" : "result");
@@ -383,7 +385,7 @@ export default function Home() {
   function parameterOf(id: string) { return parameters.find((item) => item.id === id) ?? parameters[0]; }
   function targetOf(parameterId: string) { return targets.find((item) => item.tankId === tankId && item.parameterId === parameterId); }
   function latestOf(parameterId: string) { return tankRecords.find((item) => item.parameterId === parameterId); }
-  function resultText(record: RecordItem) { const unit = parameterOf(record.parameterId).unit; return record.low === record.high ? `${record.low} ${unit}` : `${record.low}–${record.high} ${unit}`; }
+  function resultText(record: RecordItem) { const unit = parameterOf(record.parameterId).unit; return record.low === record.high ? `${recordValueText(record.low, record)} ${unit}` : `${recordValueText(record.low, record)}–${recordValueText(record.high, record)} ${unit}`; }
   function targetText(parameterId: string) { const value = targetOf(parameterId); const unit = parameterOf(parameterId).unit; return value?.min !== null && value?.min !== undefined && value?.max !== null && value?.max !== undefined ? `${value.min}–${value.max} ${unit}` : "未设置"; }
   function resultStatus(parameterId: string) {
     const record = latestOf(parameterId); const target = targetOf(parameterId);
@@ -749,6 +751,18 @@ export default function Home() {
     setRecords((items) => [{ id: Date.now(), tankId, parameterId: selectedParameter.id, ...values, date: new Date().toISOString(), note: photoEstimate ? "拍照记录" : "手动录入", photoEstimate }, ...items]);
     resetDetection(); announceSaved(`${selectedParameter.name} 结果已保存`); setTab("home");
   }
+  function saveKhTitration(result: KhTitrationResult) {
+    if (storageBlocked) throw new Error("原存档暂停写入，请先处理存档问题。");
+    if (!tank || selectedParameter.id !== "kh" || !enabledParameters.some(item => item.id === "kh")) throw new Error("当前海缸或 KH 指标已变化，请重新检测。");
+    const checked = calculateKhTitration(result.initialMl, result.remainingMl);
+    const value = Number(checked.displayDkh);
+    setRecords(items => [{
+      id: Date.now(), tankId, parameterId: "kh", low: value, high: value,
+      date: new Date().toISOString(), note: "KH 滴定记录",
+      khTitration: { ...checked, tableId: KH_TITRATION_TABLE_ID },
+    }, ...items]);
+    resetDetection("kh"); announceSaved("KH 结果已保存"); setTab("home");
+  }
   function saveEditedRecord(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!editRecord) return; const data = new FormData(event.currentTarget);
     let values;
@@ -762,7 +776,7 @@ export default function Home() {
     if (current) {
       if (enabledTargets.length <= 1) { setToast("至少保留一个关注指标"); return; }
       setTargets((items) => items.filter((item) => !(item.tankId === tankId && item.parameterId === parameterId)));
-      if (selectedParameterId === parameterId) setSelectedParameterId(enabledParameters.find((item) => item.id !== parameterId)?.id ?? "no3");
+      if (selectedParameterId === parameterId) selectTestParameter(enabledParameters.find((item) => item.id !== parameterId)?.id ?? "no3");
       if (trendParameterId === parameterId) setTrendParameterId(enabledParameters.find((item) => item.id !== parameterId)?.id ?? "no3");
     } else setTargets((items) => [...items, { tankId, parameterId, min: null, max: null }]);
   }
@@ -787,7 +801,7 @@ export default function Home() {
         {tab === "home" && <section className="screen home-screen">
           <AquariumSimulator tankName={tank?.name ?? "当前海缸"} stock={tankFishStock} onOpen={() => setFishModal(true)} />
           <div className="hero-copy"><div><p className="eyebrow">{todayLabel}</p><h1>{tank?.name}<br />水质改善建议</h1></div></div>
-          <div className="metric-grid dynamic-metrics">{enabledParameters.slice(0, 4).map((parameter, index) => { const latest = latestOf(parameter.id); return <button key={parameter.id} className={`metric-card ${index % 2 ? "aqua" : "coral"}`} onClick={() => { setTrendParameterId(parameter.id); switchTab("trend"); }}><span className="metric-label">{parameter.name}<i>最近</i></span><strong>{latest ? (latest.low === latest.high ? latest.low : `${latest.low}–${latest.high}`) : "--"}</strong><small>{parameter.unit}</small><p>{resultStatus(parameter.id)}</p></button>; })}</div>
+          <div className="metric-grid dynamic-metrics">{enabledParameters.slice(0, 4).map((parameter, index) => { const latest = latestOf(parameter.id); return <button key={parameter.id} className={`metric-card ${index % 2 ? "aqua" : "coral"}`} onClick={() => { setTrendParameterId(parameter.id); switchTab("trend"); }}><span className="metric-label">{parameter.name}<i>最近</i></span><strong>{latest ? (latest.low === latest.high ? recordValueText(latest.low, latest) : `${recordValueText(latest.low, latest)}–${recordValueText(latest.high, latest)}`) : "--"}</strong><small>{parameter.unit}</small><p>{resultStatus(parameter.id)}</p></button>; })}</div>
           <section className="advice-section"><div className="home-section-title"><div><p className="eyebrow">根据最近检测</p><h2>建议先做这些</h2></div></div><div className="advice-list">{enabledParameters.map((parameter) => { const advice = adviceFor(parameter.id); return <article key={parameter.id} className={`advice-card ${advice.status}`}><div className="advice-head"><span>{advice.status === "good" ? "✓" : advice.status === "high" ? "↑" : advice.status === "low" ? "↓" : "i"}</span><div><small>{parameter.name} · 目标 {targetText(parameter.id)}</small><h3>{advice.title}</h3></div></div><p>{advice.summary}</p><ul>{advice.actions.map((action) => <li key={action}>{action}</li>)}</ul></article>; })}</div><details className="advice-basis"><summary>查看建议依据</summary><p>建议依据用户自定目标范围和最近一次人工确认结果生成。NO3/PO4 的营养输入、换水、过滤与吸附材料规则参考 Red Sea、Tropic Marin 和 Hanna 的公开资料；不同生物配置差异较大，请小幅调整并复测。</p><div><a href="https://redseafish.com/wp-content/uploads/2013/12/Algae-management-Program_Multilanguage-Manual_GB_DE_FR_SE_NL_SP_PT_JP_CH_17A.pdf" target="_blank" rel="noreferrer">Red Sea 营养盐管理</a><a href="https://www.tropic-marin.com/naehrstoffkontrolle?lang=en" target="_blank" rel="noreferrer">Tropic Marin 营养控制</a><a href="https://pages.hannainst.com/hubfs/006-finished-content/Aquarium/Saltwater-Aquarium-Water-Parameters-Guidelines-1.pdf" target="_blank" rel="noreferrer">Hanna 海水参数指南</a></div></details></section>
           <button className="manage-parameters" onClick={() => setParameterModal(true)}>＋ 管理 {tank?.name} 的关注指标</button>
           <section className="home-todos">
@@ -805,7 +819,8 @@ export default function Home() {
         {tab === "test" && <section className="screen test-screen">
           <div className="page-title"><p className="eyebrow">水质检测</p><h1>{testStage === "setup" ? "准备检测" : "确认结果"}</h1><p>当前记录到 {tank?.name}</p></div>
           <div className="parameter-tabs">{enabledParameters.map((parameter) => <button key={parameter.id} className={selectedParameter.id === parameter.id ? "active" : ""} onClick={() => selectTestParameter(parameter.id)}><strong>{parameter.name}</strong><small>{parameter.label}</small></button>)}<button className="add-parameter-tab" onClick={() => setParameterModal(true)}>＋</button></div>
-          {testStage === "setup" && <><section className="timer-card"><TimerRing clock={detectionClock} total={timerTotal} running={timerRunning} locked={timerLocked} parameterName={selectedParameter.name} /><h2>按试剂说明设置等待时间</h2><p>计时结束后进入检测。</p>{!timerLocked && <div className="timer-customizer"><div className="timer-presets">{[180,300,600].map((seconds) => <button key={seconds} className={timerTotal === seconds ? "active" : ""} onClick={() => setTimerDuration(seconds)}>{seconds / 60} 分钟</button>)}</div><div className="custom-time-row"><span>自定义默认时间</span><label><input type="number" min="0" max="60" value={Math.floor(timerTotal/60)} onChange={(e) => setTimerDuration(Number(e.target.value)*60 + timerTotal%60)} />分</label><label><input type="number" min="0" max="59" value={timerTotal%60} onChange={(e) => setTimerDuration(Math.floor(timerTotal/60)*60 + Number(e.target.value))} />秒</label></div><small>10秒–60分钟，自动保存为默认时间。</small></div>}<button className="primary-button wide" onClick={() => setTimerRunning(!timerRunning)}>{timerRunning ? "暂停计时" : timerLocked ? "继续计时" : "开始计时"}</button>{timerLocked && !timerRunning && <button className="text-button" onClick={() => resetDetection()}>重新开始默认计时</button>}<button className="text-button" onClick={() => { setTimerRunning(false); if (["no3", "po4"].includes(selectedParameter.id)) { setPhotoMatchOpen(true); } else { setTestStage("result"); } }}>跳过计时，{["no3", "po4"].includes(selectedParameter.id) ? "直接拍照" : "直接录入"}</button></section><button className="manual-entry" onClick={() => { setTimerRunning(false); setTestStage("result"); }}><span>⌨</span><div><strong>手动录入 {selectedParameter.name}</strong><small>所有关注指标都支持手动记录</small></div><b>›</b></button></>}
+          {testStage === "setup" && selectedParameter.id === "kh" && <KhTitrationPanel key={tankId} onRecord={saveKhTitration} onCancel={() => setToast("本次结果未记录")} disabled={storageBlocked} />}
+          {testStage === "setup" && <>{selectedParameter.id !== "kh" && <section className="timer-card"><TimerRing clock={detectionClock} total={timerTotal} running={timerRunning} locked={timerLocked} parameterName={selectedParameter.name} /><h2>按试剂说明设置等待时间</h2><p>计时结束后进入检测。</p>{!timerLocked && <div className="timer-customizer"><div className="timer-presets">{[180,300,600].map((seconds) => <button key={seconds} className={timerTotal === seconds ? "active" : ""} onClick={() => setTimerDuration(seconds)}>{seconds / 60} 分钟</button>)}</div><div className="custom-time-row"><span>自定义默认时间</span><label><input type="number" min="0" max="60" value={Math.floor(timerTotal/60)} onChange={(e) => setTimerDuration(Number(e.target.value)*60 + timerTotal%60)} />分</label><label><input type="number" min="0" max="59" value={timerTotal%60} onChange={(e) => setTimerDuration(Math.floor(timerTotal/60)*60 + Number(e.target.value))} />秒</label></div><small>10秒–60分钟，自动保存为默认时间。</small></div>}<button className="primary-button wide" onClick={() => setTimerRunning(!timerRunning)}>{timerRunning ? "暂停计时" : timerLocked ? "继续计时" : "开始计时"}</button>{timerLocked && !timerRunning && <button className="text-button" onClick={() => resetDetection()}>重新开始默认计时</button>}<button className="text-button" onClick={() => { setTimerRunning(false); if (["no3", "po4"].includes(selectedParameter.id)) { setPhotoMatchOpen(true); } else { setTestStage("result"); } }}>跳过计时，{["no3", "po4"].includes(selectedParameter.id) ? "直接拍照" : "直接录入"}</button></section>}<button className="manual-entry" onClick={() => { setTimerRunning(false); setTestStage("result"); }}><span>⌨</span><div><strong>手动录入 {selectedParameter.name}</strong><small>所有关注指标都支持手动记录</small></div><b>›</b></button></>}
           {selectedParameter.id === "no3" && testStage === "setup" && <button className="manual-entry" onClick={() => { setTimerRunning(false); setPhotoMatchOpen(true); }}><span>◈</span><div><strong>NO3 照片辅助比色</strong><small>框选、比较范围与插值，修改后选择是否记录</small></div><b>›</b></button>}
           {selectedParameter.id === "po4" && testStage === "setup" && <button className="manual-entry" onClick={() => {setTimerRunning(false);setPhotoMatchOpen(true);}}><span>◈</span><div><strong>PO4 照片辅助比色</strong><small>框选、分项判断，修改后选择是否记录</small></div><b>›</b></button>}
 
@@ -815,8 +830,8 @@ export default function Home() {
         {tab === "trend" && <section className="screen trend-screen">
           <div className="page-title"><p className="eyebrow">历史趋势</p><h1>水质变化</h1><p>选择任意关注指标查看历史</p></div>
           <div className="parameter-tabs compact-tabs">{enabledParameters.map((parameter) => <button key={parameter.id} className={trendParameter.id === parameter.id ? "active" : ""} onClick={() => setTrendParameterId(parameter.id)}><strong>{parameter.name}</strong><small>{parameter.unit}</small></button>)}</div>
-          <section className="panel chart-panel"><div className="chart-summary"><div><small>当前结果</small><strong>{latestOf(trendParameter.id) ? resultText(latestOf(trendParameter.id)!) : "暂无记录"}</strong></div><button className="target-chip" onClick={() => setTargetModal(true)}>目标 {targetText(trendParameter.id)}</button></div>{["no3", "po4"].includes(trendParameter.id) ? <RecordTrend key={`${tankId}-${trendParameter.id}`} records={trendRecords} unit={trendParameter.unit} showRange /> : <><div className="large-chart"><div className="grid-line l1"><span>{chartMax.toFixed(chartMax < 10 ? 2 : 0)}</span></div><div className="grid-line l2"><span>{(chartMax/2).toFixed(chartMax < 10 ? 2 : 0)}</span></div><div className="grid-line l3"><span>0</span></div>{trendTarget?.min !== null && trendTarget?.min !== undefined && trendTarget.max !== null && trendTarget.max !== undefined && <div className="target-zone" style={{ bottom: `${10 + trendTarget.min/chartMax*75}%`, height: `${Math.max(6,(trendTarget.max-trendTarget.min)/chartMax*75)}%` }} />}{trendRecords.slice(-6).map((record,index) => <button key={record.id} className="plot-point" onClick={() => { setEditRecord(record); setRecordError(""); }} style={{ left: `${12+index*16}%`, bottom: `${10+((record.low+record.high)/2)/chartMax*75}%` }}><i /><span>{record.low === record.high ? record.low : `${record.low}–${record.high}`}</span></button>)}</div></>}<div className="chart-axis"><span>较早</span><span>最近</span></div></section>
-          <div className="section-head list-heading"><div><p className="eyebrow">{trendParameter.name}</p><h2>检测记录</h2></div><button onClick={() => { setSelectedParameterId(trendParameter.id); switchTab("test"); }}>＋ 添加</button></div>
+          <section className="panel chart-panel"><div className="chart-summary"><div><small>当前结果</small><strong>{latestOf(trendParameter.id) ? resultText(latestOf(trendParameter.id)!) : "暂无记录"}</strong></div><button className="target-chip" onClick={() => setTargetModal(true)}>目标 {targetText(trendParameter.id)}</button></div>{["no3", "po4"].includes(trendParameter.id) ? <RecordTrend key={`${tankId}-${trendParameter.id}`} records={trendRecords} unit={trendParameter.unit} showRange /> : <><div className="large-chart"><div className="grid-line l1"><span>{chartMax.toFixed(chartMax < 10 ? 2 : 0)}</span></div><div className="grid-line l2"><span>{(chartMax/2).toFixed(chartMax < 10 ? 2 : 0)}</span></div><div className="grid-line l3"><span>0</span></div>{trendTarget?.min !== null && trendTarget?.min !== undefined && trendTarget.max !== null && trendTarget.max !== undefined && <div className="target-zone" style={{ bottom: `${10 + trendTarget.min/chartMax*75}%`, height: `${Math.max(6,(trendTarget.max-trendTarget.min)/chartMax*75)}%` }} />}{trendRecords.slice(-6).map((record,index) => <button key={record.id} className="plot-point" onClick={() => { setEditRecord(record); setRecordError(""); }} style={{ left: `${12+index*16}%`, bottom: `${10+((record.low+record.high)/2)/chartMax*75}%` }}><i /><span>{record.low === record.high ? recordValueText(record.low, record) : `${recordValueText(record.low, record)}–${recordValueText(record.high, record)}`}</span></button>)}</div></>}<div className="chart-axis"><span>较早</span><span>最近</span></div></section>
+          <div className="section-head list-heading"><div><p className="eyebrow">{trendParameter.name}</p><h2>检测记录</h2></div><button onClick={() => { selectTestParameter(trendParameter.id); switchTab("test"); }}>＋ 添加</button></div>
           <PagedRecordList key={`${tankId}-${trendParameter.id}`} items={tankRecords.filter(record=>record.parameterId===trendParameter.id).sort((a,b)=>historyDate(b.date,new Date().getFullYear()).time-historyDate(a.date,new Date().getFullYear()).time||b.id-a.id)} renderItem={record=><button key={record.id} className="record-row" onClick={()=>{setEditRecord(record);setRecordError("");}}><span className="parameter-badge custom-badge">{trendParameter.name.slice(0,3)}</span><div><strong>{resultText(record)}</strong>{["no3","po4"].includes(record.parameterId)&&<p>插值 / 单值：{recordPoint(record)??"未填写"} {recordPoint(record)!==null?trendParameter.unit:""}</p>}<small>{recordDateLabel(record.date)}</small></div><span>{record.edited&&<i>已修改</i>} ›</span></button>} />
         </section>}
 

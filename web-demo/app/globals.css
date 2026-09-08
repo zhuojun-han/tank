@@ -158,6 +158,13 @@ h2 { font-size: 18px; margin-bottom: 4px; }
 .result-card { background: white; border: 1px solid var(--line); border-radius: 28px; padding: 15px; text-align: center; }
 .result-image { height: 190px; border-radius: 19px; overflow: hidden; position: relative; margin-bottom: 18px; }.result-image span { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,.9); padding: 5px 8px; border-radius: 99px; font-size: 9px; font-weight: 800; }
 .result-card h2 { font: 700 34px Georgia, serif; }
+.kh-titration h2 { margin: 0; font-size: 22px; }
+.kh-titration-hint { color: var(--muted); font-size: 12px; margin: 8px 0 20px; }
+.kh-titration .field-row label { font-size: 12px; }
+.kh-titration-result { border-top: 1px solid var(--line); padding-top: 18px; text-align: center; }
+.kh-titration-result > span, .kh-titration-result > p { color: var(--muted); font-size: 12px; }
+.kh-titration-result output { display: block; font-size: 42px; font-weight: 800; margin-top: 5px; }
+.kh-titration-result output small { font-size: 18px; font-weight: 500; }
 .confidence { text-align: left; background: #fff7e9; border-radius: 14px; padding: 11px; margin: 14px 0; }.confidence span { color: #a5682f; font-size: 10px; font-weight: 900; }.confidence p { color: #7e6248; font-size: 10px; margin: 5px 0 0; line-height: 1.5; }
 .field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; text-align: left; }
 .field-row > * { min-width: 0; }

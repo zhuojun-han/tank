@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { calculateKhTitration, KH_TITRATION_TABLE_ID } from '../app/kh-titration.ts';
 import { defaultTanks, defaultParameters, defaultTargets, defaultRecords, defaultTasks } from '../app/demo-state.ts';
 import { loadDemoState, saveDemoState, STORAGE_KEY, type DemoState } from '../app/demo-storage.ts';
 import { prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
@@ -65,5 +66,29 @@ test('accepted legacy recipes with blank unused channel inputs restore without c
     const activeBroken = { ...savedCycle, input: { ...savedCycle.input, waterL: null } };
     const bad = store({ [STORAGE_KEY]: JSON.stringify({ ...defaults, maintenanceCycles: [activeBroken] }) });
     assert.equal(loadDemoState(() => bad, defaults, now).blocked, true);
+  }
+});
+
+
+test('KH titration rounded records and original inputs round-trip without changing older records', () => {
+  const result = calculateKhTitration(0.8, 0.29);
+  const khTitration = { ...result, tableId: KH_TITRATION_TABLE_ID };
+  const record = { id: 20, tankId: 1, parameterId: 'kh', low: 7.9, high: 7.9, date: now.toISOString(), note: 'KH 滴定记录', khTitration };
+  const state = { ...defaults, records: [record, ...defaultRecords] };
+  const storage = store();
+  assert.equal(saveDemoState(() => storage, state).ok, true);
+  const loaded = loadDemoState(() => storage, defaults, now);
+  assert.equal(loaded.blocked, false);
+  assert.deepEqual(loaded.state.records, state.records);
+  assert.ok(Math.abs(loaded.state.records[0].khTitration!.dkh - 7.85) < 1e-12);
+
+  const edited = { ...loaded.state, records: loaded.state.records.map(r => r.id === 20 ? { ...r, low: 8.1, high: 8.1, edited: true } : r) };
+  assert.equal(saveDemoState(() => storage, edited).ok, true);
+  assert.deepEqual(loadDemoState(() => storage, defaults, now).state.records[0].khTitration, khTitration);
+  for (const invalid of [null, { ...khTitration, initialMl: '0.8' }, { ...khTitration, dkh: null }]) {
+    const raw = JSON.stringify({ ...state, records: [{ ...record, khTitration: invalid }] });
+    const badStorage = store({ [STORAGE_KEY]: raw });
+    assert.equal(loadDemoState(() => badStorage, defaults, now).blocked, true);
+    assert.equal(badStorage.getItem(STORAGE_KEY), raw);
   }
 });

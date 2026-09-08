@@ -1,4 +1,7 @@
 export type RecordValues = { low: number; high: number; interpolation?: number | null };
+export function recordValueText(value: number, record: { parameterId?: string; khTitration?: unknown }): string {
+  return record.parameterId === 'kh' && record.khTitration ? value.toFixed(1) : String(value);
+}
 export function readRecordValues(lowText: string, highText: string, interpolationText: string): RecordValues {
   const low = Number(lowText), high = Number(highText);
   if (!lowText.trim() || !highText.trim() || !Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high < low) throw new Error('请输入有效范围：0 ≤ 下限 ≤ 上限。');
