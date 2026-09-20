@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { expect } from '@playwright/test';
 import { launchBrowser, baseURL } from './browser-support.mjs';
 const browser = await launchBrowser();
 try {
@@ -19,6 +20,9 @@ try {
   await page.mouse.move(b.x+b.width*.1,b.y+b.height*.1);await page.mouse.down();await page.mouse.move(b.x+b.width*.15,b.y+b.height*.15);await page.mouse.up();
   await page.getByTestId('comparison-result').waitFor({state:'detached'});
   await page.locator('input[type=file]').setInputFiles(fileURLToPath(new URL('../public/no3-card.jpg',import.meta.url)));
+  // File selection returns before async validation and image decoding finish.
+  await expect(page.locator('.cm-box')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'↶ 逆时针90°',exact:true})).toBeEnabled();
   assert.equal(await extract.isDisabled(),true);assert.equal(await page.locator('.cm-box').count(),0);
   await page.getByRole('button',{name:'使用你的示例照片'}).click();await extract.click();await compare.click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

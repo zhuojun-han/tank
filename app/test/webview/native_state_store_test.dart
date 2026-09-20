@@ -172,10 +172,7 @@ void main() {
         expect(first.dueAt.toLocal().minute, 1);
         final beforeRejectedReopen = await store.readState();
         await expectLater(
-          act('reopen', {
-            'taskId': first.id,
-            'occurrenceDate': '2026-09-10',
-          }),
+          act('reopen', {'taskId': first.id, 'occurrenceDate': '2026-09-10'}),
           throwsFormatException,
         );
         expect(await store.readState(), beforeRejectedReopen);

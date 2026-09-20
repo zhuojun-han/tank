@@ -837,7 +837,7 @@ export default function Home() {
       try { await persistTaskChanges(editRecurringTask(tasks, editingTask.id, scheduleFields)); }
       catch (error) { setToast((error as Error).message); return; }
       closeTaskModal();
-      announceSaved("重复任务已更新；既有逐日完成和跳过记录已保留");
+      setToast("重复任务已更新；既有逐日完成和跳过记录已保留");
       return;
     }
     try { await persistTaskChanges(initializeRollingTasks([{
@@ -850,7 +850,7 @@ export default function Home() {
     }, ...tasks], todayKey)); }
     catch (error) { setToast((error as Error).message); return; }
     closeTaskModal();
-    announceSaved(`维护任务已添加；下次按实际完成日期加 ${intervalDays} 天安排`);
+    setToast(`维护任务已添加；下次按实际完成日期加 ${intervalDays} 天安排`);
   }
   async function toggleNotificationReminder() {
     const next = !notificationEnabled;
@@ -1130,8 +1130,8 @@ export default function Home() {
     catch (error) { setRecordError((error as Error).message); return; }
     const next = [{ id: newEntityId(records), tankId, parameterId: selectedParameter.id, ...values, date: new Date().toISOString(), note: photoEstimate ? "拍照记录" : "手动录入", photoEstimate }, ...records];
     try { await commitNative({ records: next }); } catch (e) { setRecordError((e as Error).message); return; }
-    if (!isNativeApp()) setRecords(next);
     await finishRecordedTimer(selectedParameter.id);
+    if (!isNativeApp()) setRecords(next);
     resetDetection(); announceSaved(`${selectedParameter.name} 结果已保存`); setTab("home");
   }
   async function saveKhTitration(result: KhTitrationResult) {
@@ -1145,8 +1145,8 @@ export default function Home() {
       khTitration: { ...checked, tableId: KH_TITRATION_TABLE_ID },
     }, ...records];
     await commitNative({ records: next });
-    if (!isNativeApp()) setRecords(next);
     await finishRecordedTimer("kh");
+    if (!isNativeApp()) setRecords(next);
     resetDetection("kh"); announceSaved("KH 结果已保存"); setTab("home");
   }
   async function finishRecordedTimer(parameterId: string) {
@@ -1340,7 +1340,7 @@ export default function Home() {
 
     <aside className="desktop-note"><span>交互式手机 Demo</span><h2>澜礁<br />海缸助手</h2><p>自定义关注指标，为每个海缸建立属于自己的水质档案。</p><div className="desktop-features"><span>参数可扩展</span><span>每缸独立目标</span><span>历史趋势</span></div></aside>
 
-    {fishModal && <div className="modal-backdrop" onMouseDown={dismissFishManager}><FishManagerSheet tankId={tankId} tankName={tank?.name ?? "当前海缸"} stock={tankFishStock} onClose={dismissFishManager} onSave={async (items) => { const next = [...fishStock.filter((item) => item.tankId !== tankId), ...items]; await commitNative({ fishStock: next }); if (!isNativeApp()) setFishStock(next); try { await closeFishManager(); } catch (error) { throw new Error(`鱼类档案已保存；${(error as Error).message}`); } announceSaved(`${tank?.name} 的鱼类档案已保存`); }} /></div>}
+    {fishModal && <div className="modal-backdrop" onMouseDown={dismissFishManager}><FishManagerSheet tankId={tankId} tankName={tank?.name ?? "当前海缸"} stock={tankFishStock} onClose={dismissFishManager} onSave={async (items) => { const next = [...fishStock.filter((item) => item.tankId !== tankId), ...items]; await commitNative({ fishStock: next }); try { await closeFishManager(); } catch (error) { throw new Error(`鱼类档案已保存；${(error as Error).message}`); } if (!isNativeApp()) setFishStock(next); announceSaved(`${tank?.name} 的鱼类档案已保存`); }} /></div>}
 
     {chemicalPlanDetails && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="plan-details-title" onMouseDown={() => setChemicalPlanDetails(null)}>
       <section className="sheet plan-details-sheet" onMouseDown={(event) => event.stopPropagation()}>

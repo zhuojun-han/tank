@@ -46,24 +46,46 @@ async function scenario({ reducedMotion = 'no-preference' } = {}) {
     await expect(page.locator('.tank-switcher strong')).toHaveText(name);
   };
   const yellowSwimmers = page.locator('.aquarium-fish').filter({ has: page.locator('img[src="/fish-species/yellow-tang.webp"]') });
-  const addYellow = async (tankId, quantity) => {
+  const addYellow = async (tankId, quantity, additionalFish = []) => {
+    const selectedFish = [['yellow-tang', '黄金吊'], ...additionalFish];
+    const selected = manager.locator('.fish-species-catalog > button[aria-pressed=true]');
+    await expect(selected).toHaveCount(0);
     const last = manager.locator('.fish-species-catalog > button').last();
     await expect(last.locator('strong')).toHaveText('黄金吊');
     await last.click();
     await expect(last).toHaveClass('selected');
+    await expect(last).toHaveAttribute('aria-pressed', 'true');
+    for (const [, name] of additionalFish) {
+      const option = manager.locator('.fish-species-catalog > button').filter({ has: page.getByText(name, { exact: true }) });
+      await option.click();
+      await expect(option).toHaveClass('selected');
+      await expect(option).toHaveAttribute('aria-pressed', 'true');
+    }
+    await expect(selected).toHaveCount(selectedFish.length);
+    await last.click();
+    await expect(last).toHaveAttribute('aria-pressed', 'false');
+    await expect(selected).toHaveCount(selectedFish.length - 1);
+    await last.click();
+    await expect(last).toHaveAttribute('aria-pressed', 'true');
+    await expect(selected).toHaveCount(selectedFish.length);
     const add = manager.locator('.add-fish-species');
-    await add.getByLabel('数量', { exact: true }).fill(String(quantity));
+    await add.getByLabel('每种数量', { exact: true }).fill(String(quantity));
     await add.getByLabel('入缸日期', { exact: true }).fill('2026-09-01');
-    await add.getByRole('button', { name: '＋ 加入鱼类档案', exact: true }).click();
-    const entry = manager.locator('.fish-stock-editor article').filter({ has: page.locator('.fish-stock-title strong', { hasText: /^黄金吊$/ }) });
-    await expect(entry.getByLabel('数量', { exact: true })).toHaveValue(String(quantity));
-    await expect(entry.locator('img')).toHaveAttribute('src', '/fish-species/yellow-tang.webp');
+    await add.getByRole('button', { name: `＋ 加入 ${selectedFish.length} 种鱼`, exact: true }).click();
+    for (const [id, name] of selectedFish) {
+      const entry = manager.locator('.fish-stock-editor article').filter({ has: page.getByText(name, { exact: true }) });
+      await expect(entry).toHaveCount(1);
+      await expect(entry.getByLabel('数量', { exact: true })).toHaveValue(String(quantity));
+      await expect(entry.getByLabel('入缸日期', { exact: true })).toHaveValue('2026-09-01');
+      await expect(entry.locator('img')).toHaveAttribute('src', `/fish-species/${id}.webp`);
+    }
+    await expect(selected).toHaveCount(0);
     await manager.getByRole('button', { name: '保存鱼类档案', exact: true }).click();
     await expect(manager).toHaveCount(0);
-    await page.waitForFunction(({ key, tankId, quantity }) => {
+    await page.waitForFunction(({ key, tankId, quantity, selectedFish }) => {
       const state = JSON.parse(localStorage.getItem(key));
-      return state.fishStock.some(fish => fish.tankId === tankId && fish.artwork.id === 'yellow-tang' && fish.quantity === quantity);
-    }, { key, tankId, quantity });
+      return selectedFish.every(([id]) => state.fishStock.some(fish => fish.tankId === tankId && fish.artwork.id === id && fish.quantity === quantity));
+    }, { key, tankId, quantity, selectedFish });
     await expect(yellowSwimmers).toHaveCount(quantity);
   };
   return { context, page, read, reload, manager, openFish, switchTank, yellowSwimmers, addYellow };
@@ -114,12 +136,15 @@ try {
     assert.equal(await s.manager.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
     await catalog.last().scrollIntoViewIfNeeded();
     await s.page.screenshot({ path: 'artifacts/fish-catalog-390.png', animations: 'disabled' });
-    await s.addYellow(firstTank.id, 3);
+    await s.addYellow(firstTank.id, 3, [['foxface', '黄狐狸']]);
     const firstSave = await s.read();
     const savedYellow = firstSave.fishStock.find(fish => fish.tankId === firstTank.id && fish.artwork.id === 'yellow-tang');
+    const savedFoxface = firstSave.fishStock.find(fish => fish.tankId === firstTank.id && fish.artwork.id === 'foxface');
     assert.deepEqual({ species: savedYellow.species, quantity: savedYellow.quantity, introducedOn: savedYellow.introducedOn, artwork: savedYellow.artwork },
       { species: '黄金吊', quantity: 3, introducedOn: '2026-09-01', artwork: { source: 'builtin', id: 'yellow-tang' } });
-    assert.deepEqual(sortedStock(firstSave.fishStock.filter(fish => fish.id !== savedYellow.id)), sortedStock(before.fishStock));
+    assert.deepEqual({ species: savedFoxface.species, quantity: savedFoxface.quantity, introducedOn: savedFoxface.introducedOn, artwork: savedFoxface.artwork },
+      { species: '黄狐狸', quantity: 3, introducedOn: '2026-09-01', artwork: { source: 'builtin', id: 'foxface' } });
+    assert.deepEqual(sortedStock(firstSave.fishStock.filter(fish => fish.id !== savedYellow.id && fish.id !== savedFoxface.id)), sortedStock(before.fishStock));
     await s.reload();
     await expect(s.yellowSwimmers).toHaveCount(3);
     assert.deepEqual((await s.read()).fishStock, firstSave.fishStock);
@@ -144,7 +169,7 @@ try {
     for (const field of ['records', 'tasks', 'targets', 'maintenanceCycles']) assert.deepEqual((await s.read())[field], before[field]);
     assert.equal(await s.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await s.context.close();
-    console.log('PASS: 20 named catalog options, all 11 new WebP resources decode with alpha, last-item selection, quantity/date/artwork persistence, refresh and two-tank stock isolation.');
+    console.log('PASS: 20 named catalog options, all 11 new WebP resources decode with alpha, last-item selection and deselection, batch add and selection reset, quantity/date/artwork persistence, refresh and two-tank stock isolation.');
   }
 
   {
