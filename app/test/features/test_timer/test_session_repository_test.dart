@@ -22,6 +22,87 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('准备草稿可改分秒并保存默认，跨缸和已运行状态不能修改', () async {
+    final otherTank = await tanks.createTank(name: '另一缸');
+    final id = await repository.createDraft(
+      tankId: AppDatabase.defaultTankId,
+      parameterId: AppDatabase.no3Id,
+    );
+    await repository.setPreparationDurationSeconds(
+      tankId: AppDatabase.defaultTankId,
+      sessionId: id,
+      durationSeconds: 135,
+    );
+    final preparation = (await repository.readDraftById(id))!;
+    expect(preparation.timerDurationSeconds, 135);
+    expect(preparation.timerEndsAt, isNull);
+    expect(
+      await repository.readDefaultDurationSeconds(
+        tankId: AppDatabase.defaultTankId,
+        parameterId: AppDatabase.no3Id,
+      ),
+      135,
+    );
+    for (final invalid in [0, 9, 3601]) {
+      await expectLater(
+        repository.setPreparationDurationSeconds(
+          tankId: AppDatabase.defaultTankId,
+          sessionId: id,
+          durationSeconds: invalid,
+        ),
+        throwsArgumentError,
+      );
+    }
+    await expectLater(
+      repository.setPreparationDurationSeconds(
+        tankId: otherTank,
+        sessionId: id,
+        durationSeconds: 600,
+      ),
+      throwsStateError,
+    );
+    final end = clock.add(const Duration(seconds: 135));
+    await repository.updateTimer(
+      tankId: AppDatabase.defaultTankId,
+      sessionId: id,
+      startedAt: clock,
+      timerEndsAt: end,
+      stage: ActiveTestStage.timerRunning,
+    );
+    await expectLater(
+      repository.setPreparationDurationSeconds(
+        tankId: AppDatabase.defaultTankId,
+        sessionId: id,
+        durationSeconds: 600,
+      ),
+      throwsStateError,
+    );
+    final running = (await repository.readDraftById(id))!;
+    expect(running.timerEndsAt?.toUtc(), end.toUtc());
+    expect(running.timerDurationSeconds, 135);
+    expect(
+      await repository.readDefaultDurationSeconds(
+        tankId: AppDatabase.defaultTankId,
+        parameterId: AppDatabase.no3Id,
+      ),
+      135,
+    );
+    await repository.updateTimer(
+      tankId: AppDatabase.defaultTankId,
+      sessionId: id,
+      startedAt: clock,
+      stage: ActiveTestStage.timerCompleted,
+    );
+    await expectLater(
+      repository.setPreparationDurationSeconds(
+        tankId: AppDatabase.defaultTankId,
+        sessionId: id,
+        durationSeconds: 600,
+      ),
+      throwsStateError,
+    );
+  });
+
   test('计时默认值初始 300 秒、校验 10..3600 并按缸参数隔离', () async {
     final secondTankId = await tanks.createTank(name: '计时隔离缸');
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useEffectEvent, useState } from 'react';
 import { localCycleDate } from './maintenance-cycle';
+import { isAppVisible, observeAppVisibility } from './app-visibility';
 
 /** Refresh at local midnight or when the page resumes, without background polling. */
 export function useLocalDate(onChange: (next: string, previous: string) => void): string {
@@ -16,18 +17,18 @@ export function useLocalDate(onChange: (next: string, previous: string) => void)
     const update = () => {
       window.clearTimeout(timeout);
       refresh(localCycleDate());
-      if (document.visibilityState === 'hidden') return;
+      if (!isAppVisible()) return;
       const now = new Date();
       const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
       timeout = window.setTimeout(update, midnight.getTime() - now.getTime() + 10);
     };
     timeout = window.setTimeout(update, 0);
     window.addEventListener('focus', update);
-    document.addEventListener('visibilitychange', update);
+    const stopObserving = observeAppVisibility(update);
     return () => {
       window.clearTimeout(timeout);
       window.removeEventListener('focus', update);
-      document.removeEventListener('visibilitychange', update);
+      stopObserving();
     };
   }, []);
   return today;

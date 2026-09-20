@@ -49,7 +49,7 @@ try {
   const before = (await read()).maintenanceCycles;
   await listCycle.getByRole('button', { name: '提前续配' }).click();
   assert.equal(await page.getByRole('button', { name: /^已配好/ }).isDisabled(), true);
-  await page.getByLabel('上次滴定液还有残留吗？').selectOption('yes');
+  await page.getByRole('radio', { name: '保留残液', exact: true }).check();
   assert.equal(await page.getByLabel('保留残液体积（mL）').inputValue(), '300');
   assert.match(await page.getByTestId('maintenance-stock').innerText(), /2 ml/);
   await page.getByLabel('保留残液体积（mL）').fill('501');
@@ -57,9 +57,9 @@ try {
   await page.getByRole('button', { name: '关闭滴定计算器' }).click();
   assert.deepEqual((await read()).maintenanceCycles, before);
   await listCycle.getByRole('button', { name: '提前续配' }).click();
-  await page.getByLabel('上次滴定液还有残留吗？').selectOption('no');
+  await page.getByRole('radio', { name: '没有或已倒掉', exact: true }).check();
   assert.match(await page.getByTestId('maintenance-stock').innerText(), /5 ml/);
-  await page.getByLabel('上次滴定液还有残留吗？').selectOption('yes');
+  await page.getByRole('radio', { name: '保留残液', exact: true }).check();
   await mkdir('tests/artifacts', { recursive: true });
   await page.getByTestId('maintenance-stock').scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'tests/artifacts/maintenance-residual.png', fullPage: true, animations: 'disabled' });
@@ -82,14 +82,14 @@ try {
   await page.clock.setFixedTime(new Date('2026-09-16T04:00:00Z'));
   await page.reload(); await page.locator("main[aria-busy=false]").waitFor(); await navTasks(); await pending(); assert.equal(await listCycle.count(), 1);
   await listCycle.getByRole('button', { name: '添加滴定液' }).click();
-  await page.getByLabel('上次滴定液还有残留吗？').selectOption('no');
+  await page.getByRole('radio', { name: '没有或已倒掉', exact: true }).check();
   await submit(); await waitCycles(3);
   assert.equal(await listCycle.count(), 0);
   await page.reload(); await page.locator("main[aria-busy=false]").waitFor(); await navTasks(); await completed(); assert.equal(await listCycle.count(), 1);
   assert.deepEqual((await read()).tasks, []);
   await open();
   await page.getByLabel('选择指标').selectOption('kh');
-  assert.equal(await page.getByLabel('上次滴定液还有残留吗？').count(), 0);
+  assert.equal(await page.getByRole('group', { name: '上次滴定液还有残留吗？', exact: true }).count(), 0);
   assert.equal(await page.getByLabel('每日 KH 下降（dKH）').inputValue(), '0.5');
   await page.getByLabel('单位', { exact: false }).selectOption('ml/min');
   await page.getByLabel('泵流速', { exact: true }).fill('100');
@@ -101,7 +101,7 @@ try {
   assert.equal(allCycles.filter(c => !c.closedOnDate && c.chemical === 'po4').length, 1);
   assert.equal(allCycles.filter(c => !c.closedOnDate && c.chemical === 'kh').length, 1);
   await listCycle.filter({ hasText: 'KH 每日平衡' }).getByRole('button', { name: '提前续配' }).click();
-  await page.getByLabel('上次滴定液还有残留吗？').selectOption('yes');
+  await page.getByRole('radio', { name: '保留残液', exact: true }).check();
   await page.getByLabel('保留残液体积（mL）').fill('300');
   await page.getByLabel('KH 母液浓度').selectOption('6');
   assert.match(await page.getByTestId('maintenance-stock').innerText(), /120 ml/);

@@ -6,20 +6,42 @@ import '../domain/water_quality_advice.dart';
 
 class WaterQualityAdviceSection extends ConsumerWidget {
   const WaterQualityAdviceSection({required this.tankId, super.key});
-
   final String tankId;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final advice = ref.watch(waterQualityAdviceProvider(tankId));
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('水质维护建议', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
+        Text('根据最近检测', style: Theme.of(context).textTheme.labelMedium),
+        Text(
+          '建议先做这些',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
         advice.when(
           data: (items) => Column(
-            children: [for (final item in items) _AdviceCard(advice: item)],
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final item in items) _AdviceCard(advice: item),
+              if (items.isNotEmpty)
+                Material(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                  clipBehavior: Clip.antiAlias,
+                  child: ExpansionTile(
+                    key: const Key('home-advice-basis'),
+                    title: const Text('查看建议依据'),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+                    childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    children: [
+                      for (final item in items) _AdviceBasis(advice: item),
+                    ],
+                  ),
+                ),
+            ],
           ),
           error: (error, _) => Card(
             child: ListTile(
@@ -28,11 +50,9 @@ class WaterQualityAdviceSection extends ConsumerWidget {
               subtitle: Text('$error'),
             ),
           ),
-          loading: () => const Card(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
+          loading: () => const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
           ),
         ),
       ],
@@ -42,110 +62,113 @@ class WaterQualityAdviceSection extends ConsumerWidget {
 
 class _AdviceCard extends StatelessWidget {
   const _AdviceCard({required this.advice});
-
   final WaterQualityAdvice advice;
-
   @override
   Widget build(BuildContext context) {
     final color = _statusColor(context, advice.status);
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       key: Key('advice-card-${advice.parameterCode}'),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  foregroundColor: color,
-                  backgroundColor: color.withValues(alpha: 0.12),
-                  child: Icon(_statusIcon(advice.status)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
+      margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
+      color: Color.alphaBlend(color.withValues(alpha: .035), scheme.surface),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(19),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: color, width: 4)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 17,
+                    foregroundColor: color,
+                    backgroundColor: color.withValues(alpha: .13),
+                    child: Icon(_statusIcon(advice.status), size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${advice.parameterCode} · 目标 ${_targetText(advice)}',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          advice.title,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                advice.summary,
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+              for (final action in advice.actions)
+                Padding(
+                  padding: const EdgeInsets.only(top: 7),
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${advice.parameterCode} · ${advice.parameterName}',
-                        style: Theme.of(context).textTheme.labelLarge,
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Icon(Icons.circle, size: 5),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        advice.title,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(action)),
                     ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(advice.summary),
-            const SizedBox(height: 12),
-            _FactRow(label: '触发记录', value: _recordText(advice)),
-            _FactRow(label: '用户目标', value: _targetText(advice)),
-            const SizedBox(height: 12),
-            Text('建议检查', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 4),
-            for (final action in advice.actions)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 7),
-                      child: Icon(
-                        Icons.circle,
-                        size: 6,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(action)),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 4),
-            ExpansionTile(
-              key: Key('advice-basis-${advice.parameterCode}'),
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(bottom: 8),
-              title: const Text('建议依据'),
-              children: [
-                _FactRow(label: '判断依据', value: advice.trigger),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    advice.sources.isEmpty ? '暂无专用规则来源' : '规则来源',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                ),
-                if (advice.sources.isNotEmpty)
-                  for (final source in advice.sources)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: SelectableText('${source.title}\n${source.url}'),
-                      ),
-                    ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: const Text('异常时先复测，并观察生物状态；需要时咨询专业人士。'),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _AdviceBasis extends StatelessWidget {
+  const _AdviceBasis({required this.advice});
+  final WaterQualityAdvice advice;
+  @override
+  Widget build(BuildContext context) => Padding(
+    key: Key('advice-basis-${advice.parameterCode}'),
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${advice.parameterCode} · ${advice.parameterName}',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        _FactRow(label: '触发记录', value: _recordText(advice)),
+        _FactRow(label: '用户目标', value: _targetText(advice)),
+        _FactRow(label: '判断依据', value: advice.trigger),
+        const SizedBox(height: 10),
+        for (final source in advice.sources)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: SelectableText('${source.title}\n${source.url}'),
+          ),
+        const SizedBox(height: 10),
+        const Text('异常时先复测，并观察生物状态；需要时咨询专业人士。'),
+      ],
+    ),
+  );
 }
 
 class _FactRow extends StatelessWidget {
@@ -187,11 +210,15 @@ String _targetText(WaterQualityAdvice advice) {
 
 Color _statusColor(BuildContext context, WaterQualityAdviceStatus status) {
   final scheme = Theme.of(context).colorScheme;
+  final dark = Theme.of(context).brightness == Brightness.dark;
   return switch (status) {
-    WaterQualityAdviceStatus.withinTarget => Colors.green.shade700,
+    WaterQualityAdviceStatus.withinTarget =>
+      dark ? const Color(0xFF8DE1BC) : const Color(0xFF247A5D),
     WaterQualityAdviceStatus.aboveTarget => scheme.error,
-    WaterQualityAdviceStatus.belowTarget => Colors.blue.shade700,
-    WaterQualityAdviceStatus.retestRequired => Colors.orange.shade800,
+    WaterQualityAdviceStatus.belowTarget =>
+      dark ? const Color(0xFFEACB7F) : const Color(0xFF8A661E),
+    WaterQualityAdviceStatus.retestRequired =>
+      dark ? const Color(0xFFF6C78D) : Colors.orange.shade800,
     WaterQualityAdviceStatus.insufficientData ||
     WaterQualityAdviceStatus.unsupportedParameter => scheme.outline,
   };

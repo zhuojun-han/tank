@@ -1,5 +1,6 @@
 "use client";
 import { ColorMatchPanel, type PhotoReview } from '../color-match/page';
+import type { EntityId } from '../entity-id';
 export default function Po4ColorMatch() {
   return <Po4ColorMatchPanel onReview={review=>{
     const state=JSON.parse(localStorage.getItem('reef-demo-state-v10')??'{}');
@@ -8,6 +9,6 @@ export default function Po4ColorMatch() {
     window.location.assign('/');
   }}/>;
 }
-export function Po4ColorMatchPanel(props:{onReview?: (review:PhotoReview)=>void;onClose?:()=>void}) {
+export function Po4ColorMatchPanel(props:{tankId?: EntityId; onReview?: (review:PhotoReview)=>void | Promise<void>;onClose?:()=>void}) {
   return <ColorMatchPanel {...props} parameterId="po4"/>;
 }

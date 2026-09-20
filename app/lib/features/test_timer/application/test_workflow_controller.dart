@@ -54,6 +54,13 @@ class TestWorkflowController {
     );
   }
 
+  Future<void> setPreparationDuration(ActiveTestSession session, int seconds) =>
+      _repository.setPreparationDurationSeconds(
+        tankId: session.tankId,
+        sessionId: session.id,
+        durationSeconds: seconds,
+      );
+
   /// KH uses a syringe reading immediately. Switching to it stops countdowns
   /// for this tank while keeping their unfinished inputs available to resume.
   Future<void> prepareKhTitration(String tankId) async {

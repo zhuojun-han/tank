@@ -78,6 +78,62 @@ class MaintenanceDosingInput {
   }
 }
 
+/// A finite correction course. Older steady recipes have no theory metadata.
+class MaintenanceTheory {
+  const MaintenanceTheory({
+    required this.planId,
+    required this.source,
+    required this.target,
+    required this.planStartDate,
+    required this.endDate,
+    required this.lastDayRatio,
+  });
+  final String planId, source, planStartDate, endDate;
+  final double target, lastDayRatio;
+
+  Map<String, Object> toJson() => {
+    'planId': planId,
+    'source': source,
+    'target': target,
+    'planStartDate': planStartDate,
+    'endDate': endDate,
+    'lastDayRatio': lastDayRatio,
+  };
+
+  factory MaintenanceTheory.fromJson(Map<String, dynamic> value) {
+    for (final key in ['planId', 'source', 'planStartDate', 'endDate']) {
+      if (value[key] is! String || (value[key] as String).isEmpty) {
+        throw const FormatException('理论计划信息无效。');
+      }
+    }
+    for (final key in ['target', 'lastDayRatio']) {
+      if (value[key] is! num || !(value[key] as num).isFinite) {
+        throw const FormatException('理论计划数值无效。');
+      }
+    }
+    final theory = MaintenanceTheory(
+      planId: value['planId'],
+      source: value['source'],
+      target: (value['target'] as num).toDouble(),
+      planStartDate: value['planStartDate'],
+      endDate: value['endDate'],
+      lastDayRatio: (value['lastDayRatio'] as num).toDouble(),
+    );
+    final length =
+        _ordinal(theory.endDate) - _ordinal(theory.planStartDate) + 1;
+    if (theory.planId.length > 200 ||
+        !{'lanthanum-plan', 'alkalinity-plan'}.contains(theory.source) ||
+        theory.target <= 0 ||
+        theory.lastDayRatio <= 0 ||
+        theory.lastDayRatio > 1 ||
+        length < 1 ||
+        length > 3650) {
+      throw const FormatException('理论计划范围无效。');
+    }
+    return theory;
+  }
+}
+
 class MaintenanceCycle {
   const MaintenanceCycle({
     required this.id,
@@ -96,6 +152,7 @@ class MaintenanceCycle {
     this.closedOnDate,
     this.refillDeferredUntil,
     this.notificationId,
+    this.theory,
   });
 
   final String id, tankId;
@@ -106,6 +163,7 @@ class MaintenanceCycle {
   final double retainedMl, addedStockMl, addedWaterMl;
   final String? previousCycleId, closedOnDate, refillDeferredUntil;
   final int? notificationId;
+  final MaintenanceTheory? theory;
 
   MaintenanceCycle copyWith({
     String? closedOnDate,
@@ -127,6 +185,7 @@ class MaintenanceCycle {
     closedOnDate: closedOnDate ?? this.closedOnDate,
     refillDeferredUntil: refillDeferredUntil ?? this.refillDeferredUntil,
     notificationId: notificationId,
+    theory: theory,
   );
 }
 
@@ -159,18 +218,41 @@ String _dateFromOrdinal(int day) {
   ).toIso8601String().substring(0, 10);
 }
 
+double _cycleConsumedDays(MaintenanceCycle cycle, String date) {
+  final theory = cycle.theory;
+  final until =
+      theory != null &&
+          cycle.closedOnDate != null &&
+          date.compareTo(cycle.closedOnDate!) > 0
+      ? cycle.closedOnDate!
+      : date;
+  final elapsed = math.max(0, _ordinal(until) - _ordinal(cycle.startDate));
+  if (theory == null) return elapsed.toDouble();
+  final length = _ordinal(theory.endDate) - _ordinal(cycle.startDate) + 1;
+  return math.min(elapsed, length) -
+      (elapsed >= length ? 1 - theory.lastDayRatio : 0);
+}
+
 double cycleRemainingMl(MaintenanceCycle cycle, String date) => math.max(
   0,
-  cycle.solutionMl -
-      math.max(0, _ordinal(date) - _ordinal(cycle.startDate)) *
-          cycle.dailyLiquidMl,
+  cycle.solutionMl - _cycleConsumedDays(cycle, date) * cycle.dailyLiquidMl,
 );
 
-double cycleRemainingDays(MaintenanceCycle cycle, String date) => math.max(
-  0,
-  cycle.solutionMl / cycle.dailyLiquidMl -
-      math.max(0, _ordinal(date) - _ordinal(cycle.startDate)),
-);
+bool cycleNeedsRefill(MaintenanceCycle cycle) {
+  final theory = cycle.theory;
+  if (theory == null) return true;
+  final days =
+      _ordinal(theory.endDate) -
+      _ordinal(cycle.startDate) +
+      theory.lastDayRatio;
+  final required = days * cycle.dailyLiquidMl;
+  return required >
+      cycle.solutionMl +
+          1e-10 * math.max(1, math.max(required, cycle.solutionMl));
+}
+
+double cycleRemainingDays(MaintenanceCycle cycle, String date) =>
+    cycleRemainingMl(cycle, date) / cycle.dailyLiquidMl;
 
 MaintenanceCycle? currentMaintenanceCycle(
   Iterable<MaintenanceCycle> cycles,
@@ -196,8 +278,20 @@ MaintenanceCycle prepareMaintenanceCycle({
   required String id,
   MaintenanceCycle? previous,
   double retainedMl = 0,
+  MaintenanceTheory? theory,
 }) {
   final start = _ordinal(startDate);
+  if (theory != null) {
+    MaintenanceTheory.fromJson(theory.toJson());
+    if (theory.source !=
+            (chemical == DosingChemical.po4
+                ? 'lanthanum-plan'
+                : 'alkalinity-plan') ||
+        startDate.compareTo(theory.planStartDate) < 0 ||
+        startDate.compareTo(theory.endDate) > 0) {
+      throw const FormatException('理论计划药剂或日期不匹配。');
+    }
+  }
   final result = input.calculate(chemical);
   if (result.dailyStockMl <= 0) {
     throw const FormatException('每日变化为 0，无需添加滴定周期。');
@@ -257,6 +351,7 @@ MaintenanceCycle prepareMaintenanceCycle({
     addedStockMl: math.max(0, addedStock),
     addedWaterMl: math.max(0, water),
     previousCycleId: previous?.id,
+    theory: theory,
   );
 }
 
@@ -307,6 +402,7 @@ void validateMaintenanceCycle(MaintenanceCycle cycle) {
     tankId: cycle.tankId,
     startDate: cycle.startDate,
     id: cycle.id,
+    theory: cycle.theory,
   );
   bool close(double a, double b) =>
       (a - b).abs() <= 1e-8 * math.max(1, math.max(a.abs(), b.abs()));
@@ -331,14 +427,20 @@ MaintenanceCycle delayMaintenanceCycle(
   int days,
   String today,
 ) {
-  if (cycle.closedOnDate != null) {
+  if (cycle.closedOnDate != null ||
+      !cycleNeedsRefill(cycle) ||
+      cycle.theory != null && today.compareTo(cycle.theory!.endDate) >= 0) {
     throw const FormatException('补液周期已变化，请重新打开任务。');
   }
   if (days < 1) throw const FormatException('延迟天数须为大于 0 的整数。');
+  final target = _dateFromOrdinal(
+    _ordinal(maintenanceReminderDate(cycle, today)) + days,
+  );
   return cycle.copyWith(
-    refillDeferredUntil: _dateFromOrdinal(
-      _ordinal(maintenanceReminderDate(cycle, today)) + days,
-    ),
+    refillDeferredUntil:
+        cycle.theory != null && target.compareTo(cycle.theory!.endDate) > 0
+        ? cycle.theory!.endDate
+        : target,
   );
 }
 
@@ -356,11 +458,15 @@ class MaintenanceCycleOccurrence {
   });
   final MaintenanceCycle cycle;
   final String date, today;
-  bool get isRefill => date.compareTo(cycle.refillDate) >= 0;
-  bool get isCompleted => !isRefill || cycle.closedOnDate != null;
+  bool get isRefill =>
+      cycleNeedsRefill(cycle) && date.compareTo(cycle.refillDate) >= 0;
+  bool get isCompleted =>
+      !isRefill ||
+      cycle.closedOnDate != null ||
+      cycle.theory != null && today.compareTo(cycle.theory!.endDate) > 0;
   bool get isDue => !isCompleted && date.compareTo(today) <= 0;
   String get title =>
-      '${cycle.chemical == DosingChemical.po4 ? 'PO₄' : 'KH'} 每日平衡${isRefill ? ' · 添加滴定液' : ''}';
+      '${cycle.chemical == DosingChemical.po4 ? 'PO₄' : 'KH'} ${cycle.theory == null ? '每日平衡' : '理论计划'}${isRefill ? ' · 添加滴定液' : ''}';
   String get remainingLabel {
     final days = cycleRemainingDays(cycle, date);
     return '预计还可用 ${days.round()} 天（${days.toStringAsPrecision(3)} 天）';
@@ -369,8 +475,14 @@ class MaintenanceCycleOccurrence {
   String get detail {
     final remaining =
         '预计剩余 ${formatCycleVolume(cycleRemainingMl(cycle, date))} mL';
+    if (cycle.theory != null && today.compareTo(cycle.theory!.endDate) > 0) {
+      return '$remaining · 计划已结束';
+    }
     if (cycle.closedOnDate != null) {
       return '$remaining · 已于 ${cycle.closedOnDate} 续配';
+    }
+    if (cycle.theory != null && !cycleNeedsRefill(cycle)) {
+      return '$remaining · ${cycle.theory!.endDate} 计划结束';
     }
     if (date.compareTo(cycle.refillDate) > 0) {
       return '$remaining · $date 提醒配液${date.compareTo(today) <= 0 ? '，补液已逾期' : ''}';
@@ -393,13 +505,16 @@ List<MaintenanceCycleOccurrence> maintenanceCycleOccurrences(
   for (var day = 0; day < days; day++) {
     final date = _dateFromOrdinal(first + day);
     for (final cycle in cycles) {
-      if (cycle.tankId != tankId || date.compareTo(cycle.startDate) < 0) {
+      if (cycle.tankId != tankId ||
+          date.compareTo(cycle.startDate) < 0 ||
+          cycle.theory != null && date.compareTo(cycle.theory!.endDate) > 0) {
         continue;
       }
       final occurs = cycle.closedOnDate != null
           ? date.compareTo(cycle.closedOnDate!) < 0 &&
                 date.compareTo(cycle.refillDate) <= 0
-          : date.compareTo(cycle.refillDate) < 0 ||
+          : !cycleNeedsRefill(cycle) ||
+                date.compareTo(cycle.refillDate) < 0 ||
                 date == maintenanceReminderDate(cycle, today);
       if (occurs) {
         result.add(

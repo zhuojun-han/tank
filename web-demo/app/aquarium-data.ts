@@ -1,3 +1,4 @@
+import { isEntityId, type EntityId } from "./entity-id.ts";
 export const BUILTIN_FISH_SPECIES = [
   {
     id: "clownfish",
@@ -128,8 +129,8 @@ export type FishArtwork =
   | { source: "custom"; dataUrl: string };
 
 export type FishStockItem = {
-  id: string;
-  tankId: number;
+  id: EntityId;
+  tankId: EntityId;
   species: string;
   quantity: number;
   introducedOn: string;
@@ -211,13 +212,12 @@ export function normalizeFishStock(
   return value.flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const item = candidate as Partial<FishStockItem>;
-    const tankId = Number(item.tankId);
+    const tankId = item.tankId;
     const quantity = Math.floor(Number(item.quantity));
     const species = String(item.species ?? "").trim();
     const introducedOn = String(item.introducedOn ?? "");
     if (
-      !Number.isFinite(tankId) ||
-      tankId <= 0 ||
+      !isEntityId(tankId) ||
       !species ||
       !Number.isFinite(quantity) ||
       quantity < 1 ||
@@ -226,7 +226,7 @@ export function normalizeFishStock(
       return [];
     }
     return [{
-      id: String(item.id || `fish-${tankId}-${index}`),
+      id: isEntityId(item.id) ? item.id : `fish-${tankId}-${index}`,
       tankId,
       species: species.slice(0, 24),
       quantity: Math.min(quantity, MAX_FISH_QUANTITY),

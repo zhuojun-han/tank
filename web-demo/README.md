@@ -1,6 +1,6 @@
 # 澜礁 Web
 
-网页用于先实现用户新功能，提供本地拍照辅助比色、记录/趋势、鱼缸、任务与维护计算。相机/通知/备份的移动平台验收由 Flutter 独立完成。网页数据在浏览器 localStorage，功能同步不自动迁移数据。
+网页提供本地拍照辅助比色、记录/趋势、鱼缸、任务与维护计算，并为正在实施的 WebView 安卓 App 复用界面。浏览器模式使用 localStorage；App 模式通过原生桥接访问 SQLite 和手机能力，功能同步不自动迁移数据。
 
 ## 环境和运行
 
@@ -22,6 +22,14 @@ npm start
 
 Cloudflare 插件、Wrangler 与 Workers 类型按兼容组合一起更新；Worker 兼容日期在 `vite.config.ts` 显式固定，避免工具升级顺带改变运行语义。CI 保留服务输出与退出信息，失败时将 `artifacts/preview-logs/` 随浏览器报告上传；出现批量连接失败时先检查服务是否提前退出。
 
+## App 静态产物
+
+```powershell
+npm run build:mobile
+```
+
+此命令使用 `vite.mobile.config.ts` 生成 `dist-mobile/`，复用页面、样式和本地素材，不运行 vinext SSR 或 Cloudflare Worker。Android 打包会读取该目录，后续命令见 [App README](../app/README.md#本地网页-webview-安卓版本)。修改共用网页后应重新生成该产物再打包 APK。原生数据桥接只在 App 内可用；静态产物构建成功不代表相机、系统通知或真机适配通过。
+
 ## 验证入口
 
 | 命令 | 范围与前提 |
@@ -38,13 +46,15 @@ Cloudflare 插件、Wrangler 与 Workers 类型按兼容组合一起更新；Wor
 
 E2E 默认 Chromium、Asia/Shanghai；`BROWSER_CHANNEL=msedge` 可使用本机 Edge，`TEST_TIMEZONE` 可指定时区。设置 `BASE_URL` 时连接指定已运行服务，不另起服务器；测试需使用独立浏览器存储，不能把样例写入用户正在使用的真实存档。
 
+滴定浏览器回归默认只检查交互及四种宽度的溢出，不生成展示截图；需要视觉检查时设置 `CAPTURE_SCREENSHOTS=1` 再运行 `tests/maintenance-browser.mjs`。
+
 生产预览及浏览器检查应一起确认 JS/CSS/图片可加载；SSR 返回 200 不能证明浏览器交互正常。当前验收结果统一见 [项目状态](../docs/CURRENT_STATUS.md)，不在此复制测试数。
 
 依赖变更同时运行 `npm audit --omit=dev` 与 `npm audit`，并核对实际 Worker 产物。`devDependencies` 中的 React 服务端组件也会进入运行产物，不能把生产依赖审计为 0 当作所有运行路径均无风险。升级前保留锁文件，按具体 advisory 选择兼容修复；不使用 `--force` 或 `--legacy-peer-deps` 掩盖冲突。
 
 ## 数据、两端与发布
 
-- 产品数据保存在 `reef-demo-state-v10`，兼容旧状态；用户图片由浏览器端压缩，照片比较不上传视觉服务。演示历史有明确标记，不自动迁入 App。
+- 浏览器产品数据保存在 `reef-demo-state-v10`，兼容旧状态；用户图片由浏览器端压缩，照片比较不上传视觉服务。App 不使用该键保存正式业务数据，也不自动迁入演示历史。
 - NO3/PO4 共用旋转/框选/取色和复核流程，具体输出、插值显示与拒绝规则见 [拍照规范](../docs/IMAGE_ESTIMATION.md)。
 - 每日平衡补液周期已在网页实现，App 对应差异见 [同步清单](../docs/coordination/app-sync-backlog.md)；计算与残液规则见 [滴定规范](../docs/MAINTENANCE_DOSING_CALCULATOR.md)。
 - 网页提醒仅网页打开时生效，不宣称系统后台通知；localStorage 不是 App JSON/ZIP 备份。

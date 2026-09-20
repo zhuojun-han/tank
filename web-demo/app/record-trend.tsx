@@ -1,14 +1,15 @@
 "use client";
+import { compareEntityIds, type EntityId } from "./entity-id.ts";
 import { useMemo } from 'react';
 import { historyDate } from './history-date';
 import { recordPoint, type RecordValues } from './record-values';
 import { useHistoryWindow } from './use-history-window';
 
-type Item = RecordValues & { id: number; date: string };
+type Item = RecordValues & { id: EntityId; date: string };
 export function RecordTrend({ records: inputRecords, showRange = false, unit }: { records: Item[]; showRange?: boolean; unit: string }) {
   const { records, year, signature, maximum, points, previous, next } = useMemo(() => {
     const year = inputRecords.reduce((year, r) => Math.max(year, /^\d{4}-/.test(r.date) ? Number(r.date.slice(0, 4)) : 0), new Date().getFullYear());
-    const records = [...inputRecords].sort((a, b) => historyDate(a.date, year).time - historyDate(b.date, year).time || a.id - b.id);
+    const records = [...inputRecords].sort((a, b) => historyDate(a.date, year).time - historyDate(b.date, year).time || compareEntityIds(a.id, b.id));
     const points = records.map(recordPoint);
     const previous: number[] = [], next: number[] = [];
     let valid = -1;
@@ -34,7 +35,6 @@ export function RecordTrend({ records: inputRecords, showRange = false, unit }: 
       return <g key={r.id} data-record-id={r.id}>
         {showRange && r.low !== r.high && <g data-testid="range-mark" stroke="#a687b2" strokeWidth="3"><title>{r.date + ' 范围 ' + r.low + '–' + r.high + ' ' + unit}</title><path d={'M' + x(i) + ' ' + y(r.low) + 'V' + y(r.high) + 'M' + (x(i) - 5) + ' ' + y(r.low) + 'h10M' + (x(i) - 5) + ' ' + y(r.high) + 'h10'} /><text data-testid="range-high-label" x={x(i) - 8} y={y(r.high) - 5} textAnchor="end" fontSize="9" fill="#89639c" stroke="none">{r.high}</text><text data-testid="range-low-label" x={x(i) - 8} y={y(r.low) + 11} textAnchor="end" fontSize="9" fill="#89639c" stroke="none">{r.low}</text></g>}
         {points[i] !== null && <g><title>{r.date + ' ' + (r.interpolation == null ? '单值' : '插值') + ' ' + points[i] + ' ' + unit}</title>{segment(i)}<circle data-testid="interpolation-point" cx={x(i)} cy={y(points[i]!)} r="4" fill="#16756c" /><text x={x(i) + 7} y={y(points[i]!) - 8} textAnchor="start" fontSize="9" fill="#165e56">{Number(points[i]!.toFixed(3))}</text></g>}
-        {points[i] === null && <g data-testid="missing-interpolation"><title>{r.date + ' 未填写插值；范围仍保留，折线连接前后有效值。'}</title><text x={x(i)} y="157" textAnchor="middle" fontSize="9" fill="#946332">未填插值</text></g>}
         <text x={x(i)} y="177" textAnchor="middle" fontSize="10" fill="#587575">{historyDate(r.date, year).label}</text>
       </g>;
     })}
@@ -46,7 +46,6 @@ export function RecordTrend({ records: inputRecords, showRange = false, unit }: 
       {virtual ? <div style={{ width: records.length * 20 + '%' }}>{svg}</div> : svg}
     </div>
     <p style={{ fontSize: 12 }}>{showRange ? '紫色竖线：范围 · 绿色点线：插值 / 单值' : '绿色点线：插值 / 单值'}</p>
-    {points.some(p => p === null) && <p style={{ fontSize: 12 }}>未填插值时，折线连接前后有效值。</p>}
     {!records.length && <p>暂无记录</p>}
   </div>;
 }

@@ -32,6 +32,11 @@ MaintenanceCycle maintenanceCycleFromRow(MaintenanceCycleRow row) {
     closedOnDate: row.closedOnDate,
     refillDeferredUntil: row.refillDeferredUntil,
     notificationId: row.notificationId,
+    theory: input['theory'] == null
+        ? null
+        : MaintenanceTheory.fromJson(
+            Map<String, dynamic>.from(input['theory'] as Map),
+          ),
   );
   validateMaintenanceCycle(cycle);
   return cycle;
@@ -98,6 +103,7 @@ class MaintenanceCycleRepository {
           id: preview.id,
           previous: current,
           retainedMl: preview.retainedMl,
+          theory: preview.theory,
         );
         final timestamp = now.toUtc();
         if (current != null) {
@@ -117,7 +123,11 @@ class MaintenanceCycleRepository {
                 id: confirmed.id,
                 tankId: confirmed.tankId,
                 chemical: confirmed.chemical.name,
-                inputJson: jsonEncode(confirmed.input.toJson()),
+                inputJson: jsonEncode({
+                  ...confirmed.input.toJson(),
+                  if (confirmed.theory != null)
+                    'theory': confirmed.theory!.toJson(),
+                }),
                 startDate: confirmed.startDate,
                 refillDate: confirmed.refillDate,
                 solutionMl: confirmed.solutionMl,

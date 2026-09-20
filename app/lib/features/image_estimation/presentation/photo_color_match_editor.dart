@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:image/image.dart' as img;
 import '../../../core/images/bounded_image.dart';
 import '../domain/card_color_match.dart';
+import '../../test_timer/presentation/test_workflow_widgets.dart';
 
 (img.Image, Uint8List) _decodePhoto((Uint8List, int) input) {
   final decoded = decodeBoundedImage(input.$1);
@@ -222,146 +223,229 @@ class _PhotoColorMatchEditorState extends State<PhotoColorMatchEditor> {
           ],
         ),
       );
+  Widget _photo() => LayoutBuilder(
+    builder: (context, constraints) {
+      final size = Size(
+        constraints.maxWidth,
+        constraints.maxWidth * _pixels!.height / _pixels!.width,
+      );
+      return RawGestureDetector(
+        gestures: {
+          EagerGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+                () => EagerGestureRecognizer(),
+                (_) {},
+              ),
+        },
+        child: Listener(
+          key: const Key('color-match-image'),
+          onPointerDown: _busy
+              ? null
+              : (d) {
+                  _start = d.localPosition;
+                },
+          onPointerMove: _busy ? null : (d) => _select(d.localPosition, size),
+          onPointerUp: _busy ? null : (_) => _finish(),
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image(
+                  image: _preview!,
+                  fit: BoxFit.fill,
+                  gaplessPlayback: true,
+                ),
+                CustomPaint(
+                  painter: _BoxesPainter([
+                    if (_card != null) (_card!, Colors.blue),
+                    if (_liquid != null) (_liquid!, Colors.green),
+                    for (final p in _patches) (p.rect, Colors.orange),
+                    if (_drag != null) (_drag!, Colors.red),
+                  ]),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
       children: [
         Text(
-          '${widget.parameter} 拍照检测',
-          style: Theme.of(context).textTheme.titleLarge,
+          '${widget.parameter} 照片辅助比色',
+          style: Theme.of(context).textTheme.headlineMedium,
         ),
-        const Text('将照片旋转至文字正向、色块两行四列，再框选色卡和测试液。'),
-        Wrap(
-          spacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: _busy ? null : () => _rotate(-90),
-              icon: const Icon(Icons.rotate_left),
-              label: const Text('逆时针90°'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _busy ? null : () => _rotate(90),
-              icon: const Icon(Icons.rotate_right),
-              label: const Text('顺时针90°'),
-            ),
-          ],
-        ),
-        DropdownButton<int>(
-          value: _selection,
-          isExpanded: true,
-          onChanged: _busy ? null : (v) => setState(() => _selection = v!),
-          items: [
-            const DropdownMenuItem(value: -2, child: Text('框选完整色卡')),
-            const DropdownMenuItem(value: -1, child: Text('框选测试液')),
-            for (var i = 0; i < _patches.length; i++)
-              DropdownMenuItem(
-                value: i,
-                child: Text('调整色块 ${i + 1} · ${n(_patches[i].level)} mg/L'),
-              ),
-          ],
-        ),
-        if (_preview != null)
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final size = Size(
-                constraints.maxWidth,
-                constraints.maxWidth * _pixels!.height / _pixels!.width,
-              );
-              return RawGestureDetector(
-                gestures: {
-                  EagerGestureRecognizer:
-                      GestureRecognizerFactoryWithHandlers<
-                        EagerGestureRecognizer
-                      >(() => EagerGestureRecognizer(), (_) {}),
-                },
-                child: Listener(
-                  key: const Key('color-match-image'),
-                  onPointerDown: _busy
-                      ? null
-                      : (d) {
-                          _start = d.localPosition;
-                        },
-                  onPointerMove: _busy
-                      ? null
-                      : (d) => _select(d.localPosition, size),
-                  onPointerUp: _busy ? null : (_) => _finish(),
-                  child: SizedBox(
-                    width: size.width,
-                    height: size.height,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image(
-                          image: _preview!,
-                          fit: BoxFit.fill,
-                          gaplessPlayback: true,
-                        ),
-                        CustomPaint(
-                          painter: _BoxesPainter([
-                            if (_card != null) (_card!, Colors.blue),
-                            if (_liquid != null) (_liquid!, Colors.green),
-                            for (final p in _patches) (p.rect, Colors.orange),
-                            if (_drag != null) (_drag!, Colors.red),
-                          ]),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        if (_busy) const LinearProgressIndicator(),
-        if (_error != null)
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        FilledButton(
-          onPressed: _busy || _card == null || _liquid == null
-              ? null
-              : _calculate,
-          child: const Text('取色比较'),
-        ),
-        if (result != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        const SizedBox(height: 16),
+        TestPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('旋转与框选', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              const Text('文字朝上、两行四列。旋转后需重新框选。'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  _judgment(
-                    '颜色更接近',
-                    result.nearest == null
-                        ? null
-                        : '${n(result.nearest!)} mg/L 档',
-                    result.nearestReasons,
+                  FilledButton.tonalIcon(
+                    onPressed: _busy ? null : () => _rotate(-90),
+                    icon: const Icon(Icons.rotate_left),
+                    label: const Text('逆时针90°'),
                   ),
-                  _judgment(
-                    '候选范围',
-                    result.low == null
-                        ? null
-                        : '${n(result.low!)}–${n(result.high!)} mg/L',
-                    result.rangeReasons,
-                  ),
-                  _judgment(
-                    '插值参考值',
-                    result.interpolation == null
-                        ? null
-                        : '${result.interpolation!.round()} mg/L',
-                    result.interpolationReasons,
-                  ),
-                  const Text('仅供参考'),
-                  FilledButton(
-                    onPressed: () => widget.onConfirm(result),
-                    child: const Text('修改结果 / 选择是否记录'),
+                  FilledButton.tonalIcon(
+                    onPressed: _busy ? null : () => _rotate(90),
+                    icon: const Icon(Icons.rotate_right),
+                    label: const Text('顺时针90°'),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                key: ValueKey('sample-selection-$_selection'),
+                initialValue: _selection,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '当前框选'),
+                onChanged: _busy
+                    ? null
+                    : (value) => setState(() => _selection = value!),
+                items: [
+                  const DropdownMenuItem(value: -2, child: Text('框选完整色卡')),
+                  const DropdownMenuItem(value: -1, child: Text('框选测试液')),
+                  for (var i = 0; i < _patches.length; i++)
+                    DropdownMenuItem(
+                      value: i,
+                      child: Text(
+                        '调整色块 ${i + 1} · ${n(_patches[i].level)} mg/L',
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (_preview != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: _photo(),
+                ),
+              if (_busy) const LinearProgressIndicator(),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              if (_patches.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (var i = 0; i < _patches.length; i++)
+                        OutlinedButton(
+                          onPressed: _busy
+                              ? null
+                              : () => setState(() => _selection = i),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 18,
+                                height: 18,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outlineVariant,
+                                  ),
+                                  color: Color.fromARGB(
+                                    255,
+                                    _patches[i].sample.rgb[0].round().clamp(
+                                      0,
+                                      255,
+                                    ),
+                                    _patches[i].sample.rgb[1].round().clamp(
+                                      0,
+                                      255,
+                                    ),
+                                    _patches[i].sample.rgb[2].round().clamp(
+                                      0,
+                                      255,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(n(_patches[i].level)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: _busy || _card == null || _liquid == null
+                    ? null
+                    : _calculate,
+                child: const Text('取色比较'),
+              ),
+            ],
+          ),
+        ),
+        if (result != null) ...[
+          const SizedBox(height: 16),
+          TestPanel(
+            tinted: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('比色结果', style: Theme.of(context).textTheme.titleLarge),
+                _judgment(
+                  '颜色更接近',
+                  result.nearest == null
+                      ? null
+                      : '${n(result.nearest!)} mg/L 档',
+                  result.nearestReasons,
+                ),
+                _judgment(
+                  '候选范围',
+                  result.low == null
+                      ? null
+                      : '${n(result.low!)}–${n(result.high!)} mg/L',
+                  result.rangeReasons,
+                ),
+                _judgment(
+                  '插值参考值',
+                  result.interpolation == null
+                      ? null
+                      : '${result.interpolation!.round()} mg/L',
+                  result.interpolationReasons,
+                ),
+                const Text('仅供参考'),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => widget.onConfirm(result),
+                  child: const Text('修改结果 / 选择是否记录'),
+                ),
+              ],
             ),
           ),
+        ],
+        const SizedBox(height: 12),
         TextButton(
           onPressed: _busy ? null : widget.onRetake,
           child: const Text('重新拍摄'),

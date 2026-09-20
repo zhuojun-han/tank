@@ -14,18 +14,30 @@ class ChemicalPlanCard extends StatelessWidget {
   final ValueChanged<MaintenanceTaskItem>? onComplete, onDelay;
   @override
   Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
     final sorted = [...items]
       ..sort((a, b) => a.task.dueAt.compareTo(b.task.dueAt));
     final pending = sorted.where((i) => i.task.status == 'enabled').toList();
+    final summaryDays = pending.isEmpty ? sorted : pending;
     return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      key: Key('chemical-plan-${items.first.task.planId}'),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
               '${items.first.task.source == 'alkalinity-plan' ? 'KH' : 'PO4'} 总计划 · 剩余 ${pending.length} 天',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
+            const SizedBox(height: 6),
+            Text(
+              '${_date(summaryDays.first)} — ${_date(summaryDays.last)}',
+              key: Key('chemical-plan-range-${items.first.task.planId}'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
             TextButton(
               onPressed: () => showDialog<void>(
                 context: context,
@@ -33,7 +45,7 @@ class ChemicalPlanCard extends StatelessWidget {
                   title: const Text('每日安排'),
                   content: SizedBox(
                     width: 500,
-                    height: 400,
+                    height: MediaQuery.sizeOf(dialog).height * .55,
                     child: ListView(
                       children: [
                         for (final item in sorted)
@@ -67,9 +79,12 @@ class ChemicalPlanCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (onComplete != null)
-                    FilledButton(
-                      onPressed: () => onComplete!(pending.first),
-                      child: const Text('完成本次'),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: FilledButton(
+                        onPressed: () => onComplete!(pending.first),
+                        child: const Text('完成本次'),
+                      ),
                     ),
                   Row(
                     children: [
@@ -97,4 +112,7 @@ class ChemicalPlanCard extends StatelessWidget {
       ),
     );
   }
+
+  String _date(MaintenanceTaskItem item) =>
+      item.task.dueAt.toLocal().toString().substring(0, 10);
 }

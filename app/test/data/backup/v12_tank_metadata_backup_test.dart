@@ -30,7 +30,10 @@ void main() {
       await (source.update(source.tanks)..where((t) => t.id.equals(future)))
           .write(const TanksCompanion(startedOn: Value('9999-12-31')));
       final data = await LocalBackupService(source).exportJson();
-      expect((jsonDecode(data) as Map)['formatVersion'], 12);
+      expect(
+        (jsonDecode(data) as Map)['formatVersion'],
+        LocalBackupService.formatVersion,
+      );
       await LocalBackupService(destination).restoreReplace(data);
       final tanks = {
         for (final tank in await destination.select(destination.tanks).get())

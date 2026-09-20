@@ -25,7 +25,9 @@ class LocalBackupService {
   final AppDatabase _database;
   final String Function() _idGenerator;
 
-  static const formatVersion = 12;
+  // v13 adds finite theory metadata; old apps must not read it as an endless
+  // steady-dosing cycle. SQLite table layout remains unchanged.
+  static const formatVersion = 13;
 
   Future<File> exportToPrivateFile() async {
     final root = await getApplicationSupportDirectory();

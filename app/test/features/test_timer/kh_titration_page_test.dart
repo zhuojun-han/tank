@@ -149,16 +149,14 @@ void main() {
         expect(find.text('8.0 dKH'), findsOneWidget);
         await tap(
           tester,
-          find.byKey(const Key('workflow-parameter-${AppDatabase.khId}')),
-        );
-        await tap(tester, find.text('NO3 · 硝酸盐').last);
-        expect(find.byKey(const Key('kh-result')), findsNothing);
-        expect(find.byKey(const Key('create-test-draft')), findsOneWidget);
-        await tap(
-          tester,
           find.byKey(const Key('workflow-parameter-${AppDatabase.no3Id}')),
         );
-        await tap(tester, find.text('KH · 碳酸盐硬度').last);
+        expect(find.byKey(const Key('kh-result')), findsNothing);
+        expect(find.byKey(const Key('start-test-timer')), findsOneWidget);
+        await tap(
+          tester,
+          find.byKey(const Key('workflow-parameter-${AppDatabase.khId}')),
+        );
         expect(
           tester
               .widget<TextField>(find.byKey(const Key('kh-remaining')))

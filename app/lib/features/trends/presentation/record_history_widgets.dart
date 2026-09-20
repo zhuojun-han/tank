@@ -116,22 +116,45 @@ class _ScrollableRecordChartState extends State<ScrollableRecordChart> {
   @override
   Widget build(BuildContext context) => Column(
     children: [
+      Text(widget.bars ? '插值 / 单值' : '范围与插值', textAlign: TextAlign.center),
       Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          TextButton(onPressed: () => _move(-1), child: const Text('← 较早')),
           Expanded(
-            child: Text(
-              widget.bars ? '插值 / 单值' : '范围与插值',
-              textAlign: TextAlign.center,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => _move(-1),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text('← 较早'),
+              ),
             ),
           ),
-          TextButton(onPressed: () => _move(1), child: const Text('最近 →')),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => _move(1),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 12,
+                  ),
+                ),
+                child: const Text('最近 →'),
+              ),
+            ),
+          ),
         ],
       ),
       LayoutBuilder(
         builder: (context, c) {
-          final slot = math.max(68.0, c.maxWidth / 5);
+          final slot = math.max(1.0, c.maxWidth / 5);
           _slot = slot;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _windowChanged();
@@ -331,6 +354,7 @@ class PagedRecordHistory extends StatefulWidget {
     this.onExpanded,
     this.rowBuilder,
     this.title = '检测记录',
+    this.headerTrailing,
   });
   final List<TestRecord> records;
   final ValueChanged<TestRecord> onOpen;
@@ -340,6 +364,7 @@ class PagedRecordHistory extends StatefulWidget {
   final ValueChanged<bool>? onExpanded;
   final Widget Function(TestRecord)? rowBuilder;
   final String title;
+  final Widget? headerTrailing;
   @override
   State<PagedRecordHistory> createState() => _PagedRecordHistoryState();
 }
@@ -362,59 +387,73 @@ class _PagedRecordHistoryState extends State<PagedRecordHistory> {
         ? math.min(_limit, widget.records.length)
         : widget.records.length;
     final total = widget.totalCount ?? widget.records.length;
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            title: Text(widget.title),
-            subtitle: Text('已加载 $count / 共 $total 条'),
-            trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-            onTap: () => setState(() {
-              _expanded = !_expanded;
-              _limit = 10;
-              widget.onReset?.call();
-              widget.onExpanded?.call(_expanded);
-            }),
-          ),
-          if (_expanded)
-            SizedBox(
-              height: math.min(480.0, count * 100.0 + 48),
-              child: NotificationListener<ScrollNotification>(
-                onNotification: (n) {
-                  if (n is ScrollEndNotification &&
-                      n.metrics.axis == Axis.vertical &&
-                      n.metrics.extentAfter < 80) {
-                    _more();
-                  }
-                  return false;
-                },
-                child: ListView.builder(
-                  primary: false,
-                  itemCount: count + 1,
-                  itemBuilder: (context, i) {
-                    if (i == count) {
-                      if (widget.loading) {
-                        return const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      return count < total
-                          ? TextButton(
-                              onPressed: _more,
-                              child: const Text('加载更多'),
-                            )
-                          : const SizedBox(height: 16);
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  widget.title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                subtitle: Text('已加载 $count / 共 $total 条'),
+                trailing: Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                ),
+                onTap: () => setState(() {
+                  _expanded = !_expanded;
+                  _limit = 10;
+                  widget.onReset?.call();
+                  widget.onExpanded?.call(_expanded);
+                }),
+              ),
+            ),
+            if (widget.headerTrailing != null) widget.headerTrailing!,
+          ],
+        ),
+        if (_expanded)
+          SizedBox(
+            height: math.min(480.0, count * 100.0 + 48),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n is ScrollEndNotification &&
+                    n.metrics.axis == Axis.vertical &&
+                    n.metrics.extentAfter < 80) {
+                  _more();
+                }
+                return false;
+              },
+              child: ListView.builder(
+                primary: false,
+                itemCount: count + 1,
+                itemBuilder: (context, i) {
+                  if (i == count) {
+                    if (widget.loading) {
+                      return const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
                     }
-                    final r = widget.records[i];
-                    if (widget.rowBuilder != null) return widget.rowBuilder!(r);
-                    final range =
-                        r.confirmedMaxValue != null &&
-                        r.confirmedMaxValue != r.confirmedMinValue;
-                    final point =
-                        r.confirmedInterpolation ??
-                        (range ? null : r.confirmedMinValue);
-                    return ListTile(
+                    return count < total
+                        ? TextButton(
+                            onPressed: _more,
+                            child: const Text('加载更多'),
+                          )
+                        : const SizedBox(height: 16);
+                  }
+                  final r = widget.records[i];
+                  if (widget.rowBuilder != null) return widget.rowBuilder!(r);
+                  final range =
+                      r.confirmedMaxValue != null &&
+                      r.confirmedMaxValue != r.confirmedMinValue;
+                  final point =
+                      r.confirmedInterpolation ??
+                      (range ? null : r.confirmedMinValue);
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: ListTile(
                       key: Key('trend-record-${r.id}'),
                       title: Text('${recordTrendValue(r)} ${r.unit}'),
                       subtitle: Column(
@@ -429,13 +468,13 @@ class _PagedRecordHistoryState extends State<PagedRecordHistory> {
                       ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => widget.onOpen(r),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

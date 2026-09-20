@@ -262,9 +262,11 @@ class ActiveTestSessions extends Table {
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase(super.executor);
+  AppDatabase(super.executor, {this.seedDefaultTank = true});
 
-  AppDatabase.open() : super(_openConnection());
+  AppDatabase.open({this.seedDefaultTank = true}) : super(_openConnection());
+
+  final bool seedDefaultTank;
 
   static const defaultTankId = '00000000-0000-4000-8000-000000000001';
   static const no3Id = '00000000-0000-4000-8000-000000000101';
@@ -551,7 +553,29 @@ class AppDatabase extends _$AppDatabase {
     return columns.any((row) => row.read<String>('name') == columnName);
   }
 
-  Future<void> _seedInitialData() async {
+  /// Explicit user reset; retain the built-in catalog but no sample tank.
+  Future<void> resetForOnboarding() => transaction(() async {
+    for (final table in <TableInfo<Table, dynamic>>[
+      taskEvents,
+      maintenanceCycles,
+      activeTestSessions,
+      testRecords,
+      maintenanceTasks,
+      testTimerDefaults,
+      waterQualityTargets,
+      tankParameters,
+      appPreferences,
+      reagentProfiles,
+      waterParameters,
+      tanks,
+    ]) {
+      await delete(table).go();
+    }
+    await _seedInitialData(withTank: false);
+  });
+
+  Future<void> _seedInitialData({bool? withTank}) async {
+    final seedTank = withTank ?? seedDefaultTank;
     final now = DateTime.now().toUtc();
     const builtIns = [
       (id: no3Id, code: 'NO3', name: '硝酸盐', unit: 'mg/L', photo: true),
@@ -563,15 +587,17 @@ class AppDatabase extends _$AppDatabase {
     ];
 
     await batch((batch) {
-      batch.insert(
-        tanks,
-        TanksCompanion.insert(
-          id: defaultTankId,
-          name: '我的海缸',
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
+      if (seedTank) {
+        batch.insert(
+          tanks,
+          TanksCompanion.insert(
+            id: defaultTankId,
+            name: '我的海缸',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+      }
       batch.insertAll(waterParameters, [
         for (final item in builtIns)
           WaterParametersCompanion.insert(
@@ -584,18 +610,20 @@ class AppDatabase extends _$AppDatabase {
             createdAt: now,
           ),
       ]);
-      batch.insertAll(tankParameters, [
-        TankParametersCompanion.insert(
-          tankId: defaultTankId,
-          parameterId: no3Id,
-          updatedAt: now,
-        ),
-        TankParametersCompanion.insert(
-          tankId: defaultTankId,
-          parameterId: po4Id,
-          updatedAt: now,
-        ),
-      ]);
+      if (seedTank) {
+        batch.insertAll(tankParameters, [
+          TankParametersCompanion.insert(
+            tankId: defaultTankId,
+            parameterId: no3Id,
+            updatedAt: now,
+          ),
+          TankParametersCompanion.insert(
+            tankId: defaultTankId,
+            parameterId: po4Id,
+            updatedAt: now,
+          ),
+        ]);
+      }
       batch.insert(
         reagentProfiles,
         ReagentProfilesCompanion.insert(
@@ -611,7 +639,7 @@ class AppDatabase extends _$AppDatabase {
       batch.insert(
         appPreferences,
         AppPreferencesCompanion.insert(
-          currentTankId: const Value(defaultTankId),
+          currentTankId: Value(seedTank ? defaultTankId : null),
           updatedAt: now,
         ),
       );

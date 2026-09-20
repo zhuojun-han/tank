@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lanjiao_water_quality/core/notifications/local_notification.dart';
 import 'package:lanjiao_water_quality/data/database/app_database.dart';
 import 'package:lanjiao_water_quality/features/aquarium/presentation/fish_manager_sheet.dart';
+import 'package:lanjiao_water_quality/features/aquarium/presentation/aquarium_card.dart';
 import 'package:lanjiao_water_quality/features/home/presentation/home_page.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_clock.dart';
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_notification_providers.dart';
@@ -77,6 +78,10 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
           home: home ? const Scaffold(body: HomePage()) : const SettingsPage(),
         ),
       ),
@@ -225,7 +230,10 @@ void main() {
 
     await tester.runAsync(() => repository.switchTank(tankB));
     await _flush(tester);
-    expect(find.text('我的鱼缸 · 首页 B'), findsOneWidget);
+    expect(
+      tester.widget<AquariumCard>(find.byType(AquariumCard)).tankName,
+      '首页 B',
+    );
     expect(find.text('已运行 3 天'), findsOneWidget);
     final originalA = (await readTanks(
       tester,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lanjiao_water_quality/app/theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lanjiao_water_quality/features/trends/data/record_history_source.dart';
@@ -103,7 +104,7 @@ void main() {
           MaterialApp(
             home: Scaffold(
               body: SizedBox(
-                width: 375,
+                width: 320,
                 child: ScrollableRecordChart(
                   key: ValueKey(bars),
                   data: data,
@@ -115,6 +116,13 @@ void main() {
         );
         await tester.pump();
         final scroll = tester.state<ScrollableState>(find.byType(Scrollable));
+        expect(
+          scroll.position.maxScrollExtent,
+          closeTo(
+            (data.length - 5) * scroll.position.viewportDimension / 5,
+            .01,
+          ),
+        );
         expect(scroll.position.pixels, greaterThan(0));
         final before = scroll.position.pixels;
         await tester.tap(find.text('← 较早'));
@@ -125,6 +133,46 @@ void main() {
       }
     },
   );
+  testWidgets('图表在248像素和2倍文字下仍可导航到较早与最新五点', (tester) async {
+    for (final bars in [false, true]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: LanjiaoTheme.light,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SizedBox(
+              width: 248,
+              child: ScrollableRecordChart(
+                key: ValueKey(bars),
+                bars: bars,
+                data: List.generate(
+                  12,
+                  (i) =>
+                      TrendDatum(record: record(i, point: i == 5 ? null : 18)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final scroll = tester.state<ScrollableState>(find.byType(Scrollable));
+      final latest = scroll.position.pixels;
+      await tester.tap(find.text('← 较早'));
+      await tester.pumpAndSettle();
+      expect(scroll.position.pixels, lessThan(latest));
+      await tester.tap(find.text('最近 →'));
+      await tester.pumpAndSettle();
+      expect(scroll.position.pixels, closeTo(latest, .01));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets(
     'reservoir volume and flow update rounded days and three significant figures',
     (tester) async {

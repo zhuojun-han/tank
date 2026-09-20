@@ -126,7 +126,7 @@ try {
     await s.create('po4');
     const previous = (await s.read()).maintenanceCycles[0];
     await s.open();
-    await s.page.getByLabel('上次滴定液还有残留吗？').selectOption('yes');
+    await s.page.getByRole('radio', { name: '保留残液', exact: true }).check();
     const remaining = s.page.getByLabel('保留残液体积（mL）');
     await expect(remaining).toHaveValue('500');
     await expect(s.page.getByTestId('maintenance-remaining-days')).toContainText('5.95 天');
@@ -147,7 +147,7 @@ try {
     await s.close();
     assert.deepEqual((await s.read()).maintenanceCycles, [previous]);
     await s.open();
-    await s.page.getByLabel('上次滴定液还有残留吗？').selectOption('yes');
+    await s.page.getByRole('radio', { name: '保留残液', exact: true }).check();
     await expect(remaining).toHaveValue('332');
     await remaining.fill('300');
     // Jump the wall clock without lifecycle events or timer execution: confirm must use the real day.

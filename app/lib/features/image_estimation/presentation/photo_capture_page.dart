@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../domain/card_color_match.dart';
 import '../data/card_photo_processor.dart';
 import 'photo_color_match_editor.dart';
+import '../../test_timer/presentation/test_workflow_widgets.dart';
 
 import '../data/camera_gateway.dart';
 import '../data/captured_photo_processor.dart';
@@ -472,28 +473,59 @@ class _Guide extends StatelessWidget {
   final VoidCallback onStartCamera, onChoosePhoto, onManual;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
     children: [
       Text(
-        '${request.parameterCode} 拍照检测',
-        style: Theme.of(context).textTheme.titleLarge,
+        '${request.parameterCode} 照片辅助比色',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
+      const SizedBox(height: 16),
+      TestPanel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('选择照片', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            const Text('显色后，将完整色卡和测试液放在同一光线下，避开反光。'),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.add_a_photo_outlined, size: 48),
+                  SizedBox(height: 10),
+                  Text('测试液与完整色卡同框'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              key: const Key('start-camera'),
+              onPressed: onStartCamera,
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: const Text('打开相机'),
+            ),
+            const SizedBox(height: 8),
+            FilledButton.tonalIcon(
+              onPressed: onChoosePhoto,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text('选择照片'),
+            ),
+          ],
+        ),
+      ),
+      TestEntryCard(
+        title: '手动录入',
+        subtitle: '填写检测结果并确认是否记录',
+        icon: Icons.keyboard_outlined,
+        onTap: onManual,
       ),
       const SizedBox(height: 12),
-      const Text('显色后，将完整色卡和测试液放在同一光线下，避开反光。'),
-      const SizedBox(height: 16),
-      FilledButton.icon(
-        key: const Key('start-camera'),
-        onPressed: onStartCamera,
-        icon: const Icon(Icons.camera_alt_outlined),
-        label: const Text('打开相机'),
-      ),
-      OutlinedButton.icon(
-        onPressed: onChoosePhoto,
-        icon: const Icon(Icons.photo_library_outlined),
-        label: const Text('选择照片'),
-      ),
-      TextButton(onPressed: onManual, child: const Text('手动录入')),
-      const Text('仅供参考'),
+      const Text('仅供参考', textAlign: TextAlign.center),
     ],
   );
 }

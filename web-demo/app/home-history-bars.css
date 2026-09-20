@@ -3,7 +3,7 @@
 .history-bar-controls button {border:1px solid #cde0db;border-radius:9px;background:#f2f8f5;color:#226a60;padding:7px;font-size:11px;}
 .history-bar-scroll {display:flex;width:100%;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:thin;}
 .history-bar-slot {flex:0 0 20%;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;scroll-snap-align:start;padding:3px 4px 8px;gap:5px;font-size:11px;}
-.history-bar-slot strong {font-size:12px;white-space:nowrap;}
+.history-bar-slot strong {font-size:12px;line-height:1.4;min-height:1.4em;flex-shrink:0;white-space:nowrap;}
 .history-bar-track {height:100px;width:100%;display:flex;justify-content:center;align-items:flex-end;border-bottom:1px solid #cdded8;}
 .history-bar-track span {display:block;width:55%;max-width:30px;background:linear-gradient(#4caa90,#24776b);border-radius:5px 5px 0 0;}
 .history-bar-slot small {color:#97652d;font-size:10px;}

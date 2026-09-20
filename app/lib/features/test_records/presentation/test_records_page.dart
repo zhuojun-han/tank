@@ -1,8 +1,6 @@
-import '../../trends/data/record_history_source.dart';
-import '../../trends/presentation/database_record_history_widgets.dart';
+import '../../test_timer/presentation/test_workflow_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/errors/app_error_view.dart';
 import '../../../data/database/app_database.dart';
@@ -12,313 +10,124 @@ import '../application/test_record_providers.dart';
 
 class TestRecordsPage extends ConsumerWidget {
   const TestRecordsPage({super.key});
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ref
-        .watch(currentTankProvider)
-        .when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => AppErrorView(message: '无法读取当前海缸：$error'),
-          data: (tank) {
-            if (tank == null) return const AppErrorView(message: '请先在设置中创建海缸。');
-            return ref
-                .watch(enabledParametersProvider(tank.id))
-                .when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, _) => AppErrorView(message: '无法读取检测参数：$error'),
-                  data: (enabled) => ref
-                      .watch(parameterStatesProvider(tank.id))
-                      .when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (error, _) =>
-                            AppErrorView(message: '无法读取参数资料：$error'),
-                        data: (states) => ref
-                            .watch(
-                              recordHistoryOverviewProvider((
-                                tankId: tank.id,
-                                parameterId: null,
-                              )),
-                            )
-                            .when(
-                              loading: () => const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                              error: (error, _) =>
-                                  AppErrorView(message: '无法读取检测历史：$error'),
-                              data: (overview) => ref
-                                  .watch(waterQualityTargetsProvider(tank.id))
-                                  .when(
-                                    loading: () => const Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                    error: (error, _) => AppErrorView(
-                                      message: '无法读取目标范围：$error',
-                                    ),
-                                    data: (targets) => _Content(
-                                      tank: tank,
-                                      enabledParameters: enabled,
-                                      allParameters: {
-                                        for (final state in states)
-                                          state.parameter.id: state.parameter,
-                                      },
-                                      overview: overview,
-                                      targets: targets,
-                                    ),
-                                  ),
-                            ),
-                      ),
-                );
-          },
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(currentTankProvider)
+      .when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => AppErrorView(message: '无法读取当前海缸：$error'),
+        data: (tank) => tank == null
+            ? const AppErrorView(message: '请先在设置中创建海缸。')
+            : TestWorkflowPage(
+                key: ValueKey('test-${tank.id}'),
+                embedded: true,
+                onManualEntry: (tankId, parameterId) async {
+                  final enabled = await ref.read(
+                    enabledParametersProvider(tankId).future,
+                  );
+                  if (!context.mounted ||
+                      (await ref.read(currentTankProvider.future))?.id !=
+                          tankId) {
+                    return;
+                  }
+                  if (!context.mounted ||
+                      !TickerMode.valuesOf(context).enabled) {
+                    return;
+                  }
+                  await showManualTestRecordEditor(
+                    context,
+                    ref,
+                    tank: tank,
+                    enabledParameters: enabled,
+                    initialParameterId: parameterId,
+                  );
+                },
+              ),
+      );
+}
+
+Future<void> showManualTestRecordEditor(
+  BuildContext context,
+  WidgetRef ref, {
+  required Tank tank,
+  required List<WaterParameter> enabledParameters,
+  String? initialParameterId,
+}) async {
+  if (enabledParameters.isEmpty) return;
+  final key = 'new:${tank.id}';
+  var initial = ref.read(recordFormDraftProvider(key));
+  final enabledIds = enabledParameters.map((item) => item.id).toSet();
+  if (initial == null ||
+      initial.tankId != tank.id ||
+      !enabledIds.contains(initial.parameterId)) {
+    initial = RecordFormDraft(
+      tankId: tank.id,
+      parameterId: initialParameterId ?? enabledParameters.first.id,
+      reagentProfileId: null,
+      isRange: false,
+      minValueText: '',
+      maxValueText: '',
+      confirmedAt: DateTime.now().toUtc(),
+      notes: '',
+    );
+    ref.read(recordFormDraftProvider(key).notifier).state = initial;
+  }
+  final draft = await showDialog<RecordFormDraft>(
+    context: context,
+    builder: (_) => _RecordEditorDialog(
+      draftKey: key,
+      initialDraft: initial!,
+      sourceTank: tank,
+      createParameters: enabledParameters,
+    ),
+  );
+  if (draft == null || !context.mounted) return;
+  try {
+    await ref
+        .read(testRecordRepositoryProvider)
+        .createManual(
+          tankId: tank.id,
+          parameterId: draft.parameterId,
+          reagentProfileId: draft.reagentProfileId,
+          confirmedMinValue: double.parse(draft.minValueText.trim()),
+          confirmedMaxValue: draft.isRange
+              ? double.parse(draft.maxValueText.trim())
+              : null,
+          confirmedInterpolation: draft.isRange
+              ? double.tryParse(draft.interpolationText)
+              : null,
+          measuredAt: draft.confirmedAt,
+          notes: draft.notes,
         );
+    ref.read(recordFormDraftProvider(key).notifier).state = null;
+    if (context.mounted) _message(context, '检测记录已保存');
+  } catch (error) {
+    if (context.mounted) _message(context, '保存失败，草稿仍保留：$error');
   }
 }
 
-class _Content extends ConsumerWidget {
-  const _Content({
-    required this.tank,
-    required this.enabledParameters,
-    required this.allParameters,
-    required this.overview,
-    required this.targets,
-  });
-
-  final Tank tank;
-  final List<WaterParameter> enabledParameters;
-  final Map<String, WaterParameter> allParameters;
-  final RecordHistoryOverview overview;
-  final List<WaterQualityTarget> targets;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final targetByParameter = {
-      for (final target in targets) target.parameterId: target,
-    };
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '当前海缸：${tank.name}',
-                  key: const Key('test-current-tank'),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 4),
-
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  key: const Key('start-test-flow'),
-                  onPressed: enabledParameters.isEmpty
-                      ? null
-                      : () => context.push('/test-flow'),
-                  icon: const Icon(Icons.science),
-                  label: const Text('开始完整检测'),
-                ),
-                const SizedBox(height: 8),
-                if (enabledParameters.any(
-                  (parameter) => parameter.id == AppDatabase.khId,
-                ))
-                  OutlinedButton.icon(
-                    key: const Key('start-kh-titration'),
-                    onPressed: () => context.push(
-                      '/test-flow?parameterId=${AppDatabase.khId}',
-                    ),
-                    icon: const Icon(Icons.water_drop_outlined),
-                    label: const Text('KH 滴定检测'),
-                  ),
-                OutlinedButton.icon(
-                  key: const Key('add-test-record'),
-                  onPressed: enabledParameters.isEmpty
-                      ? null
-                      : () => _createRecord(context, ref),
-                  icon: const Icon(Icons.add),
-                  label: const Text('添加手动检测记录'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text('目标范围', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Card(
-          child: Column(
-            children: [
-              for (var index = 0; index < enabledParameters.length; index++)
-                Builder(
-                  builder: (context) {
-                    final parameter = enabledParameters[index];
-                    final target = targetByParameter[parameter.id];
-                    return Column(
-                      children: [
-                        ListTile(
-                          title: Text(
-                            '${parameter.code} · ${parameter.displayName}',
-                          ),
-                          subtitle: Text(
-                            target == null ||
-                                    (target.minValue == null &&
-                                        target.maxValue == null)
-                                ? '尚未设置 · ${parameter.unit}'
-                                : '${_targetNumber(target.minValue)}–${_targetNumber(target.maxValue)} ${target.unit}',
-                          ),
-                          trailing: const Icon(Icons.edit_outlined),
-                          onTap: () =>
-                              _editTarget(context, ref, parameter, target),
-                        ),
-                        if (index < enabledParameters.length - 1)
-                          const Divider(height: 1),
-                      ],
-                    );
-                  },
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text('检测历史', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        if (overview.count == 0)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Icon(Icons.science_outlined, size: 40),
-                  SizedBox(height: 8),
-                  Text('还没有检测记录'),
-                  SizedBox(height: 4),
-                ],
-              ),
-            ),
-          )
-        else
-          DatabaseRecordHistory(
-            key: ValueKey('records-${tank.id}'),
-            scope: (tankId: tank.id, parameterId: null),
-            overview: overview,
-            onOpen: (record) => _openRecord(
-              context,
-              ref,
-              record,
-              allParameters[record.parameterId],
-            ),
-            rowBuilder: (record) => _RecordTile(
-              record: record,
-              parameter: allParameters[record.parameterId],
-              showDivider: true,
-              onTap: () => _openRecord(
-                context,
-                ref,
-                record,
-                allParameters[record.parameterId],
-              ),
-            ),
-          ),
-      ],
+Future<void> showWaterQualityTargetEditor(
+  BuildContext context,
+  WidgetRef ref, {
+  required String tankId,
+  required WaterParameter parameter,
+  WaterQualityTarget? target,
+}) async {
+  final range = await _showTargetDialog(context, parameter, target);
+  if (range == null || !context.mounted) return;
+  final repository = ref.read(tankRepositoryProvider);
+  final current = await ref.read(currentTankProvider.future);
+  if (!context.mounted || current?.id != tankId) return;
+  try {
+    await repository.setTarget(
+      tankId: tankId,
+      parameterId: parameter.id,
+      minValue: range.$1,
+      maxValue: range.$2,
     );
-  }
-
-  Future<void> _createRecord(BuildContext context, WidgetRef ref) async {
-    final key = 'new:${tank.id}';
-    var initial = ref.read(recordFormDraftProvider(key));
-    final enabledIds = enabledParameters.map((item) => item.id).toSet();
-    if (initial == null ||
-        initial.tankId != tank.id ||
-        !enabledIds.contains(initial.parameterId)) {
-      initial = RecordFormDraft(
-        tankId: tank.id,
-        parameterId: enabledParameters.first.id,
-        reagentProfileId: null,
-        isRange: false,
-        minValueText: '',
-        maxValueText: '',
-        confirmedAt: DateTime.now().toUtc(),
-        notes: '',
-      );
-      ref.read(recordFormDraftProvider(key).notifier).state = initial;
-    }
-    final draft = await showDialog<RecordFormDraft>(
-      context: context,
-      builder: (_) => _RecordEditorDialog(
-        draftKey: key,
-        initialDraft: initial!,
-        sourceTank: tank,
-        createParameters: enabledParameters,
-      ),
-    );
-    if (draft == null || !context.mounted) return;
-    try {
-      await ref
-          .read(testRecordRepositoryProvider)
-          .createManual(
-            tankId: tank.id,
-            parameterId: draft.parameterId,
-            reagentProfileId: draft.reagentProfileId,
-            confirmedMinValue: double.parse(draft.minValueText.trim()),
-            confirmedMaxValue: draft.isRange
-                ? double.parse(draft.maxValueText.trim())
-                : null,
-            confirmedInterpolation: draft.isRange
-                ? double.tryParse(draft.interpolationText)
-                : null,
-            measuredAt: draft.confirmedAt,
-            notes: draft.notes,
-          );
-      ref.read(recordFormDraftProvider(key).notifier).state = null;
-      if (context.mounted) _message(context, '检测记录已保存');
-    } catch (error) {
-      if (context.mounted) _message(context, '保存失败，草稿仍保留：$error');
-    }
-  }
-
-  Future<void> _openRecord(
-    BuildContext context,
-    WidgetRef ref,
-    TestRecord record,
-    WaterParameter? parameter,
-  ) async {
-    if (parameter == null) {
-      _message(context, '参数资料已不可用，无法打开记录');
-      return;
-    }
-    await showScopedTestRecordDetails(
-      context: context,
-      ref: ref,
-      record: record,
-      tank: tank,
-      parameter: parameter,
-    );
-  }
-
-  Future<void> _editTarget(
-    BuildContext context,
-    WidgetRef ref,
-    WaterParameter parameter,
-    WaterQualityTarget? target,
-  ) async {
-    final range = await _showTargetDialog(context, parameter, target);
-    if (range == null || !context.mounted) return;
-    try {
-      await ref
-          .read(tankRepositoryProvider)
-          .setTarget(
-            tankId: tank.id,
-            parameterId: parameter.id,
-            minValue: range.$1,
-            maxValue: range.$2,
-          );
-      if (context.mounted) _message(context, '目标范围已保存');
-    } catch (error) {
-      if (context.mounted) _message(context, '保存失败：$error');
-    }
+    if (context.mounted) _message(context, '目标范围已保存');
+  } catch (error) {
+    if (context.mounted) _message(context, '保存失败：$error');
   }
 }
 
@@ -493,39 +302,6 @@ Future<void> _deleteScopedRecord(
     _message(context, fileDeleted ? '检测记录已删除' : '记录已删除，但照片文件清理失败，请检查本机存储');
   } catch (error) {
     if (context.mounted) _message(context, '删除记录失败：$error');
-  }
-}
-
-class _RecordTile extends StatelessWidget {
-  const _RecordTile({
-    required this.record,
-    required this.parameter,
-    required this.showDivider,
-    required this.onTap,
-  });
-
-  final TestRecord record;
-  final WaterParameter? parameter;
-  final bool showDivider;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = _confirmedValue(record);
-    return Column(
-      children: [
-        ListTile(
-          key: Key('record-${record.id}'),
-          title: Text('${parameter?.code ?? '未知参数'}  $value ${record.unit}'),
-          subtitle: Text(
-            _dateTime(record.confirmedAt ?? record.measuredAt).substring(0, 10),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: onTap,
-        ),
-        if (showDivider) const Divider(height: 1),
-      ],
-    );
   }
 }
 
@@ -1306,6 +1082,7 @@ class _TargetRangeDialogState extends State<_TargetRangeDialog> {
   Widget build(BuildContext context) {
     final parameter = widget.parameter;
     return AlertDialog(
+      scrollable: true,
       title: Text('${parameter.code} 目标范围'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1410,12 +1187,6 @@ String _number(double value) => value == value.roundToDouble()
           .toStringAsFixed(3)
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
-
-String _targetNumber(double? value) => value == null
-    ? '未设'
-    : value == value.truncateToDouble()
-    ? value.toInt().toString()
-    : value.toString();
 
 String _dateTime(DateTime value) {
   final local = value.toLocal();

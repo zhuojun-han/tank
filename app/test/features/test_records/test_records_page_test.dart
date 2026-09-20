@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +25,111 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  testWidgets('读取手动入口期间切走检测页，不在其他页弹出表单', (tester) async {
+    // Read the seed synchronously through a query future. A Drift watch()
+    // first emission needs the widget test's fake clock to advance, so waiting
+    // for it before the first pump deadlocks this fixture.
+    final enabled = (await tanks.readParameterStates(AppDatabase.defaultTankId))
+        .where((state) => state.isEnabled)
+        .map((state) => state.parameter)
+        .toList();
+    final delayed = Completer<List<WaterParameter>>();
+    var reads = 0;
+    final active = ValueNotifier(true);
+    final container = ProviderContainer(
+      overrides: [
+        appDatabaseProvider.overrideWithValue(database),
+        enabledParametersProvider(AppDatabase.defaultTankId).overrideWith(
+          (ref) =>
+              reads++ == 0 ? Stream.value(enabled) : delayed.future.asStream(),
+        ),
+      ],
+    );
+    // Keep the delayed stream active while the embedded page is hidden.
+    // Consumer subscriptions pause with TickerMode, but the test must deliver
+    // the awaited value so the late-navigation guard actually executes.
+    final parameterSubscription = container.listen(
+      enabledParametersProvider(AppDatabase.defaultTankId),
+      (_, _) {},
+    );
+    try {
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: ValueListenableBuilder<bool>(
+                valueListenable: active,
+                builder: (_, value, child) =>
+                    TickerMode(enabled: value, child: child!),
+                child: const TestRecordsPage(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await _pumpUntilFound(tester, find.text('准备检测'));
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('add-test-record')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      // Invalidate without pumping: the visible entry still exists, but its
+      // async provider read now waits until after navigation has changed.
+      container.invalidate(
+        enabledParametersProvider(AppDatabase.defaultTankId),
+      );
+      await tester.tap(find.byKey(const Key('add-test-record')));
+      active.value = false;
+      await tester.pump();
+      delayed.complete(enabled);
+      await tester.pumpAndSettle();
+      expect(
+        container
+            .read(enabledParametersProvider(AppDatabase.defaultTankId))
+            .isLoading,
+        isFalse,
+      );
+      expect(find.byKey(const Key('record-min-value')), findsNothing);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(await database.select(database.testRecords).get(), isEmpty);
+      expect(tester.takeException(), isNull);
+    } finally {
+      if (!delayed.isCompleted) delayed.complete(enabled);
+      // Finish pending provider reads before disposal, then flush the zero
+      // duration timers Drift schedules when its final subscriptions close.
+      await tester.pumpAndSettle();
+      await _disposeWidgetTree(tester);
+      parameterSubscription.close();
+      container.dispose();
+      await tester.pumpAndSettle();
+      active.dispose();
+    }
+  });
+
+  testWidgets('目标编辑打开后换缸不提交到原缸或新缸', (tester) async {
+    final second = await tanks.createTank(name: '另一缸');
+    try {
+      await tester.pumpWidget(_app(database));
+      await _pumpUntilFound(tester, find.text('NO3 · 硝酸盐'));
+      await tester.tap(find.text('NO3 · 硝酸盐'));
+      await _pumpUntilFound(tester, find.text('NO3 目标范围'));
+      await tester.enterText(find.byKey(const Key('target-min-value')), '2');
+      await tester.enterText(find.byKey(const Key('target-max-value')), '8');
+      await tanks.switchTank(second);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('save-target-range')));
+      await tester.pumpAndSettle();
+      expect(
+        await database.select(database.waterQualityTargets).get(),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    } finally {
+      await _disposeWidgetTree(tester);
+    }
+  });
 
   testWidgets('设置目标范围关闭弹窗时不触发控制器生命周期异常', (tester) async {
     try {
@@ -84,10 +191,9 @@ void main() {
         parameterId: AppDatabase.po4Id,
         enabled: false,
       );
-      await tester.pumpWidget(_app(database));
-      await _pumpUntilFound(tester, find.byKey(const Key('add-test-record')));
-
-      await tester.tap(find.byKey(const Key('add-test-record')));
+      await tester.pumpWidget(_app(database, detection: true));
+      await _pumpUntilFound(tester, find.byKey(const Key('start-test-timer')));
+      await _scrollToAndTap(tester, find.byKey(const Key('add-test-record')));
       await _pumpUntilFound(
         tester,
         find.byKey(const Key('record-fixed-current-tank')),
@@ -99,8 +205,8 @@ void main() {
 
       await tester.tap(find.byKey(const Key('record-reagent-no3')));
       await tester.pumpAndSettle();
-      expect(find.text('益尔'), findsOneWidget);
-      await tester.tap(find.text('益尔'));
+      expect(find.text('益尔').hitTestable(), findsOneWidget);
+      await tester.tap(find.text('益尔').hitTestable());
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('record-min-value')), '12.5');
@@ -109,7 +215,10 @@ void main() {
       await tester.tap(find.byKey(const Key('record-keep-draft')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('add-test-record')));
+      // Closing the dialog resumes the embedded providers; wait for their
+      // data before finding an entry that ListView may build only on scroll.
+      await _pumpUntilFound(tester, find.byKey(const Key('start-test-timer')));
+      await _scrollToAndTap(tester, find.byKey(const Key('add-test-record')));
       await _pumpUntilFound(tester, find.byKey(const Key('record-min-value')));
       expect(
         tester
@@ -132,7 +241,10 @@ void main() {
       await tester.tap(find.byKey(const Key('confirm-放弃草稿')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('add-test-record')));
+      // Closing the dialog resumes the embedded providers; wait for their
+      // data before finding an entry that ListView may build only on scroll.
+      await _pumpUntilFound(tester, find.byKey(const Key('start-test-timer')));
+      await _scrollToAndTap(tester, find.byKey(const Key('add-test-record')));
       await _pumpUntilFound(tester, find.byKey(const Key('record-min-value')));
       expect(
         tester
@@ -312,9 +424,14 @@ Future<void> _scrollToAndTap(WidgetTester tester, Finder finder) async {
     maxScrolls: 20,
   );
   expect(finder, findsOneWidget);
-  await tester.ensureVisible(finder);
-  await tester.pump();
-  final hitTestable = finder.hitTestable();
+  await Scrollable.ensureVisible(tester.element(finder), alignment: .5);
+  await tester.pumpAndSettle();
+  final entryTile = find.descendant(
+    of: finder,
+    matching: find.byType(ListTile),
+  );
+  final hitTestable = (entryTile.evaluate().isEmpty ? finder : entryTile)
+      .hitTestable();
   expect(hitTestable, findsOneWidget);
   await tester.tap(hitTestable);
   await tester.pump();
@@ -323,14 +440,82 @@ Future<void> _scrollToAndTap(WidgetTester tester, Finder finder) async {
 Widget _app(
   AppDatabase database, {
   LocalPhotoStorage photoStorage = const LocalPhotoStorage(),
+  bool detection = false,
 }) {
   return ProviderScope(
     overrides: [
       appDatabaseProvider.overrideWithValue(database),
       localPhotoStorageProvider.overrideWithValue(photoStorage),
     ],
-    child: const MaterialApp(home: Scaffold(body: TestRecordsPage())),
+    child: MaterialApp(
+      home: Scaffold(
+        body: detection ? const TestRecordsPage() : const _EditorEntries(),
+      ),
+    ),
   );
+}
+
+final _editorRecordsProvider = StreamProvider.family(
+  (Ref ref, String tankId) =>
+      ref.watch(testRecordRepositoryProvider).watchForTank(tankId),
+);
+
+class _EditorEntries extends ConsumerWidget {
+  const _EditorEntries();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tank = ref.watch(currentTankProvider).value;
+    if (tank == null) return const SizedBox.shrink();
+    final states = ref.watch(parameterStatesProvider(tank.id)).value ?? [];
+    final targets = ref.watch(waterQualityTargetsProvider(tank.id)).value ?? [];
+    final records = ref.watch(_editorRecordsProvider(tank.id)).value ?? [];
+    return ListView(
+      children: [
+        for (final state in states.where((state) => state.isEnabled))
+          Builder(
+            builder: (context) {
+              final target = targets
+                  .where((target) => target.parameterId == state.parameter.id)
+                  .firstOrNull;
+              String n(double? value) => value == null
+                  ? '未设置'
+                  : value.toString().replaceFirst(RegExp(r'\.0$'), '');
+              return ListTile(
+                title: Text(
+                  '${state.parameter.code} · ${state.parameter.displayName}',
+                ),
+                subtitle: Text(
+                  '${n(target?.minValue)}–${n(target?.maxValue)} ${state.parameter.unit}',
+                ),
+                onTap: () => showWaterQualityTargetEditor(
+                  context,
+                  ref,
+                  tankId: tank.id,
+                  parameter: state.parameter,
+                  target: target,
+                ),
+              );
+            },
+          ),
+        for (final record in records)
+          TextButton(
+            key: Key('record-${record.id}'),
+            onPressed: () => showScopedTestRecordDetails(
+              context: context,
+              ref: ref,
+              record: record,
+              tank: tank,
+              parameter: states
+                  .firstWhere(
+                    (state) => state.parameter.id == record.parameterId,
+                  )
+                  .parameter,
+            ),
+            child: Text('${record.confirmedMinValue} ${record.unit}'),
+          ),
+      ],
+    );
+  }
 }
 
 Future<void> _insertRecord(

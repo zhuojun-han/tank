@@ -1,3 +1,4 @@
+import type { EntityId } from './entity-id';
 import { normalizeFishStock, isFishArtworkDataUrl, type FishStockItem } from './aquarium-data.ts';
 import { pruneSupersededChemicalPlanOverlaps } from './task-calendar.ts';
 import { localCycleDate, type MaintenanceCycle } from './maintenance-cycle.ts';
@@ -9,16 +10,18 @@ import { initializeRollingTasks } from './rolling-task.ts';
 export type DemoState = {
   schemaVersion?: number;
   khTargetDefaultsApplied?: true;
-  tanks: Tank[]; tankId: number; parameters: Parameter[]; targets: Target[];
+  tanks: Tank[]; tankId: EntityId; parameters: Parameter[]; targets: Target[];
   records: RecordItem[]; tasks: TaskItem[]; maintenanceCycles: MaintenanceCycle[];
   fishStock: FishStockItem[]; timerDefaults: TimerDefaults;
   notificationEnabled: boolean; reminderDismissedDate: string;
+  reminderSnoozedUntil?: Record<string, number>;
 };
 export const STORAGE_KEY = 'reef-demo-state-v10';
 const keys = [10, 9, 8, 7, 6, 5, 4].map(v => `reef-demo-state-v${v}`);
 type StorageAccess = () => Pick<Storage, 'getItem' | 'setItem'>;
 type Row = Record<string, unknown>;
 function object(v: unknown): v is Row { return Boolean(v) && typeof v === 'object' && !Array.isArray(v); }
+function entityId(v: unknown): boolean { return typeof v === 'string' ? v.length > 0 && v.length <= 160 : typeof v === 'number' && Number.isSafeInteger(v); }
 function finite(v: unknown): v is number { return typeof v === 'number' && Number.isFinite(v); }
 function string(v: unknown): v is string { return typeof v === 'string'; }
 function khTitration(v: unknown): boolean {
@@ -105,27 +108,34 @@ export function validateDemoState(state: unknown): asserts state is DemoState {
   requireValid(optional(state, 'khTargetDefaultsApplied', v => v === true), 'KH 默认目标标记');
   // Stored dates may temporarily be ahead of the device clock after travel or
   // a clock correction. Only input confirmation enforces the current-day limit.
-  rows(state.tanks, '海缸', r => finite(r.id) && string(r.name) && string(r.volume)
+  rows(state.tanks, '海缸', r => entityId(r.id) && string(r.name) && string(r.volume)
     && optional(r, 'startedOn', v => v === '' || date(v)));
   requireValid((state.tanks as Tank[]).length > 0 && (state.tanks as Tank[]).some(t => t.id === state.tankId), '当前海缸');
   rows(state.parameters, '参数', r => string(r.id) && string(r.name) && string(r.label) && string(r.unit) && typeof r.builtIn === 'boolean' && typeof r.photoSupported === 'boolean');
   requireValid((state.parameters as Parameter[]).length > 0, '参数列表');
-  rows(state.targets, '目标范围', r => finite(r.tankId) && string(r.parameterId) && (r.min === null || finite(r.min)) && (r.max === null || finite(r.max)));
-  rows(state.records, '检测记录', r => finite(r.id) && finite(r.tankId) && string(r.parameterId) && finite(r.low) && finite(r.high) && r.low <= r.high && string(r.date) && string(r.note) && optional(r, 'interpolation', v => v === null || finite(v)) && optional(r, 'photoEstimate', object) && optional(r, 'khTitration', khTitration));
-  rows(state.tasks, '任务', r => finite(r.id) && finite(r.tankId) && string(r.title) && string(r.cycle) && string(r.due) && ['due', 'soon', 'done', 'snoozed', 'skipped'].includes(String(r.state))
+  rows(state.targets, '目标范围', r => entityId(r.tankId) && string(r.parameterId) && (r.min === null || finite(r.min)) && (r.max === null || finite(r.max)));
+  rows(state.records, '检测记录', r => entityId(r.id) && entityId(r.tankId) && string(r.parameterId) && finite(r.low) && finite(r.high) && r.low <= r.high && string(r.date) && string(r.note) && optional(r, 'interpolation', v => v === null || finite(v)) && optional(r, 'photoEstimate', object) && optional(r, 'khTitration', khTitration));
+  rows(state.tasks, '任务', r => entityId(r.id) && entityId(r.tankId) && string(r.title) && string(r.cycle) && string(r.due) && ['due', 'soon', 'done', 'snoozed', 'skipped'].includes(String(r.state))
     && optional(r, 'scheduledDate', date) && optional(r, 'intervalDays', v => finite(v) && v > 0)
     && optional(r, 'rolling', rollingTask)
     && ['completedDates', 'skippedDates', 'reopenedDates', 'snoozedDates'].every(k => optional(r, k, v => Array.isArray(v) && v.every(date)))
     && optional(r, 'snoozedUntilByDate', v => object(v) && Object.entries(v).every(([k, timestamp]) => date(k) && string(timestamp) && Number.isFinite(Date.parse(timestamp)))));
-  rows(state.maintenanceCycles, '补液周期', r => finite(r.id) && finite(r.tankId) && ['po4', 'kh'].includes(String(r.chemical)) && date(r.startDate) && date(r.refillDate)
+  rows(state.maintenanceCycles, '补液周期', r => entityId(r.id) && entityId(r.tankId) && ['po4', 'kh'].includes(String(r.chemical)) && date(r.startDate) && date(r.refillDate)
     && ['solutionMl', 'dailyLiquidMl', 'effectPerMl', 'retainedMl', 'addedStockMl', 'addedWaterMl'].every(k => finite(r[k]) && (r[k] as number) >= 0)
     && (r.solutionMl as number) > 0 && (r.dailyLiquidMl as number) > 0 && optional(r, 'closedOnDate', date)
     && optional(r, 'refillDeferredUntil', date)
+    && optional(r, 'theory', v => object(v) && string(v.planId) && v.planId.trim().length > 0
+      && v.source === (r.chemical === 'po4' ? 'lanthanum-plan' : 'alkalinity-plan')
+      && finite(v.target) && v.target > 0 && date(v.planStartDate) && date(v.endDate)
+      && v.planStartDate <= r.startDate! && r.startDate! <= v.endDate
+      && Date.parse(v.endDate) - Date.parse(v.planStartDate) < 3650 * 86400000
+      && finite(v.lastDayRatio) && v.lastDayRatio > 0 && v.lastDayRatio <= 1 + 1e-10)
     && activeCycleInput(r.input, r.chemical));
-  rows(state.fishStock, '鱼类档案', r => (string(r.id) || finite(r.id)) && finite(r.tankId) && string(r.species) && finite(r.quantity) && r.quantity > 0 && date(r.introducedOn)
+  rows(state.fishStock, '鱼类档案', r => (string(r.id) || entityId(r.id)) && entityId(r.tankId) && string(r.species) && finite(r.quantity) && r.quantity > 0 && date(r.introducedOn)
     && optional(r, 'artwork', v => object(v) && (v.source === 'builtin' && string(v.id) || v.source === 'custom' && isFishArtworkDataUrl(v.dataUrl))));
   requireValid(object(state.timerDefaults) && Object.values(state.timerDefaults).every(v => finite(v) && v >= 10 && v <= 3600), '计时设置');
   requireValid(typeof state.notificationEnabled === 'boolean' && string(state.reminderDismissedDate), '提醒设置');
+  requireValid(optional(state, 'reminderSnoozedUntil', v => object(v) && Object.values(v).every(until => finite(until) && until > 0 && until <= 8640000000000000)), '稍后提醒时间');
 }
 
 export function loadDemoState(access: StorageAccess, defaults: DemoState, now = new Date()) {

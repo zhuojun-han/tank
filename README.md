@@ -1,8 +1,10 @@
 # 澜礁海缸水质助手
 
-面向海水缸的本地水质记录、NO3/PO4 拍照辅助比色、趋势和日常维护工具。`web-demo/` 用于先实现用户的新功能；`app/` 是 Flutter Android/iOS 客户端。两端分别保存数据，功能同步不等于云端数据同步。
+面向海水缸的本地水质记录、NO3/PO4 拍照辅助比色、趋势和日常维护工具。`web-demo/` 提供网页及新版 App 共用界面；`app/` 包含 Flutter 原生服务与保留的旧客户端。浏览器和 App 分别保存数据，功能同步不等于云端数据同步。
 
 代码仓库为 [zhuojun-han/tank](https://github.com/zhuojun-han/tank)。App、Web、文档与样本统一由项目根仓库管理，目录约定见 [技术设计](docs/TECHNICAL_DESIGN.md)。
+
+新版 Android App 正在按本地网页＋WebView 方案实施，旧 Flutter 版本保留；范围见 [开发方向](docs/PROJECT_CONTEXT.md#后续-app-方向)，构建入口见 [App README](app/README.md#本地网页-webview-安卓版本)。
 
 ## 开始工作
 

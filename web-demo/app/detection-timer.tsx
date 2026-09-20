@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react';
 import { createCountdownClock, remainingSeconds } from './countdown-clock';
+import { isAppVisible, observeAppVisibility } from './app-visibility';
 
 export function useDetectionTimer(running: boolean, onComplete: () => void) {
   const [clock] = useState(() => createCountdownClock());
@@ -9,13 +10,21 @@ export function useDetectionTimer(running: boolean, onComplete: () => void) {
     if (!running) return;
     const deadline = Date.now() + clock.getSnapshot() * 1000;
     let fired = false;
+    let id: number | undefined;
     const tick = () => {
       const left = remainingSeconds(deadline, Date.now());
       clock.set(left);
       if (left === 0 && !fired) { fired = true; completed(); }
     };
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
+    const refresh = () => {
+      window.clearInterval(id);
+      if (!isAppVisible()) return;
+      tick();
+      if (!fired) id = window.setInterval(tick, 250);
+    };
+    const stopObserving = observeAppVisibility(refresh);
+    refresh();
+    return () => { window.clearInterval(id); stopObserving(); };
   }, [running, clock]);
   return { clock, setTimer: clock.set };
 }
@@ -26,6 +35,6 @@ export function TimerRing({ clock, total, running, locked, parameterName }: {
   const seconds = useSyncExternalStore(clock.subscribe, clock.getSnapshot, clock.getServerSnapshot);
   return <div className="timer-ring" style={{ '--progress': `${seconds / total * 360}deg` } as React.CSSProperties}>
     <div><strong>{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</strong>
-      <small>{running ? '正在计时' : locked ? '计时已暂停' : `${parameterName} 默认时间`}</small></div>
+      <small>{seconds === 0 && locked ? '计时已完成' : running ? '正在计时' : locked ? '计时已暂停' : `${parameterName} 默认时间`}</small></div>
   </div>;
 }

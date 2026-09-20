@@ -165,11 +165,15 @@ MaintenanceNotificationPlan buildMaintenanceNotificationPlan(
     );
   }
 
-  final effectiveAtUtc = effectiveMaintenanceDueAtUtc(
-    item.task,
-    item.latestEvent,
-    nowUtc,
-  );
+  // WebView's reminder-only event does not revise the rolling schedule. It
+  // still takes precedence when a task already has completion/delay revisions;
+  // the legacy helper deliberately ignores ordinary snoozes in that case.
+  final reminderOnlyUntil = item.latestEvent?.note == 'webview-reminder-only'
+      ? activeMaintenanceSnoozeUntilUtc(item.latestEvent, nowUtc)
+      : null;
+  final effectiveAtUtc =
+      reminderOnlyUntil ??
+      effectiveMaintenanceDueAtUtc(item.task, item.latestEvent, nowUtc);
   final isFuture = effectiveAtUtc.isAfter(nowUtc);
   final dailyAnchor = isFuture
       ? (toDeviceLocal ?? _toSystemLocal)(effectiveAtUtc)
@@ -248,7 +252,8 @@ final class MaintenanceNotificationCoordinator {
   bool _pendingForce = false;
   bool _draining = false;
   List<MaintenanceTaskItem>? _latestItems;
-  final Map<String, String> _appliedPlanSignatures = <String, String>{};
+  final _appliedPlanSignatures =
+      <String, ({String signature, String? scheduleKey})>{};
   final Map<String, int> _knownNotificationIds = <String, int>{};
   var _state = MaintenanceNotificationSyncState.idle;
   bool _started = false;
@@ -308,16 +313,16 @@ final class MaintenanceNotificationCoordinator {
     );
   }
 
-  /// Retries initialization and forces the latest database snapshot to be
-  /// reconciled, for example immediately after permission is granted.
-  Future<void> reconcileNow() async {
+  /// Permissions and lifecycle changes force OS schedules to be refreshed.
+  /// Ordinary data saves can retain matching schedules via [force] = false.
+  Future<void> reconcileNow({bool force = true}) async {
     if (_disposed) {
       return;
     }
     await _notificationService.initialize();
     final items = _latestItems;
     if (items != null) {
-      await _enqueue(items, force: true);
+      await _enqueue(items, force: force);
     }
   }
 
@@ -406,21 +411,54 @@ final class MaintenanceNotificationCoordinator {
       return false;
     }
 
-    Future<bool> cancelPair(int dueNotificationId) async {
-      final dueCancelled = await cancelId(dueNotificationId);
+    Future<bool> cancelPair(
+      int dueNotificationId, {
+      bool preserveElapsedDue = false,
+    }) async {
+      final dueCancelled =
+          preserveElapsedDue || await cancelId(dueNotificationId);
       final dailyCancelled = await cancelId(
         maintenanceDailyNotificationId(dueNotificationId),
       );
-      return dueCancelled && dailyCancelled;
+      var finiteCancelled = true;
+      for (final id in finiteMaintenanceNotificationIds(dueNotificationId)) {
+        finiteCancelled = await cancelId(id) && finiteCancelled;
+      }
+      return dueCancelled && dailyCancelled && finiteCancelled;
     }
+
+    final currentTaskIds = items.map((item) => item.task.id).toSet();
+    for (final previous in _knownNotificationIds.entries.toList()) {
+      if (currentTaskIds.contains(previous.key)) continue;
+      if (await cancelPair(previous.value)) {
+        _appliedPlanSignatures.remove(previous.key);
+        _knownNotificationIds.remove(previous.key);
+      }
+    }
+    _appliedPlanSignatures.removeWhere(
+      (taskId, _) => !currentTaskIds.contains(taskId),
+    );
 
     if (!_notificationsEnabled) {
       for (final item in items) {
         final notificationId = item.task.notificationId;
         if (_isValidMaintenanceBaseNotificationId(notificationId)) {
-          await cancelPair(notificationId!);
+          final signature = 'notifications-disabled:$notificationId';
+          if (!force &&
+              _appliedPlanSignatures[item.task.id]?.signature == signature) {
+            continue;
+          }
+          if (await cancelPair(notificationId!)) {
+            _appliedPlanSignatures[item.task.id] = (
+              signature: signature,
+              scheduleKey: null,
+            );
+          } else {
+            _appliedPlanSignatures.remove(item.task.id);
+          }
+        } else {
+          _appliedPlanSignatures.remove(item.task.id);
         }
-        _appliedPlanSignatures.remove(item.task.id);
       }
       _emit(
         MaintenanceNotificationSyncState(
@@ -444,17 +482,6 @@ final class MaintenanceNotificationCoordinator {
       failedCount += 1;
       recordFailureStatus(result);
       return false;
-    }
-
-    final currentTaskIds = items.map((item) => item.task.id).toSet();
-    for (final previous in _knownNotificationIds.entries.toList()) {
-      if (currentTaskIds.contains(previous.key)) {
-        continue;
-      }
-      if (await cancelPair(previous.value)) {
-        _appliedPlanSignatures.remove(previous.key);
-        _knownNotificationIds.remove(previous.key);
-      }
     }
 
     final projectionNow = _nowUtc().toUtc();
@@ -486,10 +513,18 @@ final class MaintenanceNotificationCoordinator {
           for (final item in items.where(
             (item) => item.task.source == 'maintenance-cycle',
           ))
-            if (item.cycleOccurrence != null)
+            if (item.cycleOccurrence != null && item.task.status == 'enabled')
               ...maintenanceCycleNotificationItems([
                 item.cycleOccurrence!.cycle,
-              ], projectionNow)
+              ], projectionNow).map(
+                (projected) => MaintenanceTaskItem(
+                  task: projected.task,
+                  state: projected.state,
+                  occurrenceDate: projected.occurrenceDate,
+                  cycleOccurrence: projected.cycleOccurrence,
+                  latestEvent: item.latestEvent,
+                ),
+              )
             else
               item,
         ]..sort((left, right) {
@@ -532,6 +567,7 @@ final class MaintenanceNotificationCoordinator {
       final allocatedId = stableMaintenanceNotificationId(
         task.id,
         reservedIds: reservedIds,
+        finite: item.cycleOccurrence?.cycle.theory != null,
       );
       try {
         await _taskStore.persistNotificationId(
@@ -580,11 +616,14 @@ final class MaintenanceNotificationCoordinator {
 
       if (task.status != MaintenanceTaskStatus.enabled.name) {
         final signature = 'inactive:$notificationId';
-        if (!force && _appliedPlanSignatures[task.id] == signature) {
+        if (!force && _appliedPlanSignatures[task.id]?.signature == signature) {
           continue;
         }
         if (await cancelPair(notificationId)) {
-          _appliedPlanSignatures[task.id] = signature;
+          _appliedPlanSignatures[task.id] = (
+            signature: signature,
+            scheduleKey: null,
+          );
         } else {
           _appliedPlanSignatures.remove(task.id);
         }
@@ -620,18 +659,36 @@ final class MaintenanceNotificationCoordinator {
         plan.dailyReminderStartsAtDeviceLocal.microsecondsSinceEpoch,
         task.recurrenceJson ?? 'legacy',
         task.rollingJson ?? 'legacy-schedule',
+        item.cycleOccurrence?.cycle.theory?.endDate ?? 'unbounded',
+        if (item.cycleOccurrence?.cycle.theory != null)
+          cycleDateKey(nowDeviceLocal),
       ].join(':');
-      if (!force && _appliedPlanSignatures[task.id] == signature) {
+      final applied = _appliedPlanSignatures[task.id];
+      if (!force && applied?.signature == signature) {
         continue;
       }
 
-      // Clear both IDs before applying a changed plan. This removes a stale
-      // exact due notification as well as its daily overdue recurrence.
-      await cancelPair(notificationId);
+      final scheduleKey = jsonEncode([task.recurrenceJson, task.rollingJson]);
+      // Android may still be delivering an inexact due/snooze alarm after its
+      // deadline. Refreshing an unchanged pending task must not cancel it.
+      // A changed recurrence/completion or a future due time replaces it;
+      // inactive/removed tasks always cancel through the branches above.
+      await cancelPair(
+        notificationId,
+        preserveElapsedDue:
+            plan.dueReminderAtUtc == null &&
+            (applied?.scheduleKey == null ||
+                applied?.scheduleKey == scheduleKey),
+      );
 
       var allScheduled = true;
       final dueReminderAtUtc = plan.dueReminderAtUtc;
-      if (dueReminderAtUtc != null) {
+      if (dueReminderAtUtc != null &&
+          (item.cycleOccurrence?.cycle.theory == null ||
+              cycleDateKey(
+                    _toDeviceLocal(dueReminderAtUtc),
+                  ).compareTo(item.cycleOccurrence!.cycle.theory!.endDate) <
+                  0)) {
         final dueRequest = LocalNotificationRequest.maintenanceTask(
           id: notificationId,
           taskId: task.id,
@@ -651,7 +708,64 @@ final class MaintenanceNotificationCoordinator {
         title: task.title,
         body: '维护任务仍待处理。打开 App 查看并处理。',
       );
-      if (task.recurrenceJson != null && task.rollingJson == null) {
+      final theory = item.cycleOccurrence?.cycle.theory;
+      if (theory != null) {
+        // Finite exact alarms cannot leak beyond the course end while the app
+        // is closed. Resume/reconcile replenishes a bounded 30-day window.
+        final first = plan.dailyReminderStartsAtDeviceLocal;
+        final windowStart = DateTime(first.year, first.month, first.day);
+        final allIds = finiteMaintenanceNotificationIds(
+          notificationId,
+        ).toList();
+        final ids = cycleNeedsRefill(item.cycleOccurrence!.cycle)
+            ? allIds.take(30).toList()
+            : <int>[];
+        for (var offset = 0; offset < ids.length; offset++) {
+          final date = DateTime(
+            windowStart.year,
+            windowStart.month,
+            windowStart.day + offset,
+            first.hour,
+            first.minute,
+          );
+          if (date.isBefore(first) ||
+              !date.isAfter(nowDeviceLocal) ||
+              cycleDateKey(date).compareTo(theory.endDate) >= 0) {
+            continue;
+          }
+          final result = await _notificationService.scheduleAtDeviceLocalTime(
+            LocalNotificationRequest.maintenanceTask(
+              id: ids[offset],
+              taskId: task.id,
+              title: task.title,
+              body: '滴定液需要补充，打开 App 查看并处理。',
+            ),
+            date,
+          );
+          allScheduled = recordScheduleResult(result) && allScheduled;
+        }
+        final end = DateTime.parse(theory.endDate);
+        var endAt = DateTime(end.year, end.month, end.day, 9);
+        if (dueReminderAtUtc != null &&
+            cycleDateKey(_toDeviceLocal(dueReminderAtUtc)) == theory.endDate &&
+            _toDeviceLocal(dueReminderAtUtc).isAfter(endAt)) {
+          endAt = _toDeviceLocal(dueReminderAtUtc);
+        }
+        if (endAt.isAfter(nowDeviceLocal) && allIds.length > 30) {
+          final result = await _notificationService.scheduleAtDeviceLocalTime(
+            LocalNotificationRequest.maintenanceTask(
+              id: allIds[30],
+              taskId: task.id,
+              title:
+                  '${item.cycleOccurrence!.cycle.chemical.name.toUpperCase()} 理论计划最后一天',
+              body:
+                  '复测后按末日时长执行并停止。${cycleNeedsRefill(item.cycleOccurrence!.cycle) ? '滴定液不足时先补充；' : ''}App 不控制泵。',
+            ),
+            endAt,
+          );
+          allScheduled = recordScheduleResult(result) && allScheduled;
+        }
+      } else if (task.recurrenceJson != null && task.rollingJson == null) {
         // Two bounded exact occurrences, never daily alerts on non-occurrence
         // dates. Opening/resuming the app or a task mutation refills this window.
         final dueDate = localDate(task.dueAt);
@@ -675,7 +789,10 @@ final class MaintenanceNotificationCoordinator {
         allScheduled = recordScheduleResult(dailyResult) && allScheduled;
       }
       if (allScheduled) {
-        _appliedPlanSignatures[task.id] = signature;
+        _appliedPlanSignatures[task.id] = (
+          signature: signature,
+          scheduleKey: scheduleKey,
+        );
       } else {
         _appliedPlanSignatures.remove(task.id);
       }
@@ -723,6 +840,7 @@ final class MaintenanceNotificationCoordinator {
 int stableMaintenanceNotificationId(
   String taskId, {
   Set<int> reservedIds = const <int>{},
+  bool finite = false,
 }) {
   if (taskId.trim().isEmpty) {
     throw ArgumentError.value(taskId, 'taskId', 'must not be empty');
@@ -732,22 +850,31 @@ int stableMaintenanceNotificationId(
   for (final byte in utf8.encode(taskId)) {
     hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
   }
-  final range =
-      MaintenanceNotificationCoordinator._maintenanceIdEnd -
-      MaintenanceNotificationCoordinator._maintenanceIdStart +
-      1;
-  var candidate =
-      MaintenanceNotificationCoordinator._maintenanceIdStart + hash % range;
+  final start = finite ? 0x10000000 : 0x10800000;
+  final end = finite
+      ? 0x107fffff
+      : MaintenanceNotificationCoordinator._maintenanceIdEnd;
+  final range = end - start + 1;
+  var candidate = start + hash % range;
   for (var attempt = 0; attempt < range; attempt += 1) {
     if (!reservedIds.contains(candidate)) {
       return candidate;
     }
     candidate += 1;
-    if (candidate > MaintenanceNotificationCoordinator._maintenanceIdEnd) {
-      candidate = MaintenanceNotificationCoordinator._maintenanceIdStart;
+    if (candidate > end) {
+      candidate = start;
     }
   }
   throw StateError('维护任务通知 ID 空间已耗尽');
+}
+
+/// A collision-free, cancellable block allocated from a persisted finite base.
+/// Stable cycles and timers use different namespaces; last slot stays reserved.
+Iterable<int> finiteMaintenanceNotificationIds(int baseId) sync* {
+  if (baseId < 0x10000000 || baseId > 0x107fffff) return;
+  for (var slot = 0; slot < 31; slot++) {
+    yield 0x30000000 | ((baseId - 0x10000000) << 5) | slot;
+  }
 }
 
 /// Deterministic daily-overdue companion for a persisted due notification ID.

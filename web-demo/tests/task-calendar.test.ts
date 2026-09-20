@@ -245,6 +245,8 @@ test("existing browser data removes only old-plan days overlapped by a newer gen
 
   assert.deepEqual(pruneSupersededChemicalPlanOverlaps(tasks).map((task) => task.id), [1, 2, 3, 10, 11, 12, 6, 7]);
   assert.equal(tasks.length, 10);
+  const nativeTasks = tasks.map(task => ({ ...task, id: `native-${task.id}`, tankId: `tank-${task.tankId}` }));
+  assert.deepEqual(pruneSupersededChemicalPlanOverlaps(nativeTasks), nativeTasks);
 });
 
 test("a completed task can be marked incomplete without changing other occurrences", () => {

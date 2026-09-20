@@ -6,7 +6,7 @@ import {
   addTaskCalendarDays, completeRollingTask, correctRollingCompletion, delayRollingTask,
   initializeRollingTasks, isCalendarDate, projectRollingTasks, reopenRollingTask, stopRollingTask, taskDisplayDate,
 } from "../app/rolling-task.ts";
-import { completedTasksOnDate, editRecurringTask, groupChemicalPlanTasks, hasChemicalPlanFromDate, markTaskIncomplete, pendingTasksOnDate, pruneSupersededChemicalPlanOverlaps, removeChemicalPlansFromDate, stopChemicalPlanFromDay, taskOccursOnDate, taskStateOnDate } from "../app/task-calendar.ts";
+import { completedTasksOnDate, editRecurringTask, groupChemicalPlanTasks, hasChemicalPlanFromDate, markTaskIncomplete, pendingTasksOnDate, pruneSupersededChemicalPlanOverlaps, removeChemicalPlansFromDate, stopChemicalPlanFromDay, taskCatalogGroups, taskOccursOnDate, taskStateOnDate } from "../app/task-calendar.ts";
 
 function manual(overrides: Partial<TaskItem> = {}): TaskItem {
   return { id: 1, tankId: 1, title: "更换滤棉", cycle: "每 7 天", due: "今天", state: "due", scheduledDate: "2026-09-08", intervalDays: 7, ...overrides };
@@ -48,17 +48,45 @@ test("one unresolved weekly occurrence rolls automatically, delays as a whole, a
 });
 
 test("calendar projection and reload are pure and do not manufacture daily completion history", () => {
-  const tasks = ready([manual({ scheduledDate: "2020-01-01" })]);
+  const nativeId = "fbc9e91d-63e2-47f1-9c20-af429ea0a631";
+  const tasks = ready([manual({ scheduledDate: "2020-01-01" }), manual({ id: nativeId, tankId: "9007199254740993", scheduledDate: "2020-01-01" })]);
   const before = JSON.stringify(tasks);
   for (const today of ["2026-09-08", "2026-09-09", "2027-01-01"]) {
     const loaded = initializeRollingTasks(JSON.parse(before) as TaskItem[], today);
     assert.deepEqual(loaded, tasks);
     const projected = projectRollingTasks(loaded, today);
-    assert.deepEqual(pendingTasksOnDate(projected, today).map(task => task.id), [1]);
+    assert.deepEqual(pendingTasksOnDate(projected, today).map(task => task.id), [1, nativeId]);
     assert.equal(completedTasksOnDate(projected, addTaskCalendarDays(today, -1)).length, 0);
   }
   assert.equal(JSON.stringify(tasks), before);
   assert.equal(tasks[0].defaultCompletedBeforeDate, undefined);
+  const delayed = delayRollingTask(tasks, nativeId, 2, "2026-09-08");
+  const completed = completeRollingTask(JSON.parse(JSON.stringify(delayed)), nativeId, "2026-09-08", "2026-09-08");
+  assert.equal(completed[1].id, nativeId);
+  assert.equal(completed[1].tankId, "9007199254740993");
+  assert.equal(completed[1].rolling!.nextDate, "2026-09-15");
+  assert.deepEqual(completed[0], tasks[0]);
+});
+
+test("native monthly tasks retain month-end recurrence, legacy history, and actual-completion anchoring", () => {
+  const monthly = manual({ id: "monthly-native", tankId: "native-tank", intervalDays: undefined, nativeIntervalUnit: "month", nativeIntervalAmount: 1,
+    scheduledDate: "2026-01-31", rolling: { version: 1, nextDate: "2026-01-31", revision: 0, completed: [] } });
+  const projected = projectRollingTasks([monthly], "2026-01-31")[0];
+  for (const day of ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"]) assert.equal(taskOccursOnDate(projected, day), true, day);
+  for (const day of ["2026-02-01", "2026-02-27", "2026-03-28", "2026-04-29"]) assert.equal(taskOccursOnDate(projected, day), false, day);
+  assert.equal(taskCatalogGroups([projected], "2026-01-31").length, 1);
+  const completed = completeRollingTask([monthly], monthly.id, "2026-01-31", "2026-01-31");
+  assert.equal(completed[0].rolling!.nextDate, "2026-02-28");
+  const again = completeRollingTask(JSON.parse(JSON.stringify(completed)), monthly.id, "2026-02-28", "2026-02-28");
+  assert.equal(again[0].rolling!.nextDate, "2026-03-28");
+  const legacy = { ...monthly, rolling: { ...monthly.rolling!, nextDate: "2026-04-30", legacySchedule: {
+    scheduledDate: "2026-01-31", defaultCompletedBeforeDate: "2026-04-01", nativeIntervalUnit: "month" as const, nativeIntervalAmount: 1,
+  } } };
+  for (const day of ["2026-01-31", "2026-02-28", "2026-03-31"]) assert.equal(completedTasksOnDate([legacy], day, "2026-04-01").length, 1, day);
+  assert.equal(completedTasksOnDate([legacy], "2026-03-28", "2026-04-01").length, 0);
+  const leap = { ...monthly, rolling: { ...monthly.rolling!, nextDate: "2028-01-31" } };
+  assert.equal(taskOccursOnDate(projectRollingTasks([leap], "2028-01-31")[0], "2028-02-29"), true);
+  assert.equal(taskOccursOnDate(projectRollingTasks([leap], "2028-01-31")[0], "2028-02-28"), false);
 });
 
 test("legacy migration keeps real and implicit history, preserves missing-source manual tasks, and respects reopened dates", () => {

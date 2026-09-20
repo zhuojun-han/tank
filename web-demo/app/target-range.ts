@@ -1,9 +1,10 @@
+import { type EntityId } from "./entity-id.ts";
 import type { Target } from './demo-state.ts';
 import { MIN_TARGET_PO4_MG_L } from './lanthanum-calculator.ts';
 
 export const DEFAULT_KH_TARGET_RANGE = Object.freeze({ min: 7, max: 9 });
 
-export function createParameterTarget(tankId: number, parameterId: string): Target {
+export function createParameterTarget(tankId: EntityId, parameterId: string): Target {
   return {
     tankId,
     parameterId,

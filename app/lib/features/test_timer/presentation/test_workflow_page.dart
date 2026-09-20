@@ -14,18 +14,23 @@ import '../../test_records/application/test_record_providers.dart';
 import '../application/test_session_providers.dart';
 import '../application/test_workflow_controller.dart';
 import '../data/test_session_repository.dart';
-import '../domain/test_timer.dart';
+import '../../settings/presentation/settings_page.dart';
 import 'kh_titration_panel.dart';
+import 'test_workflow_widgets.dart';
 
 class TestWorkflowPage extends ConsumerStatefulWidget {
   const TestWorkflowPage({
     this.initialSessionId,
     this.initialParameterId,
+    this.embedded = false,
+    this.onManualEntry,
     super.key,
   });
 
   final String? initialSessionId;
   final String? initialParameterId;
+  final bool embedded;
+  final Future<void> Function(String tankId, String parameterId)? onManualEntry;
 
   @override
   ConsumerState<TestWorkflowPage> createState() => _TestWorkflowPageState();
@@ -41,6 +46,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
 
   Timer? _ticker;
   bool _resumed = false;
+  bool _inActiveTab = true;
   ({String id, DateTime endsAt})? _elapsedAttempt;
   DateTime _nowUtc = DateTime.now().toUtc();
   String? _selectedTankId;
@@ -53,8 +59,10 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   DateTime _confirmedAt = DateTime.now();
   bool _rangeResult = false;
   bool _busy = false;
+  bool _durationValid = true;
   bool _completingElapsed = false;
   Future<void> _reviewSaveChain = Future<void>.value();
+  Future<void> _durationSaveChain = Future<void>.value();
 
   @override
   void initState() {
@@ -64,6 +72,20 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _resumed = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     _nowUtc = ref.read(testWorkflowNowProvider)().toUtc();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final active = TickerMode.valuesOf(context).enabled;
+    if (active == _inActiveTab) return;
+    _inActiveTab = active;
+    _syncTicker();
+    if (active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _inActiveTab) _tick();
+      });
+    }
   }
 
   @override
@@ -106,7 +128,11 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     final attempted =
         running &&
         _elapsedAttempt == (id: session!.id, endsAt: session.timerEndsAt!);
-    if (!_resumed || !running || attempted || _completingElapsed) {
+    if (!_resumed ||
+        !_inActiveTab ||
+        !running ||
+        attempted ||
+        _completingElapsed) {
       _ticker?.cancel();
       _ticker = null;
       return;
@@ -115,7 +141,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   }
 
   void _tick() {
-    if (!mounted || !_resumed) return;
+    if (!mounted || !_resumed || !_inActiveTab) return;
     final now = ref.read(testWorkflowNowProvider)().toUtc();
     setState(() => _nowUtc = now);
     final session = _visibleSession;
@@ -147,34 +173,25 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
   @override
   Widget build(BuildContext context) {
     final initialSessionId = widget.initialSessionId?.trim();
+    final body = initialSessionId != null && initialSessionId.isNotEmpty
+        ? ref
+              .watch(activeTestSessionByIdProvider(initialSessionId))
+              .when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (error, _) => AppErrorView(message: '无法恢复检测草稿：$error'),
+                data: (session) {
+                  if (session == null) {
+                    _setVisibleSession(null);
+                    return const AppErrorView(message: '该检测草稿已保存、已放弃或不存在。');
+                  }
+                  return _buildResolvedSession(session);
+                },
+              )
+        : _buildNewOrScopedDraft();
+    if (widget.embedded) return body;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('完整检测'),
-        actions: [
-          if (_visibleSession != null)
-            IconButton(
-              tooltip: '放弃并删除草稿',
-              onPressed: _busy ? null : () => _confirmDiscard(_visibleSession!),
-              icon: const Icon(Icons.delete_outline),
-            ),
-        ],
-      ),
-      body: initialSessionId != null && initialSessionId.isNotEmpty
-          ? ref
-                .watch(activeTestSessionByIdProvider(initialSessionId))
-                .when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, _) => AppErrorView(message: '无法恢复检测草稿：$error'),
-                  data: (session) {
-                    if (session == null) {
-                      _setVisibleSession(null);
-                      return const AppErrorView(message: '该检测草稿已保存、已放弃或不存在。');
-                    }
-                    return _buildResolvedSession(session);
-                  },
-                )
-          : _buildNewOrScopedDraft(),
+      appBar: AppBar(title: const Text('水质检测')),
+      body: body,
     );
   }
 
@@ -239,6 +256,8 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
                                     if (session != null) {
                                       return _buildSession(
                                         session: session,
+                                        parameters: parameters,
+                                        tanks: tanks,
                                         tankName: tanks
                                             .firstWhere(
                                               (tank) =>
@@ -292,6 +311,11 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
                         .firstOrNull;
                     return _buildSession(
                       session: session,
+                      parameters: states
+                          .where((state) => state.isEnabled)
+                          .map((state) => state.parameter)
+                          .toList(),
+                      tanks: tanks,
                       tankName: tankName ?? '已归档海缸',
                       parameter: matches.first.parameter,
                     );
@@ -300,6 +324,77 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
           },
         );
   }
+
+  Widget _scopeHeader({
+    required String tankId,
+    required String tankName,
+    required List<Tank> tanks,
+    required List<WaterParameter> parameters,
+    required WaterParameter parameter,
+    bool reviewing = false,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        '水质检测',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        reviewing ? '确认结果' : '准备检测',
+        style: Theme.of(context).textTheme.headlineLarge,
+      ),
+      const SizedBox(height: 8),
+      if (widget.embedded || widget.initialSessionId != null)
+        Text('当前记录到 $tankName', key: const Key('test-current-tank'))
+      else
+        DropdownButtonFormField<String>(
+          key: Key('workflow-tank-$tankId'),
+          initialValue: tankId,
+          decoration: const InputDecoration(labelText: '当前记录到'),
+          items: [
+            for (final tank in tanks)
+              DropdownMenuItem(value: tank.id, child: Text(tank.name)),
+          ],
+          onChanged: _busy
+              ? null
+              : (value) => setState(() {
+                  _setVisibleSession(null);
+                  _selectedTankId = value;
+                  _selectedParameterId = null;
+                  _selectedReagentId = null;
+                  _durationValid = true;
+                  _hydratedSessionId = null;
+                }),
+        ),
+      const SizedBox(height: 16),
+      TestParameterTabs(
+        parameters: parameters,
+        selectedId: parameter.id,
+        onSelected: _busy || widget.initialSessionId != null
+            ? null
+            : (value) => setState(() {
+                _setVisibleSession(null);
+                _selectedParameterId = value;
+                _selectedReagentId = null;
+                _durationValid = true;
+                _hydratedSessionId = null;
+              }),
+        onManage: widget.embedded
+            ? () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ParameterSettingsPage(
+                    tank: tanks.firstWhere((tank) => tank.id == tankId),
+                  ),
+                ),
+              )
+            : null,
+      ),
+      const SizedBox(height: 16),
+    ],
+  );
 
   Widget _buildSetup({
     required List<Tank> tanks,
@@ -310,155 +405,156 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     final scope = (tankId: tankId, parameterId: parameter.id);
     final defaultSeconds = ref.watch(testTimerDefaultProvider(scope));
     final reagents = ref.watch(reagentProfilesProvider(parameter.id));
+    final photoAllowed =
+        parameter.photoSupported &&
+        const ['NO3', 'PO4'].contains(parameter.code);
+    String? reagentId() {
+      final enabled = (reagents.value ?? const <ReagentProfile>[])
+          .where((item) => item.isEnabled)
+          .toList();
+      return _selectedReagentId == ''
+          ? null
+          : enabled.any((item) => item.id == _selectedReagentId)
+          ? _selectedReagentId
+          : enabled.length == 1
+          ? enabled.first.id
+          : null;
+    }
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
       children: [
-        Text('选择检测项', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          key: Key('workflow-tank-$tankId'),
-          initialValue: tankId,
-          decoration: const InputDecoration(
-            labelText: '海缸',
-            border: OutlineInputBorder(),
-          ),
-          items: [
-            for (final tank in tanks)
-              DropdownMenuItem(value: tank.id, child: Text(tank.name)),
-          ],
-          onChanged: _busy
-              ? null
-              : (value) => setState(() {
-                  _selectedTankId = value;
-                  _selectedParameterId = null;
-                  _selectedReagentId = null;
-                }),
+        _scopeHeader(
+          tankId: tankId,
+          tankName: tanks.firstWhere((tank) => tank.id == tankId).name,
+          tanks: tanks,
+          parameters: parameters,
+          parameter: parameter,
         ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          key: Key('workflow-parameter-${parameter.id}'),
-          initialValue: parameter.id,
-          decoration: const InputDecoration(
-            labelText: '参数',
-            border: OutlineInputBorder(),
-          ),
-          items: [
-            for (final item in parameters)
-              DropdownMenuItem(
-                value: item.id,
-                child: Text('${item.code} · ${item.displayName}'),
-              ),
-          ],
-          onChanged: _busy
-              ? null
-              : (value) => setState(() {
-                  _selectedParameterId = value;
-                  _selectedReagentId = null;
-                }),
-        ),
-        const SizedBox(height: 12),
         if (parameter.id == AppDatabase.khId)
           _khPanel(tankId)
         else ...[
-          reagents.when(
-            loading: () => const LinearProgressIndicator(),
-            error: (error, _) => Text('无法读取试剂：$error'),
-            data: (items) {
-              final enabled = items.where((item) => item.isEnabled).toList();
-              final effectiveReagentId = _selectedReagentId == ''
-                  ? null
-                  : enabled.any((item) => item.id == _selectedReagentId)
-                  ? _selectedReagentId
-                  : enabled.length == 1
-                  ? enabled.first.id
-                  : null;
-              return DropdownButtonFormField<String>(
-                key: Key('workflow-reagent-${effectiveReagentId ?? 'none'}'),
-                initialValue: effectiveReagentId ?? '',
-                decoration: const InputDecoration(
-                  labelText: '试剂资料（可选）',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: '',
-                    child: Text('不指定试剂'),
-                  ),
-                  for (final item in enabled)
-                    DropdownMenuItem<String>(
-                      value: item.id,
-                      child: Text(
-                        '${item.brand} · ${item.defaultDevelopmentSeconds} 秒',
-                      ),
-                    ),
-                ],
-                onChanged: _busy
-                    ? null
-                    : (value) =>
-                          setState(() => _selectedReagentId = value ?? ''),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          Text('默认等待时长', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
           defaultSeconds.when(
             loading: () => const LinearProgressIndicator(),
             error: (error, _) => Text('无法读取默认时长：$error'),
-            data: (seconds) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final quick in TestTimerSnapshot.quickDurationSeconds)
-                      ChoiceChip(
-                        label: Text('${quick ~/ 60} 分钟'),
-                        selected: seconds == quick,
-                        onSelected: _busy
-                            ? null
-                            : (_) => _setDuration(scope, quick),
-                      ),
-                    ActionChip(
-                      avatar: const Icon(Icons.tune, size: 18),
-                      label: Text('自定义·${_formatDuration(seconds)}'),
-                      onPressed: _busy
-                          ? null
-                          : () => _chooseCustomDuration(scope, seconds),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text('自定义范围为 10 秒至 60 分钟，按海缸和参数分别保存。'),
-              ],
+            data: (seconds) => TestPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  TestTimerDial(
+                    remaining: seconds,
+                    total: seconds,
+                    label: parameter.code,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    '按试剂说明设置等待时间',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  const Text('计时结束后进入检测。', textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  TestDurationEditor(
+                    key: ValueKey('duration-$tankId-${parameter.id}'),
+                    seconds: seconds,
+                    onValidityChanged: (valid) =>
+                        setState(() => _durationValid = valid),
+                    onChanged: (value) => _setDuration(scope, value),
+                  ),
+                  reagents.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (error, _) => Text('无法读取试剂：$error'),
+                    data: (items) {
+                      final enabled = items
+                          .where((item) => item.isEnabled)
+                          .toList();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: DropdownButtonFormField<String>(
+                          key: Key('workflow-reagent-${reagentId() ?? 'none'}'),
+                          initialValue: reagentId() ?? '',
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: '试剂资料（可选）',
+                          ),
+                          items: [
+                            const DropdownMenuItem(
+                              value: '',
+                              child: Text('不指定试剂'),
+                            ),
+                            for (final item in enabled)
+                              DropdownMenuItem(
+                                value: item.id,
+                                child: Text(item.brand),
+                              ),
+                          ],
+                          onChanged: _busy
+                              ? null
+                              : (value) => setState(
+                                  () => _selectedReagentId = value ?? '',
+                                ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('start-test-timer'),
+                    onPressed: _busy || !_durationValid
+                        ? null
+                        : () => _beginDetection(
+                            scope,
+                            reagentId(),
+                            parameter,
+                            'timer',
+                          ),
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('开始计时'),
+                  ),
+                  TextButton(
+                    key: const Key('skip-test-timer'),
+                    onPressed: _busy
+                        ? null
+                        : () => _beginDetection(
+                            scope,
+                            reagentId(),
+                            parameter,
+                            photoAllowed ? 'photo' : 'manual',
+                          ),
+                    child: Text(photoAllowed ? '跳过计时，直接拍照' : '跳过计时，直接录入'),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            key: const Key('create-test-draft'),
-            onPressed: _busy
+          TestEntryCard(
+            key: const Key('add-test-record'),
+            title: '手动录入 ${parameter.code}',
+            subtitle: '所有关注指标都支持手动记录',
+            icon: Icons.keyboard_outlined,
+            onTap: _busy
                 ? null
-                : () async {
-                    final reagentItems =
-                        reagents.value ?? const <ReagentProfile>[];
-                    final enabled = reagentItems
-                        .where((item) => item.isEnabled)
-                        .toList();
-                    final reagentId = _selectedReagentId == ''
-                        ? null
-                        : enabled.any((item) => item.id == _selectedReagentId)
-                        ? _selectedReagentId
-                        : enabled.length == 1
-                        ? enabled.first.id
-                        : null;
-                    await _createDraft(scope, reagentId);
+                : () {
+                    if (widget.onManualEntry case final manual?) {
+                      manual(tankId, parameter.id);
+                    } else {
+                      _beginDetection(scope, reagentId(), parameter, 'manual');
+                    }
                   },
-            icon: const Icon(Icons.science_outlined),
-            label: const Text('创建检测草稿'),
           ),
-          const SizedBox(height: 12),
-          const Text('返回保留草稿，放弃则删除。'),
+          if (photoAllowed)
+            TestEntryCard(
+              key: const Key('open-photo-flow'),
+              title: '${parameter.code} 照片辅助比色',
+              subtitle: '框选、比较范围与插值，修改后选择是否记录',
+              icon: Icons.photo_camera_outlined,
+              onTap: _busy
+                  ? null
+                  : () =>
+                        _beginDetection(scope, reagentId(), parameter, 'photo'),
+            ),
         ],
       ],
     );
@@ -466,6 +562,8 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
 
   Widget _buildSession({
     required ActiveTestSession session,
+    required List<Tank> tanks,
+    required List<WaterParameter> parameters,
     required String tankName,
     required WaterParameter parameter,
   }) {
@@ -475,8 +573,13 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(tankName, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 16),
+          _scopeHeader(
+            tankId: session.tankId,
+            tankName: tankName,
+            tanks: tanks,
+            parameters: parameters,
+            parameter: parameter,
+          ),
           _khPanel(session.tankId),
         ],
       );
@@ -493,44 +596,41 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     );
     final remaining = _remainingSeconds(session);
     if (stage == ActiveTestStage.timerCompleted &&
+        _inActiveTab &&
         !_busy &&
         const ['NO3', 'PO4'].contains(parameter.code) &&
         _autoPhotoSessionId != session.id) {
-      _autoPhotoSessionId = session.id;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_busy) _openPhoto(session, parameter);
+        if (mounted &&
+            _inActiveTab &&
+            _visibleSession?.id == session.id &&
+            !_busy) {
+          _openPhoto(session, parameter);
+        }
       });
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tankName, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 4),
-                Text(
-                  '${parameter.code} · ${parameter.displayName} · ${parameter.unit}',
-                ),
-                const SizedBox(height: 8),
-                const Text('可稍后继续'),
-              ],
-            ),
-          ),
+        _scopeHeader(
+          tankId: session.tankId,
+          tankName: tankName,
+          tanks: tanks,
+          parameters: parameters,
+          parameter: parameter,
+          reviewing: stage == ActiveTestStage.review,
         ),
-        const SizedBox(height: 16),
-        if (stage != ActiveTestStage.review)
+        if (stage != ActiveTestStage.review) ...[
           _buildTimerCard(session, stage, remaining, parameter),
-        if (stage == ActiveTestStage.timerCompleted ||
-            stage == ActiveTestStage.photoReady) ...[
-          const SizedBox(height: 16),
           _buildResultChoice(session, parameter),
         ],
         if (stage == ActiveTestStage.review) _buildReview(session, parameter),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: _busy ? null : () => _confirmDiscard(session),
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('本次不记录'),
+        ),
       ],
     );
   }
@@ -568,106 +668,112 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     int remaining,
     WaterParameter parameter,
   ) {
-    final isRunning = stage == ActiveTestStage.timerRunning;
-    final isPaused = stage == ActiveTestStage.timerPaused;
-    final isCompleted =
+    final running = stage == ActiveTestStage.timerRunning;
+    final paused = stage == ActiveTestStage.timerPaused;
+    final completed =
         stage == ActiveTestStage.timerCompleted ||
         stage == ActiveTestStage.photoReady;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('显色计时', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Semantics(
-              liveRegion: true,
-              label: isCompleted ? '计时已完成' : '剩余 ${_formatDuration(remaining)}',
-              child: Text(
-                isCompleted ? '已完成' : _formatClock(remaining),
-                key: const Key('test-timer-countdown'),
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.displayMedium,
-              ),
+    final controller = ref.read(testWorkflowControllerProvider);
+    return TestPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 8),
+          Semantics(
+            liveRegion: true,
+            label: completed ? '计时已完成' : '剩余 ${_formatDuration(remaining)}',
+            child: TestTimerDial(
+              remaining: remaining,
+              total: session.timerDurationSeconds,
+              label: parameter.code,
+              completed: completed,
             ),
-            const SizedBox(height: 4),
-            Text(
-              '本次设定 ${_formatDuration(session.timerDurationSeconds)}',
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '按试剂说明设置等待时间',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '本次设定 ${_formatDuration(session.timerDurationSeconds)}',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          if (stage == ActiveTestStage.preparation) ...[
+            TestDurationEditor(
+              key: ValueKey('draft-duration-${session.id}'),
+              seconds: session.timerDurationSeconds,
+              onValidityChanged: (valid) =>
+                  setState(() => _durationValid = valid),
+              onChanged: (seconds) {
+                final controller = ref.read(testWorkflowControllerProvider);
+                _durationSaveChain = _durationSaveChain
+                    .then(
+                      (_) =>
+                          controller.setPreparationDuration(session, seconds),
+                    )
+                    .catchError((Object error) {
+                      if (mounted) _showMessage('保存默认时长失败：$error');
+                    });
+              },
             ),
             const SizedBox(height: 16),
-            if (stage == ActiveTestStage.preparation) ...[
-              FilledButton.icon(
-                key: const Key('start-test-timer'),
-                onPressed: _busy
-                    ? null
-                    : () => _timerAction(
-                        () => ref
-                            .read(testWorkflowControllerProvider)
-                            .start(session),
-                        warnIfNotificationUnavailable: true,
-                      ),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('开始计时'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                key: const Key('skip-test-timer'),
-                onPressed: _busy
-                    ? null
-                    : () => const ['NO3', 'PO4'].contains(parameter.code)
-                          ? _openPhoto(session, parameter)
-                          : _useManualEntry(session),
-                icon: const Icon(Icons.skip_next_outlined),
-                label: Text(
-                  const ['NO3', 'PO4'].contains(parameter.code)
-                      ? '跳过计时，直接拍照'
-                      : '跳过计时，直接录入',
-                ),
-              ),
-            ],
-            if (isRunning)
-              FilledButton.tonalIcon(
-                onPressed: _busy
-                    ? null
-                    : () => _timerAction(
-                        () => ref
-                            .read(testWorkflowControllerProvider)
-                            .pause(session),
-                      ),
-                icon: const Icon(Icons.pause),
-                label: const Text('暂停'),
-              ),
-            if (isPaused)
-              FilledButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () => _timerAction(
-                        () => ref
-                            .read(testWorkflowControllerProvider)
-                            .resume(session),
-                        warnIfNotificationUnavailable: true,
-                      ),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('继续'),
-              ),
-            if (isRunning || isPaused || isCompleted) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () => _timerAction(
-                        () => ref
-                            .read(testWorkflowControllerProvider)
-                            .reset(session),
-                      ),
-                icon: const Icon(Icons.replay),
-                label: const Text('重置本次计时'),
-              ),
-            ],
           ],
-        ),
+          if (!completed)
+            FilledButton.icon(
+              key: const Key('start-test-timer'),
+              onPressed: _busy || !_durationValid
+                  ? null
+                  : () => _timerAction(() async {
+                      if (running) return controller.pause(session);
+                      if (paused) return controller.resume(session);
+                      await _durationSaveChain;
+                      final current = await ref
+                          .read(testSessionRepositoryProvider)
+                          .readDraftByIdForTank(
+                            tankId: session.tankId,
+                            sessionId: session.id,
+                          );
+                      if (current == null ||
+                          current.stage != ActiveTestStage.preparation.name) {
+                        throw StateError('草稿已发生变化，请重新打开检测。');
+                      }
+                      return controller.start(current);
+                    }, warnIfNotificationUnavailable: !running),
+              icon: Icon(running ? Icons.pause : Icons.play_arrow),
+              label: Text(
+                running
+                    ? '暂停计时'
+                    : paused
+                    ? '继续计时'
+                    : '开始计时',
+              ),
+            ),
+          if (running || paused || completed)
+            TextButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () => _timerAction(() => controller.reset(session)),
+              icon: const Icon(Icons.replay),
+              label: const Text('重置本次计时'),
+            ),
+          if (!completed)
+            TextButton(
+              key: const Key('skip-test-timer'),
+              onPressed: _busy
+                  ? null
+                  : () => const ['NO3', 'PO4'].contains(parameter.code)
+                        ? _openPhoto(session, parameter)
+                        : _useManualEntry(session),
+              child: Text(
+                const ['NO3', 'PO4'].contains(parameter.code)
+                    ? '跳过计时，直接拍照'
+                    : '跳过计时，直接录入',
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -679,33 +785,25 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     final photoAllowed =
         parameter.photoSupported &&
         const ['NO3', 'PO4'].contains(parameter.code.trim().toUpperCase());
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('记录结果', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            if (photoAllowed) ...[
-              FilledButton.icon(
-                key: const Key('open-photo-flow'),
-                onPressed: _busy ? null : () => _openPhoto(session, parameter),
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: const Text('拍照检测'),
-              ),
-              const SizedBox(height: 8),
-            ] else
-              const Text('请手动录入结果。'),
-            OutlinedButton.icon(
-              key: const Key('use-manual-result'),
-              onPressed: _busy ? null : () => _useManualEntry(session),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('手动录入'),
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TestEntryCard(
+          key: const Key('use-manual-result'),
+          title: '手动录入 ${parameter.code}',
+          subtitle: '所有关注指标都支持手动记录',
+          icon: Icons.keyboard_outlined,
+          onTap: _busy ? null : () => _useManualEntry(session),
         ),
-      ),
+        if (photoAllowed)
+          TestEntryCard(
+            key: const Key('open-photo-flow'),
+            title: '${parameter.code} 照片辅助比色',
+            subtitle: '框选、比较范围与插值，修改后选择是否记录',
+            icon: Icons.photo_camera_outlined,
+            onTap: _busy ? null : () => _openPhoto(session, parameter),
+          ),
+      ],
     );
   }
 
@@ -739,7 +837,10 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('修改结果', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  '修改并确认检测结果',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -830,7 +931,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
                   key: const Key('save-test-workflow'),
                   onPressed: _busy ? null : () => _save(session),
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text('确认并保存'),
+                  label: const Text('确认并保存结果'),
                 ),
               ],
             ),
@@ -840,76 +941,57 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     );
   }
 
-  Future<void> _setDuration(TestSessionScope scope, int seconds) async {
-    await _guarded(() async {
-      await ref
-          .read(testWorkflowControllerProvider)
-          .setDefaultDuration(
+  Future<void> _setDuration(TestSessionScope scope, int seconds) {
+    final controller = ref.read(testWorkflowControllerProvider);
+    _durationSaveChain = _durationSaveChain
+        .then(
+          (_) => controller.setDefaultDuration(
             tankId: scope.tankId,
             parameterId: scope.parameterId,
             seconds: seconds,
-          );
-    });
+          ),
+        )
+        .catchError((Object error) {
+          if (mounted) _showMessage('保存默认时长失败：$error');
+        });
+    return _durationSaveChain;
   }
 
-  Future<void> _chooseCustomDuration(
+  Future<void> _beginDetection(
     TestSessionScope scope,
-    int currentSeconds,
+    String? reagentId,
+    WaterParameter parameter,
+    String action,
   ) async {
-    final controller = TextEditingController(text: '$currentSeconds');
-    final seconds = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('自定义默认时长'),
-        content: TextField(
-          key: const Key('custom-duration-seconds'),
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(
-            labelText: '秒数',
-            helperText: '10–3600 秒',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = int.tryParse(controller.text);
-              if (value == null ||
-                  value < TestTimerSnapshot.minimumDurationSeconds ||
-                  value > TestTimerSnapshot.maximumDurationSeconds) {
-                return;
-              }
-              Navigator.pop(dialogContext, value);
-            },
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (seconds != null && mounted) await _setDuration(scope, seconds);
-  }
-
-  Future<void> _createDraft(
-    TestSessionScope scope,
-    String? reagentProfileId,
-  ) async {
+    if (_busy) return;
+    ActiveTestSession? session;
     await _guarded(() async {
-      await ref
-          .read(testWorkflowControllerProvider)
-          .createDraft(
-            tankId: scope.tankId,
-            parameterId: scope.parameterId,
-            reagentProfileId: reagentProfileId,
-          );
+      await _durationSaveChain;
+      if (!mounted) return;
+      final controller = ref.read(testWorkflowControllerProvider);
+      final repository = ref.read(testSessionRepositoryProvider);
+      final id = await controller.createDraft(
+        tankId: scope.tankId,
+        parameterId: scope.parameterId,
+        reagentProfileId: reagentId,
+      );
+      session = await repository.readDraftByIdForTank(
+        tankId: scope.tankId,
+        sessionId: id,
+      );
+      if (session == null) return;
+      if (action == 'timer') {
+        final result = await controller.start(session!);
+        if (result.notificationUnavailable && mounted) {
+          _showMessage(_notificationWarning(result.notificationResult!.status));
+        }
+      } else if (action == 'manual') {
+        await controller.useManualEntry(session!);
+      }
     });
+    if (mounted && session != null && action == 'photo') {
+      await _openPhoto(session!, parameter);
+    }
   }
 
   Future<void> _timerAction(
@@ -933,7 +1015,7 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
     setState(() => _busy = true);
     try {
       await ref.read(testWorkflowControllerProvider).preparePhoto(session);
-      if (!mounted) return;
+      if (!mounted || !_inActiveTab) return;
       final location = Uri(
         path: '/photo-capture',
         queryParameters: <String, String>{
@@ -1190,15 +1272,6 @@ class _TestWorkflowPageState extends ConsumerState<TestWorkflowPage>
 final _decimalFormatter = FilteringTextInputFormatter.allow(
   RegExp(r'^\d*(?:\.\d*)?$'),
 );
-
-String _formatClock(int seconds) {
-  final safe = seconds
-      .clamp(0, TestTimerSnapshot.maximumDurationSeconds)
-      .toInt();
-  final minutes = safe ~/ 60;
-  final remainder = safe % 60;
-  return '${minutes.toString().padLeft(2, '0')}:${remainder.toString().padLeft(2, '0')}';
-}
 
 String _formatDuration(int seconds) {
   if (seconds < 60) return '$seconds 秒';

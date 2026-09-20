@@ -35,12 +35,6 @@ test("renders the water-quality demo shell", async () => {
   assert.match(html, /所有参数变化趋势/);
   assert.match(html, /调整后复测，观察生物状态/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/i);
-});
-
-test("exposes the main prototype navigation and settings entry", async () => {
-  const response = await render();
-  const html = await response.text();
-
   for (const label of ["首页", "检测", "趋势", "任务"]) {
     assert.match(html, new RegExp(`>${label}<`));
   }

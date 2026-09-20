@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../calculators/application/maintenance_cycle_providers.dart';
 import '../../calculators/domain/maintenance_dosing.dart';
+import '../../calculators/domain/maintenance_cycle.dart';
 import '../application/maintenance_cycle_items.dart';
 import '../domain/rolling_schedule.dart';
 import 'task_schedule_dialogs.dart';
@@ -28,6 +29,7 @@ class MaintenancePage extends ConsumerStatefulWidget {
 }
 
 class _MaintenancePageState extends ConsumerState<MaintenancePage> {
+  final _pageScroll = ScrollController();
   MaintenanceTaskFilter _filter = MaintenanceTaskFilter.pending;
   String? _handledInitialTaskId;
   String? _openingInitialTaskId;
@@ -40,6 +42,27 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
     final today = DateTime.now();
     _calendarMonth = DateTime(today.year, today.month);
     _selectedCalendarDate = DateTime(today.year, today.month, today.day);
+  }
+
+  @override
+  void dispose() {
+    _pageScroll.dispose();
+    super.dispose();
+  }
+
+  void _selectTaskDate(MaintenanceTaskItem item) {
+    final date = localDate(item.task.dueAt.toLocal());
+    setState(() {
+      _selectedCalendarDate = date;
+      _calendarMonth = DateTime(date.year, date.month);
+    });
+    if (_pageScroll.hasClients) {
+      _pageScroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
@@ -156,6 +179,7 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
   }
 
   Widget _buildForTank(Tank tank) {
+    final theme = Theme.of(context);
     final clock = ref.watch(maintenanceClockProvider).value ?? DateTime.now();
     final cycles = ref.watch(maintenanceCyclesProvider(tank.id)).value ?? [];
     final stored = ref.watch(
@@ -169,231 +193,226 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
       _calendarMonth.month,
       2 - DateTime(_calendarMonth.year, _calendarMonth.month).weekday,
     );
-    return Stack(
+    return ListView(
+      controller: _pageScroll,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        Row(
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tank.name,
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    SegmentedButton<MaintenanceTaskFilter>(
-                      key: const Key('maintenance-filter'),
-                      segments: const [
-                        ButtonSegment(
-                          value: MaintenanceTaskFilter.pending,
-                          label: Text('待处理'),
-                        ),
-                        ButtonSegment(
-                          value: MaintenanceTaskFilter.completed,
-                          label: Text('已完成'),
-                        ),
-                        ButtonSegment(
-                          value: MaintenanceTaskFilter.all,
-                          label: Text('全部'),
-                        ),
-                      ],
-                      selected: {_filter},
-                      onSelectionChanged: (value) =>
-                          setState(() => _filter = value.single),
-                    ),
-                  ],
-                ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('维护计划', style: theme.textTheme.labelLarge),
+                  const SizedBox(height: 4),
+                  Text('任务日历', style: theme.textTheme.headlineMedium),
+                ],
               ),
             ),
-            stored.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => AppErrorView(message: '无法读取任务：$error'),
-              data: (raw) {
-                final all = prepareMaintenanceTaskItems(raw, clock);
-                final visible = [
-                  ...calendarOccurrences(all, gridStart, 42, now: clock),
-                  ...maintenanceCycleItems(
-                    cycles,
-                    tankId: tank.id,
-                    start: gridStart,
-                    days: 42,
-                    now: clock,
-                  ),
-                ];
-                final selected = [
-                  ...calendarOccurrences(
-                    all,
-                    _selectedCalendarDate,
-                    1,
-                    now: clock,
-                  ),
-                  ...maintenanceCycleItems(
-                    cycles,
-                    tankId: tank.id,
-                    start: _selectedCalendarDate,
-                    days: 1,
-                    now: clock,
-                  ),
-                ];
-                final shown = selected
-                    .where(
-                      (item) => _filter == MaintenanceTaskFilter.completed
-                          ? item.state == MaintenanceTaskViewState.completed
-                          : item.state != MaintenanceTaskViewState.completed,
-                    )
-                    .toList();
-                final plans =
-                    groupMaintenancePlans(
-                          all
-                              .where((item) => isChemicalPlan(item.task))
-                              .toList(),
-                        )
-                        .where(
-                          (group) => group.any(
-                            (item) => item.task.status == 'enabled',
-                          ),
-                        )
-                        .toList();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    MaintenanceCalendar(
-                      month: _calendarMonth,
-                      selectedDate: _selectedCalendarDate,
-                      items: visible,
-                      onMonthChanged: (month) =>
-                          setState(() => _calendarMonth = month),
-                      onDateSelected: (date) => setState(() {
-                        _selectedCalendarDate = date;
-                        _calendarMonth = DateTime(date.year, date.month);
-                      }),
-                      onComplete: (item) =>
-                          _completeCalendarTask(tank.id, item),
-                      onSkip: (item) => _skipCalendarTask(tank.id, item),
-                      onSnooze: (item) => _delayTask(tank.id, item),
-                      onReopen: (item) => _reopen(tank.id, item),
-                      onCorrect: (item) => _correctCompletion(tank.id, item),
-                      onStop: (item) => _stopRecurring(tank.id, item),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_filter == MaintenanceTaskFilter.all) ...[
-                      for (final group in plans)
-                        ChemicalPlanCard(
-                          items: group,
-                          onStop: (item) => _skipCalendarTask(tank.id, item),
-                          onComplete: (item) =>
-                              _completeCalendarTask(tank.id, item),
-                          onDelay: (item) => _delayTask(tank.id, item),
-                        ),
-                      _TaskList(
-                        items: all
-                            .where(
-                              (item) =>
-                                  item.task.status == 'enabled' &&
-                                  !isChemicalPlan(item.task),
-                            )
-                            .toList(),
-                        onOpen: (item) => _openTask(context, tank.id, item),
-                        onMenuAction: (item, action) =>
-                            _handleMenuAction(context, tank.id, item, action),
-                      ),
-                    ] else ...[
-                      Text(dateKey(_selectedCalendarDate)),
-                      if (shown.isEmpty)
-                        const Card(child: ListTile(title: Text('所选日期没有记录'))),
-                      for (final item in shown)
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  item.task.title,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
-                                ),
-                                if (item.cycleOccurrence != null)
-                                  Text(item.task.notes ?? ''),
-                                if (item.state ==
-                                    MaintenanceTaskViewState.completed)
-                                  Wrap(
-                                    spacing: 8,
-                                    children: [
-                                      const Text('已完成'),
-                                      if (item.canEditCompletion)
-                                        TextButton(
-                                          onPressed: () =>
-                                              _correctCompletion(tank.id, item),
-                                          child: const Text('修改完成日期'),
-                                        ),
-                                      if (item.canReopen)
-                                        TextButton(
-                                          onPressed: () =>
-                                              _reopen(tank.id, item),
-                                          child: const Text('撤销完成'),
-                                        ),
-                                    ],
-                                  )
-                                else ...[
-                                  FilledButton(
-                                    onPressed: () =>
-                                        _completeCalendarTask(tank.id, item),
-                                    child: Text(
-                                      item.cycleOccurrence != null
-                                          ? '添加滴定液'
-                                          : '完成本次',
-                                    ),
-                                  ),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: OutlinedButton(
-                                          onPressed: () =>
-                                              _delayTask(tank.id, item),
-                                          child: const Text('延迟'),
-                                        ),
-                                      ),
-                                      if (item.cycleOccurrence == null) ...[
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: OutlinedButton(
-                                            onPressed: () => _skipCalendarTask(
-                                              tank.id,
-                                              item,
-                                            ),
-                                            child: const Text('停止'),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ],
-                );
-              },
+            IconButton.filledTonal(
+              key: const Key('add-maintenance-task'),
+              tooltip: '新增任务',
+              onPressed: () => _editTask(context, tank.id),
+              icon: const Icon(Icons.add),
             ),
           ],
         ),
-        Positioned(
-          right: 20,
-          bottom: 20,
-          child: FloatingActionButton.extended(
-            key: const Key('add-maintenance-task'),
-            onPressed: () => _editTask(context, tank.id),
-            icon: const Icon(Icons.add_task),
-            label: const Text('新增任务'),
-          ),
+        const SizedBox(height: 18),
+        stored.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => AppErrorView(message: '无法读取任务：$error'),
+          data: (raw) {
+            final all = prepareMaintenanceTaskItems(raw, clock);
+            final visible = [
+              ...calendarOccurrences(all, gridStart, 42, now: clock),
+              ...maintenanceCycleItems(
+                cycles,
+                tankId: tank.id,
+                start: gridStart,
+                days: 42,
+                now: clock,
+              ),
+            ];
+            final completed =
+                [
+                      ...calendarOccurrences(
+                        all,
+                        _selectedCalendarDate,
+                        1,
+                        now: clock,
+                      ),
+                      ...maintenanceCycleItems(
+                        cycles,
+                        tankId: tank.id,
+                        start: _selectedCalendarDate,
+                        days: 1,
+                        now: clock,
+                      ),
+                    ]
+                    .where(
+                      (item) =>
+                          item.state == MaintenanceTaskViewState.completed,
+                    )
+                    .toList();
+            // This catalogue is global to the current tank. Selecting a calendar
+            // date changes the completed history, never hides a pending head.
+            final groups = groupMaintenancePlans(all)
+                .where(
+                  (group) =>
+                      group.any((item) => item.task.status == 'enabled') &&
+                      (_filter != MaintenanceTaskFilter.all ||
+                          !group.first.task.isOneOff ||
+                          isChemicalPlan(group.first.task)),
+                )
+                .toList();
+            final cycleHeads = maintenanceCycleNotificationItems(
+              cycles,
+              clock,
+            ).where((item) => item.task.status == 'enabled').toList();
+            final listedCycles = _filter == MaintenanceTaskFilter.all
+                ? cycleHeads
+                : cycleHeads
+                      .where(
+                        (item) =>
+                            item.cycleOccurrence!.cycle.refillDeferredUntil !=
+                                null ||
+                            item.cycleOccurrence!.cycle.refillDate.compareTo(
+                                  dateKey(clock),
+                                ) <=
+                                0,
+                      )
+                      .toList();
+            final cycleStatuses = {
+              for (final item in listedCycles)
+                item.task.id: MaintenanceCycleOccurrence(
+                  cycle: item.cycleOccurrence!.cycle,
+                  date: dateKey(clock),
+                  today: dateKey(clock),
+                ),
+            };
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                MaintenanceCalendar(
+                  month: _calendarMonth,
+                  selectedDate: _selectedCalendarDate,
+                  today: clock,
+                  items: visible,
+                  onMonthChanged: (month) =>
+                      setState(() => _calendarMonth = month),
+                  onDateSelected: (date) => setState(() {
+                    _selectedCalendarDate = date;
+                    _calendarMonth = DateTime(date.year, date.month);
+                  }),
+                  onComplete: (item) => _completeCalendarTask(tank.id, item),
+                  onSkip: (item) => _skipCalendarTask(tank.id, item),
+                  onSnooze: (item) => _delayTask(tank.id, item),
+                  onReopen: (item) => _reopen(tank.id, item),
+                  onCorrect: (item) => _correctCompletion(tank.id, item),
+                  onStop: (item) => _stopRecurring(tank.id, item),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  '计划与所选日记录',
+                  key: const Key('maintenance-catalog-heading'),
+                  style: theme.textTheme.titleLarge,
+                ),
+                const SizedBox(height: 6),
+                Text('已完成记录随上方所选日期切换', style: theme.textTheme.bodySmall),
+                const SizedBox(height: 12),
+                SegmentedButton<MaintenanceTaskFilter>(
+                  key: const Key('maintenance-filter'),
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                      value: MaintenanceTaskFilter.pending,
+                      label: Text('待处理'),
+                    ),
+                    ButtonSegment(
+                      value: MaintenanceTaskFilter.completed,
+                      label: Text('已完成'),
+                    ),
+                    ButtonSegment(
+                      value: MaintenanceTaskFilter.all,
+                      label: Text('全部'),
+                    ),
+                  ],
+                  selected: {_filter},
+                  onSelectionChanged: (value) =>
+                      setState(() => _filter = value.single),
+                ),
+                const SizedBox(height: 12),
+                if (_filter == MaintenanceTaskFilter.completed) ...[
+                  if (completed.isEmpty)
+                    const Card(child: ListTile(title: Text('所选日期没有记录'))),
+                  for (final item in completed)
+                    Card(
+                      key: Key(
+                        'maintenance-history-${item.task.id}-${dateKey(_selectedCalendarDate)}',
+                      ),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        leading: const Icon(Icons.check_circle_outline),
+                        title: Text(item.task.title),
+                        subtitle: Text(
+                          '${dateKey(_selectedCalendarDate)} · 已完成',
+                        ),
+                      ),
+                    ),
+                ] else ...[
+                  if (groups.isEmpty && listedCycles.isEmpty)
+                    const Card(child: ListTile(title: Text('当前没有待处理计划'))),
+                  for (final group in groups)
+                    if (isChemicalPlan(group.first.task))
+                      ChemicalPlanCard(
+                        items: group,
+                        onStop: (item) => _skipCalendarTask(tank.id, item),
+                      )
+                    else
+                      _TaskList(
+                        items: group,
+                        onOpen: (item) => item.task.recurrenceJson != null
+                            ? _selectTaskDate(item)
+                            : _openTask(context, tank.id, item),
+                        onMenuAction: (item, action) =>
+                            _handleMenuAction(context, tank.id, item, action),
+                      ),
+                  for (final item in listedCycles)
+                    Card(
+                      key: Key('maintenance-cycle-plan-${item.task.id}'),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              cycleStatuses[item.task.id]!.title,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(cycleStatuses[item.task.id]!.remainingLabel),
+                            Text(
+                              '预计剩余 ${formatCycleVolume(cycleRemainingMl(item.cycleOccurrence!.cycle, dateKey(clock)))} mL',
+                            ),
+                            Text('补液日期 ${dateKey(item.task.dueAt)}'),
+                            const SizedBox(height: 8),
+                            OutlinedButton(
+                              onPressed: () => _selectTaskDate(item),
+                              child: const Text('查看任务日'),
+                            ),
+                            TextButton(
+                              onPressed: () => _openRefill(item),
+                              child: const Text('配置滴定液'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ],
+            );
+          },
         ),
       ],
     );
@@ -664,61 +683,81 @@ class _MaintenancePageState extends ConsumerState<MaintenancePage> {
     final action = await showModalBottomSheet<_TaskDetailAction>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                item.task.title,
-                style: Theme.of(context).textTheme.titleLarge,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .85,
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    item.task.title,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  Text('到期：${_dateTime(item.task.dueAt)}'),
+                  Text(
+                    item.task.isOneOff
+                        ? '一次性任务${item.task.planDayIndex == null ? '' : ' · 第 ${item.task.planDayIndex}/${item.task.planTotalDays} 天'}'
+                              ' · 提醒 ${item.task.preferredReminderTime}'
+                        : '周期：每 ${item.task.intervalAmount} ${_intervalLabel(item.task.intervalUnit)}'
+                              ' · 提醒 ${item.task.preferredReminderTime}',
+                  ),
+                  if (item.task.notes != null) ...[
+                    const SizedBox(height: 8),
+                    Text(item.task.notes!),
+                  ],
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('complete-maintenance-task'),
+                    onPressed: () =>
+                        Navigator.pop(sheetContext, _TaskDetailAction.complete),
+                    icon: const Icon(Icons.check),
+                    label: const Text('完成本次'),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const Key('snooze-maintenance-task'),
+                          onPressed: () => Navigator.pop(
+                            sheetContext,
+                            _TaskDetailAction.snooze,
+                          ),
+                          icon: const Icon(Icons.snooze),
+                          label: const Text('延迟'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const Key('skip-maintenance-task'),
+                          onPressed: () => Navigator.pop(
+                            sheetContext,
+                            _TaskDetailAction.skip,
+                          ),
+                          icon: const Icon(Icons.skip_next),
+                          label: Text(
+                            isChemicalPlan(item.task) ? '停止后续' : '停止',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text('到期：${_dateTime(item.task.dueAt)}'),
-              Text(
-                item.task.isOneOff
-                    ? '一次性任务${item.task.planDayIndex == null ? '' : ' · 第 ${item.task.planDayIndex}/${item.task.planTotalDays} 天'}'
-                          ' · 提醒 ${item.task.preferredReminderTime}'
-                    : '周期：每 ${item.task.intervalAmount} ${_intervalLabel(item.task.intervalUnit)}'
-                          ' · 提醒 ${item.task.preferredReminderTime}',
-              ),
-              if (item.task.notes != null) ...[
-                const SizedBox(height: 8),
-                Text(item.task.notes!),
-              ],
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                key: const Key('complete-maintenance-task'),
-                onPressed: () =>
-                    Navigator.pop(sheetContext, _TaskDetailAction.complete),
-                icon: const Icon(Icons.check),
-                label: const Text('完成本次'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                key: const Key('snooze-maintenance-task'),
-                onPressed: () =>
-                    Navigator.pop(sheetContext, _TaskDetailAction.snooze),
-                icon: const Icon(Icons.snooze),
-                label: const Text('延迟'),
-              ),
-              const SizedBox(height: 8),
-              TextButton.icon(
-                key: const Key('skip-maintenance-task'),
-                onPressed: () =>
-                    Navigator.pop(sheetContext, _TaskDetailAction.skip),
-                icon: const Icon(Icons.skip_next),
-                label: Text(
-                  isChemicalPlan(item.task)
-                      ? '停止当天及后续'
-                      : item.task.isOneOff
-                      ? '跳过本次'
-                      : '跳过本周期',
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -767,6 +806,7 @@ class _TaskList extends StatelessWidget {
       );
     }
     return Card(
+      margin: const EdgeInsets.only(bottom: 12),
       child: Column(
         children: [
           for (var index = 0; index < items.length; index++) ...[
@@ -1048,6 +1088,7 @@ Future<bool> _confirm(
     await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        scrollable: true,
         title: Text(title),
         content: Text(body),
         actions: [

@@ -52,6 +52,30 @@ List<MaintenanceTaskItem> maintenanceCycleNotificationItems(
 ) {
   final result = <MaintenanceTaskItem>[];
   for (final cycle in cycles) {
+    final theory = cycle.theory;
+    if (theory != null &&
+        !cycleNeedsRefill(cycle) &&
+        cycle.closedOnDate == null &&
+        cycleDateKey(now).compareTo(theory.endDate) <= 0) {
+      final occurrence = MaintenanceCycleOccurrence(
+        cycle: cycle,
+        date: theory.endDate,
+        today: cycleDateKey(now),
+      );
+      final item = cycleOccurrenceItem(occurrence);
+      result.add(
+        MaintenanceTaskItem(
+          task: item.task.copyWith(
+            status: 'enabled',
+            title: '${cycle.chemical.name.toUpperCase()} 理论计划 · 计划结束',
+          ),
+          state: MaintenanceTaskViewState.upcoming,
+          occurrenceDate: item.occurrenceDate,
+          cycleOccurrence: occurrence,
+        ),
+      );
+      continue;
+    }
     final date = maintenanceReminderDate(cycle, cycleDateKey(now));
     final occurrences = maintenanceCycleItems(
       [cycle],
@@ -60,7 +84,9 @@ List<MaintenanceTaskItem> maintenanceCycleNotificationItems(
       days: 1,
       now: now,
     );
-    if (occurrences.isNotEmpty && cycle.closedOnDate == null) {
+    if (occurrences.isNotEmpty &&
+        cycle.closedOnDate == null &&
+        cycleNeedsRefill(cycle)) {
       result.add(occurrences.single);
     } else if (cycle.notificationId != null) {
       final d = DateTime.parse(date);
@@ -82,6 +108,11 @@ List<MaintenanceTaskItem> maintenanceCycleNotificationItems(
             updatedAt: d.toUtc(),
           ),
           state: MaintenanceTaskViewState.disabled,
+          cycleOccurrence: MaintenanceCycleOccurrence(
+            cycle: cycle,
+            date: date,
+            today: cycleDateKey(now),
+          ),
         ),
       );
     }

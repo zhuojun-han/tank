@@ -1,6 +1,6 @@
-# 澜礁 Flutter App
+# 澜礁 App
 
-Android/iOS 客户端，包含本地海缸、参数、鱼类档案、检测/趋势、NO3/PO4 辅助比色、任务/通知和维护计算器。当前交付及设备边界见 [当前状态](../docs/CURRENT_STATUS.md)，本轮网页新增功能是否允许同步见 [同步清单](../docs/coordination/app-sync-backlog.md)。
+新版 Android 采用本地网页＋WebView，Flutter 负责数据库、备份、通知和平台能力；旧 Android/iOS Flutter 页面保留。实际交付及设备边界见 [当前状态](../docs/CURRENT_STATUS.md)，差异见 [同步清单](../docs/coordination/app-sync-backlog.md)。
 
 ## 环境与仓库
 
@@ -8,7 +8,17 @@ Android/iOS 客户端，包含本地海缸、参数、鱼类档案、检测/趋�
 
 App 与 Web 都由项目根仓库管理，CI 从根 `.github/workflows/` 运行；目录与共享合同约定见 [技术设计](../docs/TECHNICAL_DESIGN.md)。
 
-## 运行与验证
+## 本地网页 WebView 安卓版本
+
+先在 `web-demo/` 执行 `npm run build:mobile`，再于本目录构建。首次准备或依赖变化时执行 `flutter pub get`。
+
+```powershell
+flutter build apk --debug -t lib/main_webview.dart
+```
+
+Gradle 根据 `main_webview.dart` 入口选择独立包名，并将 `web-demo/dist-mobile` 打包进 APK；缺少网页产物时构建失败。新版应用 ID 为 `com.lanjiao.lanjiao_water_quality.webview`，与旧版独立安装及存储。两种构建共用默认 APK 输出路径，构建前保留已有旧版安装包；安装前检查 APK 包名为上述 `.webview`，避免误覆盖旧版。正式数据、备份与草稿边界见 [数据合同](../docs/TECHNICAL_DESIGN.md#webview-数据桥接)。普通直板机及 Mate X6 的设备验收结果只在当前状态记录。
+
+## 旧版运行与验证
 
 在 `app/` 执行；首次准备或依赖变化时先 `flutter pub get`。
 

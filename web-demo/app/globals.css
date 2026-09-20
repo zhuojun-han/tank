@@ -94,6 +94,14 @@ h2 { font-size: 18px; margin-bottom: 4px; }
 .panel { background: white; border: 1px solid rgba(220,233,229,.9); border-radius: 24px; padding: 18px; margin-top: 14px; box-shadow: 0 8px 25px rgba(21,59,64,.05); }
 .section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .section-head button { border: 0; background: transparent; color: var(--aqua-dark); font-size: 12px; font-weight: 800; cursor: pointer; }
+.icon-button.close-button { position: relative; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 1px solid #bad5d0; background: #e4f1ed; color: var(--aqua-dark); font-size: 0; }
+.close-button::before, .close-button::after { content: ""; position: absolute; width: 20px; height: 3px; border-radius: 2px; background: currentColor; transform: rotate(45deg); }
+.close-button::after { transform: rotate(-45deg); }
+.icon-button.close-button:hover { background: #cfe7e0; border-color: var(--aqua-dark); }
+.icon-button.close-button:focus-visible { outline: 3px solid var(--aqua-dark); outline-offset: 3px; }
+.sheet > .section-head:has(> .close-button) { align-items: center; margin-bottom: 16px; }
+.sheet > .section-head:has(> .close-button) h2 { margin-bottom: 0; }
+
 .mini-chart { height: 102px; display: flex; align-items: flex-end; gap: 14px; padding: 15px 12px 8px; position: relative; border-bottom: 1px solid var(--line); }
 .mini-chart > span { flex: 1; border-radius: 8px 8px 2px 2px; background: linear-gradient(#57b7aa, #cae9e1); z-index: 2; }
 .target-band { position: absolute; left: 0; right: 0; bottom: 18px; height: 29px; background: rgba(244,188,124,.14); border-top: 1px dashed #dc9d57; border-bottom: 1px dashed #dc9d57; }
@@ -183,13 +191,13 @@ input, select, textarea { width: 100%; border: 1px solid var(--line); background
 .plot-point { position: absolute; transform: translate(-50%, 50%); border: 0; background: transparent; cursor: pointer; }.plot-point i { display: block; width: 13px; height: 13px; border: 3px solid white; border-radius: 50%; background: var(--coral); box-shadow: 0 2px 8px rgba(238,123,102,.5); }.plot-point span { position: absolute; transform: translateX(-40%); bottom: 17px; background: var(--ink); color: white; border-radius: 6px; padding: 3px 5px; white-space: nowrap; font-size: 7px; opacity: 0; transition: .2s; }.plot-point:hover span, .plot-point:focus span { opacity: 1; }
 .list-heading { margin: 22px 2px 10px; }.record-list { display: grid; gap: 8px; }.record-row { display: flex; align-items: center; gap: 11px; width: 100%; padding: 13px; border: 1px solid var(--line); border-radius: 17px; background: white; text-align: left; cursor: pointer; }.parameter-badge { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; font-weight: 900; font-size: 11px; }.parameter-badge.no3 { background: #ffe4db; color: #a84938; }.parameter-badge.po4 { background: #d8f0ea; color: #176f69; }.record-row div { flex: 1; }.record-row strong, .record-row small { display: block; }.record-row small { color: var(--muted); font-size: 9px; margin-top: 3px; }.record-row > span:last-child { color: var(--muted); }.record-row i { display: block; font-style: normal; font-size: 7px; color: var(--coral); }
 .row-title { display: flex; align-items: center; justify-content: space-between; }.round-add { width: 48px; height: 48px; border: 0; border-radius: 17px; background: var(--ink); color: white; font-size: 24px; cursor: pointer; }
-.task-list { display: grid; gap: 10px; }.task-card { border: 1px solid var(--line); background: white; padding: 15px; border-radius: 20px; }.task-card.due { border-left: 4px solid var(--coral); }.task-card.snoozed { border-left: 4px solid #d6a55c; }.task-top { display: flex; gap: 11px; align-items: flex-start; }.task-top > div { flex: 1; }.task-state { color: var(--coral); font-size: 8px; font-weight: 900; letter-spacing: .08em; }.task-top h2 { margin: 3px 0; font-size: 15px; }.task-top p { margin: 0; color: var(--muted); font-size: 9px; }.check-button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; background: white; color: var(--aqua); cursor: pointer; }.more-button { width: 36px; height: 36px; flex: 0 0 36px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 900; }.more-button:hover, .more-button:focus-visible { background: #e9f3f0; color: var(--aqua-dark); outline: none; }.notification-note { display: flex; align-items: center; gap: 10px; background: #e6f3ef; border-radius: 16px; padding: 13px; margin-top: 12px; }.notification-note span { font-size: 20px; }.notification-note strong, .notification-note p { display: block; }.notification-note strong { font-size: 11px; }.notification-note p { margin: 3px 0 0; color: var(--muted); font-size: 9px; }
+.task-list { display: grid; gap: 10px; }.task-card { border: 1.5px solid #b5ceca; background: white; padding: 15px; border-radius: 20px; box-shadow: 0 2px 6px rgb(21 59 64 / 4%); }.task-card.due { border-left: 4px solid var(--coral); }.task-card.snoozed { border-left: 4px solid #d6a55c; }.task-top { display: flex; gap: 11px; align-items: flex-start; }.task-top > div { flex: 1; }.task-state { color: var(--coral); font-size: 8px; font-weight: 900; letter-spacing: .08em; }.task-top h2 { margin: 3px 0; font-size: 15px; }.task-top p { margin: 0; color: var(--muted); font-size: 9px; }.check-button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; background: white; color: var(--aqua); cursor: pointer; }.more-button { width: 36px; height: 36px; flex: 0 0 36px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 900; }.more-button:hover, .more-button:focus-visible { background: #e9f3f0; color: var(--aqua-dark); outline: none; }.notification-note { display: flex; align-items: center; gap: 10px; background: #e6f3ef; border-radius: 16px; padding: 13px; margin-top: 12px; }.notification-note span { font-size: 20px; }.notification-note strong, .notification-note p { display: block; }.notification-note strong { font-size: 11px; }.notification-note p { margin: 3px 0 0; color: var(--muted); font-size: 9px; }
 .notification-note > div { flex: 1; }
 .toggle-switch { position: relative; width: 44px; height: 26px; flex: 0 0 44px; border: 0; border-radius: 99px; background: #bac7c4; padding: 3px; cursor: pointer; transition: background .2s ease; }
 .toggle-switch i { display: block; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 2px 6px rgba(10,35,37,.25); transition: transform .2s ease; }
 .toggle-switch.on { background: var(--aqua-dark); }
 .toggle-switch.on i { transform: translateX(18px); }
-.task-card.done, .task-card.skipped { background: #f4f7f5; border-color: #e2e9e6; }.task-card.done .task-state { color: #24825f; }.task-card.skipped .task-state { color: #8a7770; }.task-card.done h2, .task-card.skipped h2 { color: #61706d; }.check-button.checked { background: var(--aqua-dark); border-color: var(--aqua-dark); color: white; cursor: default; }.task-card.skipped .check-button.checked { background: #a69a95; border-color: #a69a95; }.next-cycle { display: block; margin-top: 7px; color: var(--aqua-dark); font-size: 8px; font-weight: 800; }
+.task-card.done, .task-card.skipped { background: #fbfdfc; border-color: #b5ceca; }.task-card.done .task-state { color: #24825f; }.task-card.skipped .task-state { color: #8a7770; }.task-card.done h2, .task-card.skipped h2 { color: #61706d; }.check-button.checked { background: var(--aqua-dark); border-color: var(--aqua-dark); color: white; cursor: default; }.task-card.skipped .check-button.checked { background: #a69a95; border-color: #a69a95; }.next-cycle { display: block; margin-top: 7px; color: var(--aqua-dark); font-size: 8px; font-weight: 800; }
 .task-calendar { margin-bottom: 14px; border: 1px solid var(--line); border-radius: 22px; background: white; padding: 12px; box-shadow: 0 8px 24px rgba(21,59,64,.06); }
 .calendar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .calendar-head > button { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 11px; background: #f7faf9; color: var(--ink); font-size: 22px; cursor: pointer; }
@@ -236,6 +244,20 @@ input, select, textarea { width: 100%; border: 1px solid var(--line); background
 .daily-task-actions .complete-once { grid-column: 1 / -1; font-size: 10px; }
 .complete-once { background: var(--aqua-dark); color: white; }
 .skip-once { background: #edf2f0; color: #5e716d; }
+
+/* Shared task intent colors: teal completion, sand deferral, coral stop. */
+.soft-button.task-action-defer, .primary-button.task-action-defer {
+  background: #fff2db; color: #80551f; box-shadow: inset 0 0 0 1px #e9cf9e;
+}
+.soft-button.task-action-stop, .skip-once.task-action-stop {
+  background: #fcebe6; color: #a04435; box-shadow: inset 0 0 0 1px #edc4ba;
+}
+.task-action-defer:hover:not(:disabled) { background: #f8e5c3; }
+.task-action-stop:hover:not(:disabled) { background: #f6dcd3; }
+.task-action-defer:focus-visible, .task-action-stop:focus-visible {
+  outline: 3px solid var(--aqua-dark); outline-offset: 3px;
+}
+.task-action-defer:disabled, .task-action-stop:disabled { opacity: .45; cursor: not-allowed; }
 .daily-task-handled { display: flex; align-items: center; gap: 8px; }
 .daily-task-handled .daily-task-result { flex: 1; }
 .daily-task-reopen { min-height: 36px; border: 1px solid var(--line); border-radius: 10px; background: white; padding: 0 12px; color: var(--aqua-dark); font-size: 9px; font-weight: 850; cursor: pointer; }
@@ -267,6 +289,14 @@ input, select, textarea { width: 100%; border: 1px solid var(--line); background
 .settings-row.reminder-setting { cursor: default; }
 .settings-row.reminder-setting .toggle-switch { width: 44px; padding: 3px; }
 .settings-boundary { margin: 9px 3px 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
+.residual-choice { min-width: 0; border: 0; padding: 0; margin: 12px 0 4px; }
+.residual-choice legend { padding: 0; margin-bottom: 8px; color: var(--muted); font-size: 10px; font-weight: 600; line-height: 1.5; }
+.residual-choice > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.residual-choice label { display: flex; align-items: center; gap: 7px; min-height: 44px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); font-size: 11px; font-weight: 700; line-height: 1.4; cursor: pointer; }
+.residual-choice label.selected { border-color: var(--aqua-dark); background: #d9eee7; color: var(--aqua-dark); }
+.residual-choice label span { font-size: inherit; font-weight: 500; line-height: inherit; }
+.residual-choice input[type=radio] { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; padding: 0; accent-color: var(--aqua-dark); }
+.residual-choice label:focus-within { outline: 2px solid var(--aqua-dark); outline-offset: 2px; }
 .reminder-backdrop { align-items: center; }
 .reminder-sheet { border-radius: 26px; padding-top: 22px; text-align: center; }
 .reminder-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 12px; border-radius: 18px; background: #e6f3ef; font-size: 27px; }
@@ -313,6 +343,11 @@ input, select, textarea { width: 100%; border: 1px solid var(--line); background
 .add-fish-species .field { margin-bottom: 8px; }
 .add-fish-species .field-row label { margin-bottom: 4px; }
 .add-fish-species .soft-button.wide { width: 100%; margin-top: 5px; }
+.add-fish-species .fish-add-button { border: 1px solid #8ebfb5; background: #d9ede6; color: #176f68; box-shadow: 0 3px 0 #b6d5cb; transition: background .15s, transform .15s, box-shadow .15s; }
+.add-fish-species .fish-add-button:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #b6d5cb; background: #bdded2; }
+.add-fish-species .fish-add-button:focus-visible { outline: 2px solid #176f68; outline-offset: 3px; }
+.add-fish-species .fish-add-button.is-added { background: #c8e7d9; border-color: #64a68e; }
+@media (prefers-reduced-motion: reduce) { .add-fish-species .fish-add-button { transition: none; } }
 .fish-add-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; padding: 4px; border-radius: 13px; background: rgba(255,255,255,.72); }
 .fish-add-mode button { border: 0; border-radius: 10px; padding: 8px 6px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 850; cursor: pointer; }
 .fish-add-mode button.active { background: var(--aqua-dark); color: white; box-shadow: 0 5px 12px rgba(23,111,105,.2); }

@@ -147,122 +147,259 @@ class _TrendContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final latest = overview.latest;
+    void addRecord() => context.push('/test-flow?parameterId=${parameter.id}');
+    void openRecord(TestRecord record) => showScopedTestRecordDetails(
+      context: context,
+      ref: ref,
+      record: record,
+      tank: tank,
+      parameter: parameter,
+    );
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
+        Text('历史趋势', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 4),
+        Text('水质变化', style: theme.textTheme.headlineMedium),
+        const SizedBox(height: 6),
+        Text('选择关注指标查看历史', style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 18),
+        SingleChildScrollView(
+          key: const Key('trend-parameter-selector'),
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final item in parameters)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: _ParameterCard(
+                    parameter: item,
+                    selected: item.id == selectedId,
+                    onTap: () => onParameterChanged(item.id),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
         Card(
+          key: const Key('trend-summary'),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('当前结果', style: theme.textTheme.labelLarge),
+                        const SizedBox(height: 4),
+                        Text(
+                          latest == null
+                              ? '暂无记录'
+                              : '${recordTrendValue(latest)} ${latest.unit}',
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      key: const Key('trend-target-editor'),
+                      onPressed: () => showWaterQualityTargetEditor(
+                        context,
+                        ref,
+                        tankId: tank.id,
+                        parameter: parameter,
+                        target: target,
+                      ),
+                      child: Text(_targetLabel(target)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (overview.count == 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.show_chart,
+                          size: 40,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(height: 12),
+                        Text('${parameter.code} 暂无趋势数据'),
+                      ],
+                    ),
+                  )
+                else
+                  DatabaseRecordChart(
+                    key: const Key('trend-chart'),
+                    overview: overview,
+                    scope: (tankId: tank.id, parameterId: parameter.id),
+                    target: target,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        DatabaseRecordHistory(
+          key: ValueKey('${tank.id}:${parameter.id}'),
+          overview: overview,
+          scope: (tankId: tank.id, parameterId: parameter.id),
+          headerTrailing: TextButton.icon(
+            key: const Key('trend-add-record'),
+            onPressed: addRecord,
+            icon: const Icon(Icons.add),
+            label: const Text('添加'),
+          ),
+          onOpen: openRecord,
+          rowBuilder: (record) => TrendRecordCard(
+            record: record,
+            parameter: parameter,
+            onTap: () => openRecord(record),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ParameterCard extends StatelessWidget {
+  const _ParameterCard({
+    required this.parameter,
+    required this.selected,
+    required this.onTap,
+  });
+  final WaterParameter parameter;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      label: parameter.displayName,
+      selected: selected,
+      button: true,
+      child: Material(
+        color: selected ? scheme.secondaryContainer : scheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: selected ? scheme.primary : scheme.outlineVariant,
+          ),
+        ),
+        child: InkWell(
+          key: Key('trend-parameter-${parameter.id}'),
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(tank.name, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  key: const Key('trend-parameter-selector'),
-                  initialValue: selectedId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '趋势参数'),
-                  items: [
-                    for (final item in parameters)
-                      DropdownMenuItem(
-                        value: item.id,
-                        child: Text(
-                          '${item.code} · ${item.displayName}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) onParameterChanged(value);
-                  },
+                Text(
+                  parameter.code,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  parameter.unit,
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                '${parameter.code} 趋势',
-                style: Theme.of(context).textTheme.titleMedium,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${overview.count} 条记录'),
-                TextButton(
-                  onPressed: () =>
-                      context.push('/test-flow?parameterId=${parameter.id}'),
-                  child: const Text('添加检测'),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: overview.count == 0
-                ? Column(
-                    children: [
-                      const Icon(Icons.show_chart, size: 40),
-                      const SizedBox(height: 8),
-                      Text('${parameter.code} 暂无趋势数据'),
-                      const SizedBox(height: 4),
+      ),
+    );
+  }
+}
 
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () => parameter.code.toUpperCase() == 'KH'
-                            ? context.push(
-                                '/test-flow?parameterId=${parameter.id}',
-                              )
-                            : context.go('/test'),
-                        child: Text(
-                          parameter.code.toUpperCase() == 'KH'
-                              ? '开始 KH 检测'
-                              : '手动添加记录',
-                        ),
+/// A record is a separate tappable card; only its result and date are repeated here.
+class TrendRecordCard extends StatelessWidget {
+  const TrendRecordCard({
+    required this.record,
+    required this.parameter,
+    required this.onTap,
+    super.key,
+  });
+  final TestRecord record;
+  final WaterParameter parameter;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final range =
+        record.confirmedMaxValue != null &&
+        record.confirmedMaxValue != record.confirmedMinValue;
+    final point =
+        record.confirmedInterpolation ??
+        (range ? null : record.confirmedMinValue);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        key: Key('trend-record-${record.id}'),
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                constraints: const BoxConstraints(maxWidth: 76),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  parameter.code,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${recordTrendValue(record)} ${record.unit}',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    if (range)
+                      Text(
+                        '插值 / 单值：${point == null ? '未填' : '${trendNumber(point)} ${record.unit}'}',
                       ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_targetLabel(target)),
-                      const SizedBox(height: 12),
-                      DatabaseRecordChart(
-                        key: const Key('trend-chart'),
-                        overview: overview,
-                        scope: (tankId: tank.id, parameterId: parameter.id),
-                        target: target,
-                      ),
-                    ],
-                  ),
+                    const SizedBox(height: 5),
+                    Text(
+                      recordDate(record.measuredAt),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 20),
+            ],
           ),
         ),
-        if (overview.count > 0)
-          DatabaseRecordHistory(
-            key: ValueKey('${tank.id}:${parameter.id}'),
-            overview: overview,
-            scope: (tankId: tank.id, parameterId: parameter.id),
-            onOpen: (record) => showScopedTestRecordDetails(
-              context: context,
-              ref: ref,
-              record: record,
-              tank: tank,
-              parameter: parameter,
-            ),
-          ),
-      ],
+      ),
     );
   }
 }

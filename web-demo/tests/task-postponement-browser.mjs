@@ -68,6 +68,29 @@ async function scenario(tasks = [], start = '2026-09-08T23:55:00') {
 }
 
 try {
+  // Pending is today's work, while future recurring rules remain in All.
+  {
+    const s = await scenario([task(301, '今天维护', '2026-09-08'), task(302, '明天维护', '2026-09-09'), task(303, '逾期维护', '2026-09-07')]);
+    await s.nav('任务');
+    await expect(s.history('今天维护')).toHaveCount(1);
+    await expect(s.history('逾期维护')).toHaveCount(1);
+    await expect(s.history('明天维护')).toHaveCount(0);
+    await s.day(9).click();
+    await expect(s.history('明天维护')).toHaveCount(0);
+    await s.page.getByRole('tab', { name: /^全部/ }).click();
+    await expect(s.history('明天维护')).toHaveCount(1);
+    await expect(s.history('明天维护').getByRole('button', { name: '延迟', exact: true })).toHaveCount(0);
+    await expect(s.history('明天维护').getByRole('button', { name: '当日任务已完成', exact: true })).toHaveCount(0);
+    await expect(s.history('明天维护').getByRole('button', { name: '停止后续计划', exact: true })).toBeVisible();
+    await expect(s.history('今天维护').getByRole('button', { name: '延迟', exact: true })).toBeVisible();
+    await expect(s.history('今天维护').getByRole('button', { name: '当日任务已完成', exact: true })).toBeVisible();
+    await s.page.getByRole('tab', { name: /^待处理/ }).click();
+    await s.page.clock.fastForward(310_000);
+    await expect(s.history('明天维护')).toHaveCount(1);
+    await expect(s.history('明天维护').getByRole('button', { name: '当日任务已完成', exact: true })).toBeVisible();
+    await s.context.close();
+  }
+
   // A single unresolved occurrence rolls forward; actual completion determines its next reminder.
   {
     let title = '刷藻顺延回归';
@@ -242,7 +265,7 @@ try {
     await s.page.getByRole('button', { name: '关闭滴定计算器', exact: true }).click();
     assert.equal(await s.raw(), delayed);
     await s.openDosing();
-    await s.page.getByLabel('上次滴定液还有残留吗？').selectOption('no');
+    await s.page.getByRole('radio', { name: '没有或已倒掉', exact: true }).check();
     await s.page.getByLabel('每日 PO₄ 上升（mg/L）', { exact: true }).fill('0.03');
     await s.page.getByLabel('实际配液日期', { exact: true }).fill('2026-09-09');
     if (await s.page.getByRole('button', { name: /^已配好/ }).isEnabled()) {

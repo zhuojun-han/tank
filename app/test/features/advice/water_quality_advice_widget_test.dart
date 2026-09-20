@@ -16,6 +16,17 @@ import 'package:lanjiao_water_quality/features/maintenance/application/maintenan
 import 'package:lanjiao_water_quality/features/test_records/application/test_record_providers.dart';
 
 void main() {
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      disableAnimations: true,
+    );
+  });
+  tearDown(() {
+    TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
+        .clearAccessibilityFeaturesTestValue();
+  });
   testWidgets('首页建议卡展示确认记录、用户目标，展开后可查看来源和复测提醒', (tester) async {
     final now = DateTime.utc(2026, 8, 10, 8, 30);
     await tester.pumpWidget(
@@ -47,19 +58,19 @@ void main() {
       ),
     );
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
-    await _scrollIntoView(tester, find.text('NO3 · 5 mg/L'));
     await _scrollIntoView(tester, find.byKey(const Key('advice-card-NO3')));
 
     expect(find.text('NO3 位于目标范围内'), findsOneWidget);
-    expect(find.textContaining('人工确认 5 mg/L'), findsOneWidget);
-    expect(find.text('4–6 mg/L'), findsOneWidget);
+    expect(find.textContaining('目标 4–6 mg/L'), findsOneWidget);
     expect(find.textContaining('100'), findsNothing);
 
-    final basis = find.byKey(const Key('advice-basis-NO3'));
+    final basis = find.byKey(const Key('home-advice-basis'));
     await _scrollIntoView(tester, basis);
     expect(basis.hitTestable(), findsOneWidget);
     await tester.tap(basis.hitTestable());
     await tester.pumpAndSettle();
+    expect(find.textContaining('人工确认 5 mg/L'), findsOneWidget);
+    expect(find.text('4–6 mg/L'), findsOneWidget);
     final source = find.textContaining('Red Sea · Algae Management Program');
     expect(source, findsOneWidget);
     await _scrollIntoView(tester, source);
@@ -101,7 +112,6 @@ void main() {
       ),
     );
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
-    await _scrollIntoView(tester, find.text('NO3 · 8–15 mg/L'));
     await _scrollIntoView(tester, find.byKey(const Key('advice-card-NO3')));
 
     expect(find.text('NO3 需要复测确认'), findsOneWidget);

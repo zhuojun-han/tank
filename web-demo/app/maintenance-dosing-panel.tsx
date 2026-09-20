@@ -1,25 +1,32 @@
 'use client';
+import { type EntityId } from "./entity-id.ts";
+import { isNativeApp } from './native-bridge';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { calculateMaintenance, type MaintenanceInput } from './maintenance-dosing';
-import { currentMaintenanceCycle, cycleRemainingDays, cycleRemainingMl, localCycleDate, prepareMaintenanceCycle, type MaintenanceCycle, type MaintenanceChemical } from './maintenance-cycle';
+import { currentMaintenanceCycle, cycleRemainingDays, cycleResidualMl, localCycleDate, prepareMaintenanceCycle, type MaintenanceCycle, type MaintenanceChemical, type TheoryDosingPlan, cycleNeedsRefill } from './maintenance-cycle';
 import { STOCK_ML_PER_0_1_DKH_100L_OPTIONS, type AlkalinityPlan } from './alkalinity-calculator';
 import { isCalendarDate } from './rolling-task';
 
 const fmt = (v: number) => v === 0 ? '0' : v < 0.001 ? v.toExponential(3) : Number(v.toFixed(3)).toString();
 
-export function MaintenanceDosingPanel({ tankName, tankId, today, cycles, initialChemical = 'po4', previousKh, onClose, onSave }: { tankName: string; tankId: number; today: string; cycles: MaintenanceCycle[]; initialChemical?: MaintenanceChemical; previousKh?: AlkalinityPlan | null; onClose: () => void; onSave: (cycle: MaintenanceCycle) => void }) {
+export function MaintenanceDosingPanel({ tankName, tankId, today, cycles, initialChemical = 'po4', previousKh, initialInput, theory, onClose, onSave }: { tankName: string; tankId: EntityId; today: string; cycles: MaintenanceCycle[]; initialChemical?: MaintenanceChemical; previousKh?: AlkalinityPlan | null; initialInput?: MaintenanceInput; theory?: TheoryDosingPlan; onClose: () => void; onSave: (cycle: MaintenanceCycle) => void | Promise<void> }) {
   const [chemical, setChemical] = useState<MaintenanceChemical>(initialChemical);
   const [residualChoice, setResidualChoice] = useState<'' | 'yes' | 'no'>('');
+  const [dosedOn, setDosedOn] = useState<string | null>(null);
   const [residualOverride, setResidualOverride] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savePending = useRef(false);
   const [preparedDateOverride, setPreparedDateOverride] = useState<string | null>(null);
   const preparedDate = preparedDateOverride ?? today;
   const previous = currentMaintenanceCycle(cycles, tankId, chemical);
   const remainingDays = previous ? cycleRemainingDays(previous, today) : 0;
-  const estimatedResidual = previous ? fmt(cycleRemainingMl(previous, isCalendarDate(preparedDate) ? preparedDate : today)) : '';
+  const estimatedResidual = previous ? fmt(cycleResidualMl(previous, isCalendarDate(preparedDate) ? preparedDate : today, dosedOn === preparedDate)) : '';
   const residualMl = residualOverride ?? estimatedResidual;
-  const [input, setInput] = useState<MaintenanceInput>(currentMaintenanceCycle(cycles, tankId, initialChemical)?.input ?? { solutionMl: 500, waterL: previousKh?.netWaterVolumeL ?? 200, po4Rise: 0.02, khDrop: previousKh?.dailyDkhConsumption ?? 0.5, khStrength: previousKh?.stockMlPer0_1Dkh100L ?? 6, khPurity: previousKh?.purityPercent ?? 100, temperature: previousKh?.stockTemperatureC ?? 20, po4Flow: 1.4, khFlow: 1.4, po4Minutes: 1, khMinutes: 1, po4Unit: 'ml/s', khUnit: 'ml/s' });
+  const previousInput = currentMaintenanceCycle(cycles, tankId, initialChemical);
+  const stableInput = previousInput?.theory && !theory ? { ...previousInput.input, po4Rise: 0.02, khDrop: 0.5 } : previousInput?.input;
+  const [input, setInput] = useState<MaintenanceInput>(initialInput ?? stableInput ?? { solutionMl: 500, waterL: previousKh?.netWaterVolumeL ?? 200, po4Rise: 0.02, khDrop: previousKh?.dailyDkhConsumption ?? 0.5, khStrength: previousKh?.stockMlPer0_1Dkh100L ?? 6, khPurity: previousKh?.purityPercent ?? 100, temperature: previousKh?.stockTemperatureC ?? 20, po4Flow: 1.4, khFlow: 1.4, po4Minutes: 1, khMinutes: 1, po4Unit: 'ml/s', khUnit: 'ml/s' });
   let result: ReturnType<typeof calculateMaintenance> | undefined;
   let error = '';
   // Hidden channel inputs must not block the selected reagent.
@@ -29,29 +36,49 @@ export function MaintenanceDosingPanel({ tankName, tankId, today, cycles, initia
   try { result = calculateMaintenance(activeInput); } catch (e) { error = e instanceof Error ? e.message : '请核对输入。'; }
   const r = result?.[chemical];
   const stockMl = r?.stockMl;
+  function theoryForDate(date: string) {
+    if (!theory) return undefined;
+    if (previous?.theory?.planId === theory.planId) return theory;
+    const span = Date.parse(theory.endDate + 'T00:00:00Z') - Date.parse(theory.planStartDate + 'T00:00:00Z');
+    return { ...theory, planStartDate: date, endDate: new Date(Date.parse(date + 'T00:00:00Z') + span).toISOString().slice(0, 10) };
+  }
   let recipe: MaintenanceCycle | undefined;
   let recipeError = '';
   try {
     if (!preparedDate || preparedDate > today || preparedDate < '0001-01-01') throw new Error('请选择不晚于今天的实际配液日期。');
     recipe = prepareMaintenanceCycle(activeInput, chemical, tankId, preparedDate, previous,
-    residualChoice === 'yes' ? (residualMl.trim() === '' ? NaN : Number(residualMl)) : 0, 0); }
+    residualChoice === 'yes' ? (residualMl.trim() === '' ? NaN : Number(residualMl)) : 0, 0, theoryForDate(preparedDate)); }
   catch (e) { if (!error && r?.dailyStockMl !== 0) recipeError = (e as Error).message; }
   const needsChoice = Boolean(previous && !residualChoice);
   function numberField(key: keyof MaintenanceInput, label: string, min = 0) {
-    return <label className="field">{label}<input type="number" step="any" min={min} required value={Number.isNaN(input[key]) ? '' : input[key] ?? ''} onChange={e => setInput({ ...input, [key]: e.target.value === '' ? NaN : Number(e.target.value) })} /></label>;
+    return <label className="field">{label}<input type="number" step="any" min={min} required value={Number.isNaN(input[key]) ? '' : input[key] ?? ''} onChange={e => { const value = e.target.value === '' ? NaN : Number(e.target.value); setInput(current => ({ ...current, [key]: value })); }} /></label>;
   }
   return <div className="modal-backdrop"><section className="sheet calculator-sheet" role="dialog" aria-modal="true" aria-labelledby="maintenance-title">
-    <div className="sheet-handle" /><div className="section-head"><div><p className="eyebrow">{tankName} · 滴定配方</p><h2 id="maintenance-title">稳定滴定</h2></div><button className="icon-button" aria-label="关闭滴定计算器" onClick={onClose}>×</button></div>
-    <label className="field">选择指标<select value={chemical} onChange={e => { const next = e.target.value as MaintenanceChemical; setChemical(next); setResidualChoice(''); setResidualOverride(null); setSaveError(''); const old = currentMaintenanceCycle(cycles, tankId, next); if (old) setInput(old.input); }}><option value="po4">PO₄ · 氯化镧</option><option value="kh">KH · 碳酸氢钠</option></select></label>
+    <div className="sheet-handle" /><div className="section-head"><div><p className="eyebrow">{tankName} · 滴定配方</p><h2 id="maintenance-title">{theory ? `${chemical === "po4" ? "氯化镧" : "碳酸氢钠"}理论滴定` : "稳定滴定"}</h2></div><button type="button" className="icon-button close-button" aria-label="关闭滴定计算器" disabled={saving} onClick={onClose}>×</button></div>
+    <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+    <label className="field">选择指标<select disabled={Boolean(theory)} value={chemical} onChange={e => { const next = e.target.value as MaintenanceChemical; setChemical(next); setResidualChoice(''); setDosedOn(null); setResidualOverride(null); setSaveError(''); const old = currentMaintenanceCycle(cycles, tankId, next); if (old) setInput(old.theory ? { ...old.input, po4Rise: 0.02, khDrop: 0.5 } : old.input); }}><option value="po4">PO₄ · 氯化镧</option><option value="kh">KH · 碳酸氢钠</option></select></label>
     <label className="field">实际配液日期<input type="date" min={previous?.startDate ?? '0001-01-01'} max={today} value={preparedDate} onChange={e => { setPreparedDateOverride(e.target.value); setSaveError(''); }} /></label>
-    <div className="field-row">{numberField('waterL', '净水量（L）', 0.1)}{chemical === 'po4' ? numberField('po4Rise', '每日 PO₄ 上升（mg/L）') : numberField('khDrop', '每日 KH 下降（dKH）')}</div>
-    {chemical === 'kh' && <label className="field">KH 母液浓度<select value={input.khStrength} onChange={e => setInput({ ...input, khStrength: Number(e.target.value) })}>{STOCK_ML_PER_0_1_DKH_100L_OPTIONS.map(v => <option key={v} value={v}>{v} ml / 100 L 提升 0.1 dKH</option>)}</select></label>}
-    <div className="field-row">{numberField(`${chemical}Flow`, '泵流速', 0.001)}<label className="field">单位<select value={input[`${chemical}Unit`]} onChange={e => setInput({ ...input, [`${chemical}Unit`]: e.target.value })}><option value="ml/s">ml/秒</option><option value="ml/min">ml/分钟</option></select></label></div>
+    <div className="field-row">{numberField('waterL', '净水量（L）', 0.1)}{theory ? <label className="field">{chemical === 'po4' ? '每日理论 PO₄ 降幅（mg/L）' : '每日 KH 投加当量（dKH，含消耗）'}<input readOnly value={chemical === 'po4' ? input.po4Rise : input.khDrop} /></label> : chemical === 'po4' ? numberField('po4Rise', '每日 PO₄ 上升（mg/L）') : numberField('khDrop', '每日 KH 下降（dKH）')}</div>
+    {chemical === 'kh' && <label className="field">KH 母液浓度<select value={input.khStrength} onChange={e => { const value = Number(e.target.value); setInput(current => ({ ...current, khStrength: value })); }}>{STOCK_ML_PER_0_1_DKH_100L_OPTIONS.map(v => <option key={v} value={v}>{v} ml / 100 L 提升 0.1 dKH</option>)}</select></label>}
+    <div className="field-row">{numberField(`${chemical}Flow`, '泵流速', 0.001)}<label className="field">单位<select value={input[`${chemical}Unit`]} onChange={e => { const value = e.target.value; setInput(current => ({ ...current, [`${chemical}Unit`]: value })); }}><option value="ml/s">ml/秒</option><option value="ml/min">ml/分钟</option></select></label></div>
     <div className="field-row">{numberField(`${chemical}Minutes`, '每天运行时间（分钟）', 0.000001)}{numberField('solutionMl', '滴定溶液体积（mL）', 0.001)}</div>
     {previous && <section className="notification-note" style={{ display: 'block' }}>
-      <p>上次配液：{previous.startDate} · 预计 {previous.refillDate} 补液</p>
+      <p>上次配液：{previous.startDate} · {previous.theory && !cycleNeedsRefill(previous) ? `计划至 ${previous.theory.endDate}` : `预计 ${previous.refillDate} 补液`}</p>
       <p data-testid="maintenance-remaining-days">预计还可用 <strong>{Math.round(remainingDays)} 天</strong>（{remainingDays.toPrecision(3)} 天）</p>
-      <label className="field">上次滴定液还有残留吗？<select value={residualChoice} onChange={e => { const choice = e.target.value as '' | 'yes' | 'no'; setResidualChoice(choice); setSaveError(''); setResidualOverride(null); }}><option value="">请选择</option><option value="yes">有，保留残液继续配制</option><option value="no">没有，或已倒掉残液</option></select></label>
+      <fieldset className="residual-choice">
+        <legend>上次滴定液还有残留吗？</legend>
+        <div>{([{ value: 'yes', label: '保留残液' }, { value: 'no', label: '没有或已倒掉' }] as const).map(option => <label key={option.value} className={residualChoice === option.value ? 'selected' : ''}>
+          <input type="radio" name="residualChoice" value={option.value} checked={residualChoice === option.value} onChange={() => { setResidualChoice(option.value); setSaveError(''); setResidualOverride(null); }} />
+          <span>{option.label}</span>
+        </label>)}</div>
+      </fieldset>
+      {residualChoice === 'yes' && <fieldset className="residual-choice">
+        <legend>{preparedDate === today ? '今日是否已滴定？' : '配液当日是否已滴定？'}</legend>
+        <div>{([{ value: false, label: '尚未滴定' }, { value: true, label: '已完成滴定' }] as const).map(option => <label key={String(option.value)} className={(dosedOn === preparedDate) === option.value ? 'selected' : ''}>
+          <input type="radio" name="dosedToday" checked={(dosedOn === preparedDate) === option.value} onChange={() => { setDosedOn(option.value ? preparedDate : null); setResidualOverride(null); setSaveError(''); }} />
+          <span>{option.label}</span>
+        </label>)}</div>
+      </fieldset>}
       {residualChoice === 'yes' && <label className="field">保留残液体积（mL）<input type="number" min="0" step="any" value={residualMl} onChange={e => setResidualOverride(e.target.value)} /><small>预计剩余 {estimatedResidual} mL，可按实际修改。</small></label>}
     </section>}
     {r && stockMl !== undefined && <section className="notification-note" style={{ display: 'block' }} aria-live="polite">
@@ -61,30 +88,36 @@ export function MaintenanceDosingPanel({ tankName, tankId, today, cycles, initia
         <p>加 RO/DI 水 {fmt(recipe.addedWaterMl)} ml，定容至 <strong>{fmt(r.solutionMl)} ml</strong></p>
         <small>每日母液 {fmt(r.dailyStockMl)} ml · 每日泵出 {fmt(r.dailyLiquidMl)} ml</small>
         <p data-testid="maintenance-days">{previous ? '续配后预计可用' : '预计可用'} <strong>{r.estimatedDays} 天</strong>（{r.actualDays.toPrecision(3)} 天）</p>
-        <p>补液日期：{recipe.refillDate}</p>
+        <p>{recipe.theory && !cycleNeedsRefill(recipe) ? '本瓶足够完成计划，无需再次配液' : `补液日期：${recipe.refillDate}`}</p>
+        {recipe.theory && <><p>目标 {recipe.theory.target} {chemical === 'po4' ? 'mg/L' : 'dKH'} · 计划至 {recipe.theory.endDate}</p><p>最后一天运行 {fmt(input[`${chemical}Minutes`] * recipe.theory.lastDayRatio)} 分钟，泵出 {fmt(recipe.dailyLiquidMl * recipe.theory.lastDayRatio)} ml。</p></>}
       </>}
     </section>}
     {!needsChoice && recipeError && <p role="alert">{recipeError}</p>}
     {saveError && <p role="alert">{saveError}</p>}
-    <button className="primary-button wide" disabled={!recipe || needsChoice} onClick={() => {
-      if (!recipe || needsChoice) return;
+    <button className="primary-button wide" disabled={!recipe || needsChoice || saving} onClick={async () => {
+      if (!recipe || needsChoice || savePending.current) return;
       try {
         // Re-read the date at confirmation in case the browser delayed its midnight refresh.
         const currentDate = localCycleDate();
         const confirmedDate = preparedDateOverride ?? currentDate;
         if (!confirmedDate || confirmedDate > currentDate || confirmedDate < '0001-01-01') throw new Error('请选择不晚于今天的实际配液日期。');
-        const retained = residualOverride ?? (previous ? fmt(cycleRemainingMl(previous, confirmedDate)) : '');
+        const retained = residualOverride ?? (previous ? fmt(cycleResidualMl(previous, confirmedDate, dosedOn === confirmedDate)) : '');
         const confirmed = prepareMaintenanceCycle(activeInput, chemical, tankId, confirmedDate, previous,
-          residualChoice === 'yes' ? (retained.trim() === '' ? NaN : Number(retained)) : 0);
-        onSave({ ...confirmed, input: { ...input } });
+          residualChoice === 'yes' ? (retained.trim() === '' ? NaN : Number(retained)) : 0, isNativeApp() ? crypto.randomUUID() : Date.now(), theoryForDate(confirmedDate));
+        savePending.current = true;
+        setSaving(true);
+        setSaveError('');
+        await onSave({ ...confirmed, input: { ...input } });
       } catch (e) { setSaveError((e as Error).message); }
-    }}>已配好，{previous ? '开始新周期' : '添加每日平衡'}</button>
-    <p className="field-note">配好后确认；平时显示在已完成，最后一天提醒补液。</p>
+      finally { savePending.current = false; setSaving(false); }
+    }}>{saving ? '保存中…' : `已配好，${previous ? '开始新周期' : theory ? '开始理论计划' : '添加每日平衡'}`}</button>
+    <p className="field-note">{theory ? "配好后确认，替换同药剂旧配方；每日复测，达到目标后停止。" : "配好后确认；平时显示在已完成，最后一天提醒补液。"}</p>
     {error && <p className="disclaimer" role="alert">{error}</p>}
     <details><summary>母液设置</summary>
-      {chemical === 'kh' ? <><div className="field-row">{numberField('khPurity', '母液原料纯度（%）', 0.1)}{numberField('temperature', '最低保存温度（°C）')}</div><p className="field-note">请填写实际最低保存温度，避免浓度过高析出。</p>{result && <p className="field-note">此母液每 500 ml 称取 {fmt(result.khConcentration / 2)} g NaHCO₃ 后定容。</p>}</> : <p className="field-note">氯化镧母液：99.9% LaCl₃·7H₂O，19.571329 g 定容至 500 ml；每 ml 理论处理 10 mg PO₄。每日上升默认 0.02 仅为示例，请填未补偿时实测变化。</p>}
+      {chemical === 'kh' ? <><div className="field-row">{numberField('khPurity', '母液原料纯度（%）', 0.1)}{numberField('temperature', '最低保存温度（°C）')}</div><p className="field-note">请填写实际最低保存温度，避免浓度过高析出。</p>{result && <p className="field-note">此母液每 500 ml 称取 {fmt(result.khConcentration / 2)} g NaHCO₃ 后定容。</p>}</> : <p className="field-note">氯化镧母液：99.9% LaCl₃·7H₂O，19.571329 g 定容至 500 ml；每 ml 理论处理 10 mg PO₄。{!theory && "每日上升默认 0.02 仅为示例，请填未补偿时实测变化。"}</p>}
       <p className="field-note">PO4与KH分别配制，使用独立泵管，不混合。</p>
       <p className="field-note">每日复测 PO₄、KH/pH；PO₄ ≤ 0.03 mg/L、浑浊或生物异常时停止氯化镧，并通过机械过滤/蛋分捕获沉淀。</p>
     </details>
+    </fieldset>
   </section></div>;
 }

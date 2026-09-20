@@ -8,7 +8,8 @@ const errors = [];
 const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
 page.on('pageerror', error => errors.push(error.message));
 const output = new URL(`../artifacts/maintenance-browser/current/`, import.meta.url);
-await mkdir(output, { recursive: true });
+const captureScreenshots = process.env.CAPTURE_SCREENSHOTS === '1';
+if (captureScreenshots) await mkdir(output, { recursive: true });
 try {
   await page.goto(process.env.BASE_URL || `${baseURL}`, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: '打开设置' }).click();
@@ -72,8 +73,8 @@ try {
       if (chemical === 'kh') await field('最低保存温度（°C）').fill('30');
       const bounds = await dialog.evaluate(node => ({ left: node.getBoundingClientRect().left, right: node.getBoundingClientRect().right, scroll: node.scrollWidth, client: node.clientWidth }));
       assert.ok(bounds.left >= 0 && bounds.right <= width && bounds.scroll <= bounds.client + 1, JSON.stringify({ width, chemical, bounds }));
-      await page.screenshot({ path: fileURLToPath(new URL(`${chemical}-${width}.png`, output)), fullPage: true });
-      if (chemical === 'kh') {
+      if (captureScreenshots) await page.screenshot({ path: fileURLToPath(new URL(`${chemical}-${width}.png`, output)), fullPage: true });
+      if (captureScreenshots && chemical === 'kh') {
         await dialog.evaluate(node => { node.scrollTop = node.scrollHeight; });
         await page.screenshot({ path: fileURLToPath(new URL(`${chemical}-${width}-instructions.png`, output)), fullPage: true });
         await dialog.evaluate(node => { node.scrollTop = 0; });
@@ -92,7 +93,7 @@ try {
     await page.locator('.sheet .section-head .icon-button').click();
   }
   assert.deepEqual(errors, []);
-  console.log(`PASS ${process.env.BASE_URL || `${baseURL}`}: browser interaction, channel isolation, input boundaries, recipes, temperature, 12 viewport screenshots, navigation, no page errors`);
+  console.log(`PASS ${process.env.BASE_URL || `${baseURL}`}: browser interaction, channel isolation, input boundaries, recipes, temperature, four viewport checks, navigation, no page errors; screenshots=${captureScreenshots}`);
 } finally {
   await browser.close();
 }

@@ -1,3 +1,4 @@
+import { compareEntityIds, type EntityId } from "./entity-id.ts";
 import type { CalendarTaskSchedule, CalendarTaskState } from "./task-calendar.ts";
 
 export type RollingTaskMetadata = {
@@ -6,13 +7,13 @@ export type RollingTaskMetadata = {
   revision: number;
   completed: Array<{ dueDate: string; completedDate: string }>;
   /** Preserve the old implicit history when its recurrence rule is later edited. */
-  legacySchedule?: { scheduledDate: string; intervalDays?: number; defaultCompletedBeforeDate: string };
+  legacySchedule?: { scheduledDate: string; intervalDays?: number; nativeIntervalUnit?: "day" | "week" | "month"; nativeIntervalAmount?: number; defaultCompletedBeforeDate: string; stoppedAfterDate?: string };
 };
 
 export type RollingTaskProjection = { date: string; today: string };
 type RollingTask = CalendarTaskSchedule & {
-  id: number;
-  tankId?: number;
+  id: EntityId;
+  tankId?: EntityId;
   source?: string;
   planId?: string;
   dayIndex?: number;
@@ -41,7 +42,50 @@ export function addTaskCalendarDays(date: string, days: number) {
 
 function interval(task: CalendarTaskSchedule) {
   const finitePlan = task.planId && (task.source === "lanthanum-plan" || task.source === "alkalinity-plan");
-  return !finitePlan && !task.oneOff && Number.isSafeInteger(task.intervalDays) && task.intervalDays! > 0 ? task.intervalDays : undefined;
+  const days = task.nativeIntervalUnit === "month" ? undefined : task.intervalDays
+    ?? (task.nativeIntervalAmount !== undefined ? task.nativeIntervalAmount * (task.nativeIntervalUnit === "week" ? 7 : 1) : undefined);
+  return !finitePlan && !task.oneOff && Number.isSafeInteger(days) && days! > 0 ? days : undefined;
+}
+
+function monthInterval(task: CalendarTaskSchedule) {
+  return !task.oneOff && !task.planId && task.nativeIntervalUnit === "month"
+    && Number.isSafeInteger(task.nativeIntervalAmount) && task.nativeIntervalAmount! > 0 ? task.nativeIntervalAmount : undefined;
+}
+
+export function hasTaskRecurrence(task: CalendarTaskSchedule) {
+  return Boolean(interval(task) || monthInterval(task)
+    || (!task.rolling && !task.oneOff && !task.planId && Number.isFinite(task.intervalDays) && task.intervalDays! > 0));
+}
+
+export function addTaskCalendarMonths(date: string, months: number) {
+  ordinal(date);
+  if (!Number.isSafeInteger(months)) throw new Error("月份必须是整数。");
+  const [year, month, day] = date.split("-").map(Number);
+  const absoluteMonth = year * 12 + month - 1 + months;
+  const nextYear = Math.floor(absoluteMonth / 12), nextMonth = absoluteMonth % 12;
+  if (nextYear < 1 || nextYear > 9999) throw new Error("日期超出可用范围。");
+  const last = new Date(0);
+  last.setUTCFullYear(nextYear, nextMonth + 1, 0);
+  return `${String(nextYear).padStart(4, "0")}-${String(nextMonth + 1).padStart(2, "0")}-${String(Math.min(day, last.getUTCDate())).padStart(2, "0")}`;
+}
+
+/** Match the native recurrence: each projected month is anchored to the effective day. */
+export function taskRecurrenceMatches(task: CalendarTaskSchedule, anchor: string, date: string) {
+  if (date < anchor) return false;
+  const months = monthInterval(task);
+  if (months) {
+    const [anchorYear, anchorMonth] = anchor.split("-").map(Number);
+    const [year, month] = date.split("-").map(Number);
+    const elapsed = (year - anchorYear) * 12 + month - anchorMonth;
+    return elapsed % months === 0 && addTaskCalendarMonths(anchor, elapsed) === date;
+  }
+  const days = interval(task) ?? (!task.rolling && hasTaskRecurrence(task) ? task.intervalDays : undefined);
+  return days ? (ordinal(date) - ordinal(anchor)) % days === 0 : date === anchor;
+}
+
+function nextTaskDate(task: CalendarTaskSchedule, from: string) {
+  const months = monthInterval(task), days = interval(task);
+  return months ? addTaskCalendarMonths(from, months) : days ? addTaskCalendarDays(from, days) : undefined;
 }
 
 function active(task: CalendarTaskSchedule) {
@@ -56,12 +100,20 @@ function chemicalKey(task: RollingTask) {
 function legacyNextDate(task: RollingTask) {
   const start = task.scheduledDate!;
   const step = interval(task);
-  if (!step) return start;
-  const matchesRule = (date: string) => date >= start && (ordinal(date) - ordinal(start)) % step === 0;
+  const months = monthInterval(task);
+  if (!step && !months) return start;
+  const matchesRule = (date: string) => taskRecurrenceMatches(task, start, date);
   const handled = [...(task.completedDates ?? []), ...(task.skippedDates ?? [])].filter(matchesRule).sort();
-  let next = handled.length ? addTaskCalendarDays(handled.at(-1)!, step) : start;
+  let next = handled.length ? nextTaskDate(task, handled.at(-1)!)! : start;
   if (task.defaultCompletedBeforeDate && next < task.defaultCompletedBeforeDate) {
-    next = addTaskCalendarDays(start, Math.ceil((ordinal(task.defaultCompletedBeforeDate) - ordinal(start)) / step) * step);
+    if (months) {
+      const [year, month] = task.defaultCompletedBeforeDate.split("-").map(Number);
+      const [anchorYear, anchorMonth] = start.split("-").map(Number);
+      const elapsed = Math.max(0, (year - anchorYear) * 12 + month - anchorMonth);
+      const periods = Math.ceil(elapsed / months);
+      next = addTaskCalendarMonths(start, periods * months);
+      if (next < task.defaultCompletedBeforeDate) next = addTaskCalendarMonths(start, (periods + 1) * months);
+    } else next = addTaskCalendarDays(start, Math.ceil((ordinal(task.defaultCompletedBeforeDate) - ordinal(start)) / step!) * step!);
   }
   const handledDates = new Set(handled);
   const reopened = (task.reopenedDates ?? []).filter(date => matchesRule(date) && !handledDates.has(date)).sort()[0];
@@ -79,6 +131,8 @@ export function initializeRollingTasks<T extends RollingTask>(tasks: T[], today:
     if (task.defaultCompletedBeforeDate) rolling.legacySchedule = {
       scheduledDate: task.scheduledDate,
       intervalDays: task.intervalDays,
+      ...(task.nativeIntervalUnit === undefined ? {} : { nativeIntervalUnit: task.nativeIntervalUnit }),
+      ...(task.nativeIntervalAmount === undefined ? {} : { nativeIntervalAmount: task.nativeIntervalAmount }),
       defaultCompletedBeforeDate: task.defaultCompletedBeforeDate,
     };
     return { ...task, rolling };
@@ -112,7 +166,7 @@ export function taskDisplayDate(task: CalendarTaskSchedule, today?: string) {
 
 function comparePendingChemicalTasks(a: RollingTask, b: RollingTask) {
   return a.rolling!.nextDate.localeCompare(b.rolling!.nextDate)
-    || (a.dayIndex ?? 0) - (b.dayIndex ?? 0) || a.id - b.id;
+    || (a.dayIndex ?? 0) - (b.dayIndex ?? 0) || compareEntityIds(a.id, b.id);
 }
 
 function pendingChemicalMembers<T extends RollingTask>(tasks: T[], selected: T) {
@@ -151,8 +205,8 @@ export function rollingHistoryState(task: CalendarTaskSchedule, date: string): C
   if (task.skippedDates?.includes(date)) return "skipped";
   const legacy = task.rolling?.legacySchedule;
   if (legacy && date < legacy.defaultCompletedBeforeDate && date >= legacy.scheduledDate && !task.reopenedDates?.includes(date)) {
-    const step = legacy.intervalDays;
-    if (!step ? date === legacy.scheduledDate : (ordinal(date) - ordinal(legacy.scheduledDate)) % step === 0) return "done";
+    if ((!legacy.stoppedAfterDate || date < legacy.stoppedAfterDate)
+      && taskRecurrenceMatches({ ...legacy, state: "done" }, legacy.scheduledDate, date)) return "done";
   }
   if (task.stoppedAfterDate === date && task.state === "skipped") return "skipped";
   if (task.rolling?.revision === 0 && (task.state === "done" || task.state === "skipped") && task.scheduledDate === date) return task.state;
@@ -164,15 +218,15 @@ export function rollingPendingOnDate(task: CalendarTaskSchedule, date: string, t
   if (!active(task)) return false;
   const base = taskDisplayDate(task, today)!;
   if (date < base) return false;
-  const step = interval(task);
-  return step ? (ordinal(date) - ordinal(base)) % step === 0 : date === base;
+  if (task.rolling.legacySchedule?.stoppedAfterDate && date >= task.rolling.legacySchedule.stoppedAfterDate) return false;
+  return taskRecurrenceMatches(task, base, date);
 }
 
 export function rollingOccursOnDate(task: CalendarTaskSchedule, date: string, today?: string) {
   return !task.hiddenFromCalendar && Boolean(task.rolling) && (Boolean(rollingHistoryState(task, date)) || rollingPendingOnDate(task, date, today));
 }
 
-function selectedTask<T extends RollingTask>(tasks: T[], id: number, expectedRevision?: number, requireActive = true) {
+function selectedTask<T extends RollingTask>(tasks: T[], id: EntityId, expectedRevision?: number, requireActive = true) {
   const task = tasks.find(item => item.id === id);
   if (!task?.rolling || (requireActive && !active(task))) throw new Error("该任务已更新，请重新打开。");
   if (expectedRevision !== undefined && task.rolling.revision !== expectedRevision) throw new Error("该任务已更新，请重新打开。");
@@ -208,7 +262,7 @@ function validateCompletionDate<T extends RollingTask>(tasks: T[], task: T, actu
   if (previous && actualDate <= previous) throw new Error("完成日期必须晚于上一次实际完成日期。");
 }
 
-export function delayRollingTask<T extends RollingTask>(tasks: T[], id: number, days: number, today: string, expectedRevision?: number): T[] {
+export function delayRollingTask<T extends RollingTask>(tasks: T[], id: EntityId, days: number, today: string, expectedRevision?: number): T[] {
   if (!Number.isSafeInteger(days) || days < 1) throw new Error("延迟天数必须是大于 0 的整数。");
   ordinal(today);
   const task = selectedTask(tasks, id, expectedRevision);
@@ -223,20 +277,20 @@ export function delayRollingTask<T extends RollingTask>(tasks: T[], id: number, 
   } : item);
 }
 
-export function completeRollingTask<T extends RollingTask>(tasks: T[], id: number, actualDate: string, today: string, expectedRevision?: number): T[] {
+export function completeRollingTask<T extends RollingTask>(tasks: T[], id: EntityId, actualDate: string, today: string, expectedRevision?: number): T[] {
   const task = selectedTask(tasks, id, expectedRevision);
   const members = requireHead(tasks, task);
   validateCompletionDate(tasks, task, actualDate, today);
   const dueDate = taskDisplayDate(projectRollingTasks(tasks, today).find(item => item.id === id)!, today)!;
   const completed = [...task.rolling!.completed, { dueDate, completedDate: actualDate }];
-  const step = interval(task);
+  const nextDate = nextTaskDate(task, actualDate);
   const group = chemicalKey(task);
   const shift = ordinal(actualDate) - ordinal(task.rolling!.nextDate);
   const affected = new Set(members.map(item => item.id));
   return tasks.map(item => {
     if (item.id === id) return {
-      ...clearedSnooze(item), state: step ? "due" : "done", handledAt: `${actualDate} 完成`,
-      rolling: { ...item.rolling!, completed, nextDate: step ? addTaskCalendarDays(actualDate, step) : item.rolling!.nextDate, revision: item.rolling!.revision + 1 },
+      ...clearedSnooze(item), state: nextDate ? "due" : "done", handledAt: `${actualDate} 完成`,
+      rolling: { ...item.rolling!, completed, nextDate: nextDate ?? item.rolling!.nextDate, revision: item.rolling!.revision + 1 },
     };
     if (group && affected.has(item.id)) return {
       ...clearedSnooze(item), state: "soon",
@@ -252,18 +306,18 @@ function latestEntry<T extends RollingTask>(tasks: T[], task: T, completedDate: 
   return entry;
 }
 
-export function correctRollingCompletion<T extends RollingTask>(tasks: T[], id: number, completedDate: string, actualDate: string, today: string, expectedRevision?: number): T[] {
+export function correctRollingCompletion<T extends RollingTask>(tasks: T[], id: EntityId, completedDate: string, actualDate: string, today: string, expectedRevision?: number): T[] {
   const task = selectedTask(tasks, id, expectedRevision, false);
   const entry = latestEntry(tasks, task, completedDate);
   validateCompletionDate(tasks, task, actualDate, today, true);
-  const step = interval(task);
+  const nextDate = nextTaskDate(task, actualDate);
   const key = chemicalKey(task);
   const shift = ordinal(actualDate) - ordinal(entry.completedDate);
   return tasks.map(item => {
     if (item.id === id) return {
       ...item, handledAt: `${actualDate} 完成`, projection: undefined,
       rolling: { ...item.rolling!, completed: [...item.rolling!.completed.slice(0, -1), { ...entry, completedDate: actualDate }],
-        nextDate: step ? addTaskCalendarDays(actualDate, step) : item.rolling!.nextDate, revision: item.rolling!.revision + 1 },
+        nextDate: nextDate ?? item.rolling!.nextDate, revision: item.rolling!.revision + 1 },
     };
     return key && chemicalKey(item) === key && active(item) && item.rolling ? {
       ...item, projection: undefined, rolling: { ...item.rolling, nextDate: addTaskCalendarDays(item.rolling.nextDate, shift), revision: item.rolling.revision + 1 },
@@ -271,7 +325,7 @@ export function correctRollingCompletion<T extends RollingTask>(tasks: T[], id: 
   });
 }
 
-export function reopenRollingTask<T extends RollingTask>(tasks: T[], id: number, completedDate: string, today: string, expectedRevision?: number): T[] {
+export function reopenRollingTask<T extends RollingTask>(tasks: T[], id: EntityId, completedDate: string, today: string, expectedRevision?: number): T[] {
   ordinal(today); ordinal(completedDate);
   const task = selectedTask(tasks, id, expectedRevision, false);
   const latest = task.rolling!.completed.at(-1);
@@ -298,7 +352,7 @@ export function reopenRollingTask<T extends RollingTask>(tasks: T[], id: number,
   });
 }
 
-export function stopRollingTask<T extends RollingTask>(tasks: T[], id: number, today: string, expectedRevision?: number): T[] {
+export function stopRollingTask<T extends RollingTask>(tasks: T[], id: EntityId, today: string, expectedRevision?: number): T[] {
   ordinal(today);
   const task = selectedTask(tasks, id, expectedRevision);
   const members = requireHead(tasks, task);

@@ -27,6 +27,8 @@ test("normalizes valid per-tank fish records and rejects malformed entries", () 
   ]);
   assert.equal(fishCount(normalized.filter((item) => item.tankId === 1)), 2);
   assert.equal(fishCount(normalized.filter((item) => item.tankId === 2)), 3);
+  const native = { ...normalized[0], id: "fbc9e91d-63e2-47f1-9c20-af429ea0a631", tankId: "9007199254740993" };
+  assert.deepEqual(normalizeFishStock(JSON.parse(JSON.stringify([native])), []), [native]);
 });
 
 test("offers every approved built-in fish with its own artwork", async () => {

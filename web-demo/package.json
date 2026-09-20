@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "build:mobile": "vite build --config vite.mobile.config.ts",
     "start": "node tools/preview.mjs",
     "test": "npm run check",
     "test:unit": "node tools/run-unit.mjs",

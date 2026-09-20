@@ -39,7 +39,7 @@
 | 数据保留 | 安装前后 11 张表全部逐行相同：3 缸、1 条检测、5 任务、7 事件等；启动日志无筛选到的 Flutter/Android 未处理异常。[安装核对](../../artifacts/optimization-device-2026-09-08/verification.json)。原始快照和日志同目录。 |
 | 独立 App 代码复核 | 分页游标与排序、删游标后续页、跨空点、切换参数异步隔离、旧记录编辑通知、暂停恢复计时均未发现明确问题；未进行真实大量数据耗时或极端时钟跳变测量。 |
 
-最终 APK：[app-debug.apk](../../app/build/app/outputs/flutter-apk/app-debug.apk)，201568822 字节；SHA-256：`91554578F99358778BC6787168BEF11E591B4E76597A841791A93D3820B400BB`。
+最终 APK：`app-debug.apk`（当时构建路径；重建产物已清理，见[清理记录](repository-cleanup-2026-09-19.md)），201568822 字节；SHA-256：`91554578F99358778BC6787168BEF11E591B4E76597A841791A93D3820B400BB`。
 
 ## 暂停点与续做顺序
 

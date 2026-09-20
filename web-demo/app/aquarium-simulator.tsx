@@ -1,4 +1,5 @@
 "use client";
+import { type EntityId } from "./entity-id.ts";
 
 import {
   useEffect,
@@ -23,6 +24,8 @@ import {
   type FishStockItem,
 } from "./aquarium-data";
 import { prepareFishArtwork } from "./aquarium-artwork";
+import { isNativeApp } from "./native-bridge";
+import { isAppVisible, observeAppVisibility } from "./app-visibility";
 import {
   createFishMotion,
   fishFacing,
@@ -41,11 +44,11 @@ type AquariumSimulatorProps = {
 };
 
 type FishManagerSheetProps = {
-  tankId: number;
+  tankId: EntityId;
   tankName: string;
   stock: FishStockItem[];
   onClose: () => void;
-  onSave: (items: FishStockItem[]) => void;
+  onSave: (items: FishStockItem[]) => void | Promise<void>;
 };
 
 function localDateKey() {
@@ -110,8 +113,10 @@ export function AquariumSimulator({ tankName, stock, runningDays, onOpen, onMana
 
   useEffect(() => {
     const water = waterRef.current;
-    if (!water || !swimmers.length) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!water) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const rect = water.getBoundingClientRect();
+    let inView = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
 
     let frame = 0;
     let previousTime = performance.now();
@@ -134,6 +139,7 @@ export function AquariumSimulator({ tankName, stock, runningDays, onOpen, onMana
     window.addEventListener("resize", updateBounds);
 
     const tick = (time: number) => {
+      frame = 0;
       const delta = (time - previousTime) / 1000;
       previousTime = time;
 
@@ -161,10 +167,34 @@ export function AquariumSimulator({ tankName, stock, runningDays, onOpen, onMana
       frame = window.requestAnimationFrame(tick);
     };
 
-    frame = window.requestAnimationFrame(tick);
+    const refreshAnimation = () => {
+      const visible = inView && isAppVisible() && !reducedMotion.matches;
+      water.querySelectorAll<HTMLElement>(".aquarium-bubble").forEach(bubble => {
+        bubble.style.animationPlayState = visible ? "running" : "paused";
+      });
+      if (!visible || !swimmers.length) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      } else if (!frame) {
+        previousTime = performance.now();
+        frame = window.requestAnimationFrame(tick);
+      }
+    };
+    const stopObserving = observeAppVisibility(refreshAnimation);
+    const intersectionObserver = typeof IntersectionObserver === "undefined" ? null
+      : new IntersectionObserver(entries => {
+        inView = entries.some(entry => entry.isIntersecting);
+        refreshAnimation();
+      });
+    intersectionObserver?.observe(water);
+    reducedMotion.addEventListener("change", refreshAnimation);
+    refreshAnimation();
     return () => {
       window.cancelAnimationFrame(frame);
       resizeObserver?.disconnect();
+      intersectionObserver?.disconnect();
+      stopObserving();
+      reducedMotion.removeEventListener("change", refreshAnimation);
       window.removeEventListener("resize", updateBounds);
     };
   }, [swimmers]);
@@ -198,7 +228,6 @@ export function AquariumSimulator({ tankName, stock, runningDays, onOpen, onMana
           }}
         ><FishArtworkView artwork={fish.artwork} /></i>;
       })}
-      {!count && <span className="aquarium-empty">点击鱼缸建立鱼类档案</span>}
     </span>
     <span className="aquarium-summary">
       <span>{summary}</span>
@@ -217,23 +246,31 @@ export function FishManagerSheet({
 }: FishManagerSheetProps) {
   const [draft, setDraft] = useState(() => stock.map((item) => ({ ...item })));
   const [addMode, setAddMode] = useState<"builtin" | "custom">("builtin");
-  const [selectedBuiltinId, setSelectedBuiltinId] = useState<BuiltinFishId>("clownfish");
+  const [selectedBuiltinIds, setSelectedBuiltinIds] = useState<BuiltinFishId[]>([]);
   const [newSpecies, setNewSpecies] = useState("");
   const [newQuantity, setNewQuantity] = useState(1);
   const [newDate, setNewDate] = useState(localDateKey);
   const [newArtworkDataUrl, setNewArtworkDataUrl] = useState("");
-  const [processingArtworkId, setProcessingArtworkId] = useState("");
+  const [processingArtworkId, setProcessingArtworkId] = useState<EntityId>("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [addedFeedback, setAddedFeedback] = useState("");
+  useEffect(() => {
+    if (!addedFeedback) return;
+    const timeout = window.setTimeout(() => setAddedFeedback(""), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [addedFeedback]);
+  const savePending = useRef(false);
   const artworkRequest = useRef<AbortController | null>(null);
   useEffect(() => () => artworkRequest.current?.abort(), []);
 
-  function updateItem(id: string, patch: Partial<FishStockItem>) {
+  function updateItem(id: EntityId, patch: Partial<FishStockItem>) {
     setDraft((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item));
   }
 
   async function readArtwork(
     event: ChangeEvent<HTMLInputElement>,
-    destination: "new" | string,
+    destination: EntityId,
   ) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -264,17 +301,16 @@ export function FishManagerSheet({
   }
 
   function addSpecies() {
-    const builtin = BUILTIN_FISH_SPECIES.find((item) => item.id === selectedBuiltinId) ?? BUILTIN_FISH_SPECIES[0];
-    const species = addMode === "builtin" ? builtin.name : newSpecies.trim();
-    const artwork: FishArtwork = addMode === "builtin"
-      ? builtinFishArtwork(builtin.id)
-      : { source: "custom", dataUrl: newArtworkDataUrl };
-    if (!species) {
-      setError("请填写鱼的品种。");
+    setAddedFeedback("");
+    const additions: { species: string; artwork: FishArtwork }[] = addMode === "builtin"
+      ? BUILTIN_FISH_SPECIES.filter(item => selectedBuiltinIds.includes(item.id)).map(item => ({ species: item.name, artwork: builtinFishArtwork(item.id) }))
+      : [{ species: newSpecies.trim(), artwork: { source: "custom", dataUrl: newArtworkDataUrl } }];
+    if (!additions.length || additions.some(item => !item.species)) {
+      setError(addMode === "builtin" ? "请先选择鱼种。" : "请填写鱼的品种。");
       return;
     }
-    if (draft.some((item) => item.species.toLowerCase() === species.toLowerCase())) {
-      setError("该品种已在列表中，可直接修改数量。");
+    if (additions.some(item => draft.some(existing => existing.species.toLowerCase() === item.species.toLowerCase()))) {
+      setError("所选鱼种已在列表中，请直接修改数量或取消该鱼种后再加入。");
       return;
     }
     if (!Number.isInteger(newQuantity) || newQuantity < 1 || newQuantity > MAX_FISH_QUANTITY) {
@@ -289,23 +325,26 @@ export function FishManagerSheet({
       setError("请为自定义鱼种上传立绘。");
       return;
     }
-    setDraft((items) => [...items, {
-      id: `fish-${tankId}-${Date.now()}-${items.length}`,
+    setDraft((items) => [...items, ...additions.map(({ species, artwork }, index) => ({
+      id: isNativeApp() ? crypto.randomUUID() : `fish-${tankId}-${Date.now()}-${items.length + index}`,
       tankId,
       species: species.slice(0, 24),
       quantity: newQuantity,
       introducedOn: newDate,
       artwork,
-    }]);
+    }))]);
     setNewSpecies("");
     setNewQuantity(1);
     setNewDate(localDateKey());
     setNewArtworkDataUrl("");
     setError("");
+    setSelectedBuiltinIds([]);
+    setAddedFeedback(`✓ 已加入 ${additions.length} 种鱼，保存后生效`);
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (savePending.current || processingArtworkId) return;
     const normalized = draft.map((item) => ({
       ...item,
       species: item.species.trim().slice(0, 24),
@@ -320,12 +359,18 @@ export function FishManagerSheet({
       setError("同一品种只保留一条档案，请合并数量。");
       return;
     }
-    onSave(normalized);
+    savePending.current = true;
+    setSaving(true);
+    setError("");
+    try { await onSave(normalized); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "暂时无法保存，请重试。"); }
+    finally { savePending.current = false; setSaving(false); }
   }
 
   return <form className="sheet fish-manager-sheet" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
     <div className="sheet-handle" />
-    <div className="section-head"><div><p className="eyebrow">{tankName}</p><h2>鱼类档案</h2></div><button type="button" className="icon-button" onClick={onClose}>×</button></div>
+    <div className="section-head"><div><p className="eyebrow">{tankName}</p><h2>鱼类档案</h2></div><button aria-label="关闭" type="button" className="icon-button close-button" disabled={saving} onClick={onClose}>×</button></div>
+    <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
     <p className="form-hint">选择鱼种、数量和入缸日期；也可添加自定义鱼种。</p>
     <div className="fish-stock-editor">
       {draft.map((item) => <article key={item.id}>
@@ -341,7 +386,7 @@ export function FishManagerSheet({
       <strong>添加鱼的品种</strong>
       <div className="fish-add-mode" role="tablist" aria-label="鱼种来源"><button type="button" role="tab" aria-selected={addMode === "builtin"} className={addMode === "builtin" ? "active" : ""} onClick={() => { setAddMode("builtin"); setError(""); }}>选择内置鱼种</button><button type="button" role="tab" aria-selected={addMode === "custom"} className={addMode === "custom" ? "active" : ""} onClick={() => { setAddMode("custom"); setError(""); }}>添加其他鱼种</button></div>
       {addMode === "builtin" ? <div className="fish-species-catalog">
-        {BUILTIN_FISH_SPECIES.map((species) => <button key={species.id} type="button" className={selectedBuiltinId === species.id ? "selected" : ""} onClick={() => setSelectedBuiltinId(species.id)}><span><FishArtworkView artwork={builtinFishArtwork(species.id)} alt={`${species.name}立绘`} /></span><div><strong>{species.name}</strong><small>{species.note}</small></div><b>{selectedBuiltinId === species.id ? "已选择 ✓" : "选择"}</b></button>)}
+        {BUILTIN_FISH_SPECIES.map((species) => <button key={species.id} type="button" className={selectedBuiltinIds.includes(species.id) ? "selected" : ""} aria-pressed={selectedBuiltinIds.includes(species.id)} onClick={() => { setSelectedBuiltinIds(ids => ids.includes(species.id) ? ids.filter(id => id !== species.id) : [...ids, species.id]); setAddedFeedback(""); setError(""); }}><span><FishArtworkView artwork={builtinFishArtwork(species.id)} alt={`${species.name}立绘`} /></span><div><strong>{species.name}</strong><small>{species.note}</small></div><b>{selectedBuiltinIds.includes(species.id) ? "已选择 ✓" : "选择"}</b></button>)}
       </div> : <div className="custom-fish-builder">
         <label className="field">鱼种名称<input value={newSpecies} maxLength={24} placeholder="例如：蓝吊" onChange={(event) => setNewSpecies(event.target.value)} /></label>
         <label className={`artwork-upload ${newArtworkDataUrl ? "has-preview" : ""}`}>
@@ -350,10 +395,11 @@ export function FishManagerSheet({
           <input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(processingArtworkId)} onChange={(event) => void readArtwork(event, "new")} />
         </label>
       </div>}
-      <div className="field-row"><label>数量<input type="number" min="1" max={MAX_FISH_QUANTITY} value={newQuantity} onChange={(event) => setNewQuantity(Number(event.target.value))} /></label><label>入缸日期<input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} /></label></div>
-      <button className="soft-button wide" type="button" disabled={Boolean(processingArtworkId)} onClick={addSpecies}>＋ 加入鱼类档案</button>
+      <div className="field-row"><label>{addMode === "builtin" ? "每种数量" : "数量"}<input type="number" min="1" max={MAX_FISH_QUANTITY} value={newQuantity} onChange={(event) => setNewQuantity(Number(event.target.value))} /></label><label>入缸日期<input type="date" value={newDate} onChange={(event) => setNewDate(event.target.value)} /></label></div>
+      <button className={`soft-button wide fish-add-button${addedFeedback ? " is-added" : ""}`} type="button" disabled={Boolean(processingArtworkId)} onClick={addSpecies}><span aria-live="polite">{addedFeedback || (addMode === "builtin" && selectedBuiltinIds.length ? `＋ 加入 ${selectedBuiltinIds.length} 种鱼` : "＋ 加入鱼类档案")}</span></button>
     </section>
     {error && <p className="calculation-error" role="alert">{error}</p>}
-    <button className="primary-button wide" type="submit">保存鱼类档案</button>
+    <button className="primary-button wide" type="submit" disabled={saving || Boolean(processingArtworkId)}>{saving ? "保存中…" : "保存鱼类档案"}</button>
+    </fieldset>
   </form>;
 }

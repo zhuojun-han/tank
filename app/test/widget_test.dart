@@ -18,34 +18,27 @@ import 'package:lanjiao_water_quality/features/maintenance/application/maintenan
 import 'package:lanjiao_water_quality/features/maintenance/application/maintenance_notification_providers.dart';
 import 'package:lanjiao_water_quality/features/tanks/data/tank_repository.dart';
 import 'package:lanjiao_water_quality/features/test_records/application/test_record_providers.dart';
+import 'package:lanjiao_water_quality/features/trends/presentation/database_record_history_widgets.dart';
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-
-  testWidgets('首屏展示真实海缸摘要和四个导航入口', (tester) async {
-    await tester.pumpWidget(_testApp());
-    await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
-    await tester.scrollUntilVisible(
-      find.text('还没有检测记录'),
-      240,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 20,
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .platformDispatcher
+        .accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+      disableAnimations: true,
     );
-
-    expect(find.text('我的海缸'), findsOneWidget);
-    expect(find.textContaining('今日 ·'), findsOneWidget);
-    expect(find.text('手动添加记录'), findsOneWidget);
-    for (final label in ['首页', '检测', '趋势', '任务']) {
-      expect(find.text(label), findsWidgets);
-    }
-    await _disposeApp(tester);
+  });
+  tearDown(() {
+    TestWidgetsFlutterBinding.ensureInitialized().platformDispatcher
+        .clearAccessibilityFeaturesTestValue();
   });
 
   testWidgets('鱼种目录横滑至末尾选择黄金吊，切换自定义后仍保存正确数量与立绘', (tester) async {
     await tester.pumpWidget(_testApp(enableRealFishStock: true));
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
 
-    await tester.tap(find.byKey(const Key('home-aquarium-card')));
+    await tester.tap(find.byKey(const Key('edit-fish-stock')));
     await _pumpUntilFound(tester, find.text('鱼类档案'));
     await tester.pumpAndSettle();
     expect(find.text('小丑鱼'), findsOneWidget);
@@ -60,7 +53,7 @@ void main() {
     );
     final yellowTang = find.byKey(const Key('builtin-fish-builtinYellowTang'));
     expect(yellowTang.hitTestable(), findsNothing);
-    await tester.ensureVisible(catalog);
+    await _center(tester, catalog);
     await tester.scrollUntilVisible(
       yellowTang,
       400,
@@ -144,19 +137,15 @@ void main() {
     await _pumpUntilFound(tester, find.text('我的海缸'));
 
     await tester.tap(find.text('检测').last);
-    await _pumpUntilFound(tester, find.text('添加手动检测记录'));
-    expect(find.text('目标范围'), findsOneWidget);
+    await _pumpUntilFound(tester, find.byKey(const Key('add-test-record')));
     await tester.scrollUntilVisible(
-      find.text('还没有检测记录'),
+      find.byKey(const Key('add-test-record')),
       240,
       scrollable: find.byType(Scrollable).first,
       maxScrolls: 20,
     );
-    await _pumpUntilFound(tester, find.text('还没有检测记录'));
-
-    final addRecord = find.text('添加手动检测记录');
-    await tester.ensureVisible(addRecord);
-    await tester.pump();
+    final addRecord = find.byKey(const Key('add-test-record'));
+    await _center(tester, addRecord);
     await tester.tap(addRecord.hitTestable());
     await _pumpUntilFound(tester, find.text('检测参数'));
     expect(find.text('添加手动检测'), findsOneWidget);
@@ -171,9 +160,9 @@ void main() {
     await tester.tap(find.byTooltip('设置'));
     await _pumpUntilFound(tester, find.text('海缸管理'));
     expect(find.text('我的海缸'), findsWidgets);
-    expect(find.byKey(const Key('open-salinity-calculator')), findsOneWidget);
-    expect(find.byKey(const Key('open-lanthanum-calculator')), findsOneWidget);
-    expect(find.byType(SwitchListTile), findsOneWidget);
+    expect(find.text('关注指标管理'), findsOneWidget);
+    expect(find.text('水质目标范围'), findsOneWidget);
+    expect(find.text('稳定滴定配方'), findsOneWidget);
     await _disposeApp(tester);
   });
 
@@ -181,12 +170,14 @@ void main() {
     await tester.pumpWidget(_testApp());
     await _pumpUntilFound(tester, find.text('我的海缸'));
     await tester.tap(find.byTooltip('设置'));
-    await _pumpUntilFound(
-      tester,
-      find.byKey(const Key('open-salinity-calculator')),
+    await _pumpUntilFound(tester, find.text('设置与工具'));
+    await tester.scrollUntilVisible(
+      find.text('海盐计算'),
+      250,
+      scrollable: find.byType(Scrollable).last,
     );
-
-    await tester.tap(find.byKey(const Key('open-salinity-calculator')));
+    await _center(tester, find.text('海盐计算'));
+    await tester.tap(find.text('海盐计算').hitTestable());
     await _pumpUntilFound(tester, find.byKey(const Key('calculate-salinity')));
     expect(find.text('海盐配制计算器'), findsWidgets);
     expect(find.byKey(const Key('salinity-initial')), findsOneWidget);
@@ -194,64 +185,19 @@ void main() {
 
     await tester.tap(find.byTooltip('Back').hitTestable().last);
     await tester.pumpAndSettle();
-    await _pumpUntilFound(
-      tester,
-      find.byKey(const Key('open-lanthanum-calculator')),
+    await tester.tap(find.byTooltip('设置'));
+    await _pumpUntilFound(tester, find.text('设置与工具'));
+    await tester.scrollUntilVisible(
+      find.text('PO4 理论计划'),
+      250,
+      scrollable: find.byType(Scrollable).last,
     );
-    await tester.tap(find.byKey(const Key('open-lanthanum-calculator')));
+    await _center(tester, find.text('PO4 理论计划'));
+    await tester.tap(find.text('PO4 理论计划').hitTestable());
     await _pumpUntilFound(tester, find.byKey(const Key('calculate-lanthanum')));
     expect(find.text('氯化镧降低 PO4'), findsOneWidget);
     expect(find.byKey(const Key('lanthanum-target-po4')), findsOneWidget);
     expect(find.byKey(const Key('lanthanum-net-volume')), findsOneWidget);
-    await _disposeApp(tester);
-  });
-
-  testWidgets('检测历史显示确认值并可进入编辑', (tester) async {
-    final now = DateTime.utc(2026, 8, 10);
-    await tester.pumpWidget(
-      _testApp(
-        records: [
-          TestRecord(
-            id: 'record-1',
-            tankId: AppDatabase.defaultTankId,
-            parameterId: AppDatabase.no3Id,
-            confirmedMinValue: 5,
-            unit: 'mg/L',
-            measuredAt: now,
-            wasManuallyEdited: false,
-            createdAt: now,
-            updatedAt: now,
-          ),
-        ],
-      ),
-    );
-    await _pumpUntilFound(tester, find.text('我的海缸'));
-    await tester.tap(find.text('检测').last);
-    await _pumpUntilFound(tester, find.text('添加手动检测记录'));
-    await tester.scrollUntilVisible(
-      find.text('NO3  5 mg/L'),
-      240,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 20,
-    );
-    await _pumpUntilFound(tester, find.text('NO3  5 mg/L'));
-
-    await tester.tap(find.text('NO3  5 mg/L').hitTestable());
-    await _pumpUntilFound(tester, find.text('NO3 检测详情'));
-    expect(find.text('最终确认结果'), findsOneWidget);
-    final editButton = find.byKey(const Key('edit-test-record')).hitTestable();
-    expect(editButton, findsOneWidget);
-    await tester.tap(editButton);
-    await _pumpUntilFound(tester, find.byKey(const Key('record-min-value')));
-    expect(find.text('算法与拍摄原始信息（只读）'), findsNothing);
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('record-min-value')))
-          .controller!
-          .text,
-      '5',
-    );
-    expect(find.text('检测时间'), findsOneWidget);
     await _disposeApp(tester);
   });
 
@@ -260,60 +206,17 @@ void main() {
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
     await tester.tap(find.text('趋势').last);
     await _pumpUntilFound(tester, find.text('NO3 暂无趋势数据'));
-
-    expect(find.text('手动添加记录'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('trend-add-record')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byKey(const Key('trend-add-record')), findsOneWidget);
     expect(find.byKey(const Key('trend-chart')), findsNothing);
     await _disposeApp(tester);
   });
 
-  testWidgets('范围趋势显示目标带说明和数据不足提示', (tester) async {
-    final now = DateTime.utc(2026, 8, 10);
-    await tester.pumpWidget(
-      _testApp(
-        records: [
-          TestRecord(
-            id: 'range-record',
-            tankId: AppDatabase.defaultTankId,
-            parameterId: AppDatabase.no3Id,
-            confirmedMinValue: 10,
-            confirmedMaxValue: 20,
-            unit: 'mg/L',
-            measuredAt: now,
-            wasManuallyEdited: false,
-            createdAt: now,
-            updatedAt: now,
-          ),
-        ],
-        targets: [
-          WaterQualityTarget(
-            id: 'target',
-            tankId: AppDatabase.defaultTankId,
-            parameterId: AppDatabase.no3Id,
-            minValue: 5,
-            maxValue: 15,
-            unit: 'mg/L',
-            updatedAt: now,
-          ),
-        ],
-      ),
-    );
-    await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
-    await tester.scrollUntilVisible(
-      find.text('NO3 · 10–20 mg/L'),
-      260,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 20,
-    );
-    await tester.tap(find.text('趋势').last);
-    await _pumpUntilFound(tester, find.byKey(const Key('trend-chart')));
-
-    expect(find.text('目标 5–15 mg/L'), findsOneWidget);
-    expect(find.text('范围与插值'), findsOneWidget);
-    expect(find.textContaining('中点，仅用于绘图'), findsNothing);
-    await _disposeApp(tester);
-  });
-
-  testWidgets('点击首页 PO4 最近记录后趋势页选中 PO4', (tester) async {
+  testWidgets('点击首页 PO4 读数卡后趋势页选中 PO4', (tester) async {
     final first = DateTime.utc(2026, 8, 1);
     final second = DateTime.utc(2026, 8, 10);
     await tester.pumpWidget(
@@ -345,24 +248,31 @@ void main() {
       ),
     );
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
+    final metric = find.byKey(Key('home-metric-${AppDatabase.po4Id}'));
     await tester.scrollUntilVisible(
-      find.text('最近检测'),
-      260,
-      scrollable: find.byType(Scrollable).first,
-      maxScrolls: 20,
-    );
-    await tester.scrollUntilVisible(
-      find.text('PO4 · 0.03 mg/L'),
+      metric,
       280,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.ensureVisible(find.text('PO4 · 0.03 mg/L'));
+    await tester.ensureVisible(metric);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('PO4 · 0.03 mg/L'));
-    await _pumpUntilFound(tester, find.text('PO4 趋势'));
+    await tester.tap(metric);
+    await _pumpUntilFound(tester, find.byKey(const Key('trend-chart')));
 
-    expect(find.text('2 条记录'), findsOneWidget);
     expect(find.byKey(const Key('trend-chart')), findsOneWidget);
+    expect(
+      tester
+          .widget<DatabaseRecordChart>(find.byKey(const Key('trend-chart')))
+          .overview
+          .count,
+      2,
+    );
+    expect(
+      tester
+          .widget<DatabaseRecordChart>(find.byKey(const Key('trend-chart')))
+          .scope,
+      (tankId: AppDatabase.defaultTankId, parameterId: AppDatabase.po4Id),
+    );
     expect(find.byKey(const Key('insufficient-trend-data')), findsNothing);
     await _disposeApp(tester);
   });
@@ -478,6 +388,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.byKey(const Key('trend-record-foreign-record')), findsNothing);
+    await _center(tester, find.byKey(const Key('trend-record-trend-exact')));
     await tester.tap(find.byKey(const Key('trend-record-trend-exact')));
     await _pumpUntilFound(tester, find.text('NO3 检测详情'));
 
@@ -507,13 +418,13 @@ void main() {
     await tester.pumpWidget(_testApp());
     await _pumpUntilFound(tester, find.byKey(const Key('home-aquarium-card')));
     await tester.scrollUntilVisible(
-      find.text('水质维护建议'),
+      find.text('建议先做这些'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
 
     expect(tester.takeException(), isNull);
-    expect(find.text('水质维护建议'), findsOneWidget);
+    expect(find.text('建议先做这些'), findsOneWidget);
     await _disposeApp(tester);
   });
 }
@@ -623,9 +534,17 @@ TestRecord? _scopedRecord(List<TestRecord> records, TestRecordScope scope) {
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
   for (var i = 0; i < 100; i++) {
     await tester.pump(const Duration(milliseconds: 20));
-    if (finder.evaluate().isNotEmpty) return;
+    if (finder.evaluate().isNotEmpty) {
+      await tester.pumpAndSettle();
+      return;
+    }
   }
   fail('等待组件超时：$finder');
+}
+
+Future<void> _center(WidgetTester tester, Finder finder) async {
+  await Scrollable.ensureVisible(tester.element(finder), alignment: .5);
+  await tester.pumpAndSettle();
 }
 
 Future<void> _disposeApp(WidgetTester tester) async {

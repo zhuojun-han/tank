@@ -15,11 +15,13 @@ class MaintenanceCalendar extends StatelessWidget {
     this.onReopen,
     this.onStop,
     this.onCorrect,
+    this.today,
     super.key,
   });
 
   final DateTime month;
   final DateTime selectedDate;
+  final DateTime? today;
   final List<MaintenanceTaskItem> items;
   final ValueChanged<DateTime> onMonthChanged;
   final ValueChanged<DateTime> onDateSelected;
@@ -60,10 +62,24 @@ class MaintenanceCalendar extends StatelessWidget {
                   icon: const Icon(Icons.chevron_left),
                 ),
                 Expanded(
-                  child: Text(
-                    '${month.year} 年 ${month.month} 月',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium,
+                  child: Column(
+                    children: [
+                      Text(
+                        '${month.year} 年 ${month.month} 月',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          final now = today ?? DateTime.now();
+                          onMonthChanged(DateTime(now.year, now.month));
+                          onDateSelected(
+                            DateTime(now.year, now.month, now.day),
+                          );
+                        },
+                        child: const Text('今天'),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
@@ -71,14 +87,6 @@ class MaintenanceCalendar extends StatelessWidget {
                   onPressed: () =>
                       onMonthChanged(DateTime(month.year, month.month + 1)),
                   icon: const Icon(Icons.chevron_right),
-                ),
-                TextButton(
-                  onPressed: () {
-                    final now = DateTime.now();
-                    onMonthChanged(DateTime(now.year, now.month));
-                    onDateSelected(DateTime(now.year, now.month, now.day));
-                  },
-                  child: const Text('今天'),
                 ),
               ],
             ),
@@ -93,26 +101,30 @@ class MaintenanceCalendar extends StatelessWidget {
               crossAxisCount: 7,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 0.82,
+              mainAxisExtent:
+                  24 + MediaQuery.textScalerOf(context).scale(12) * 6,
               children: [
                 for (final day in days)
                   _CalendarDay(
                     day: day,
                     inMonth: day.month == month.month,
                     selected: _sameDate(day, selectedDate),
-                    taskCount: items
+                    today: _sameDate(day, today ?? DateTime.now()),
+                    items: items
                         .where(
                           (item) => _sameDate(item.task.dueAt.toLocal(), day),
                         )
-                        .length,
+                        .toList(),
                     onTap: () => onDateSelected(day),
                   ),
               ],
             ),
-            const Divider(),
+            const SizedBox(height: 16),
+            Text('当天待办', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
             Text(
               '${selectedDate.month} 月 ${selectedDate.day} 日待办',
-              style: Theme.of(context).textTheme.titleSmall,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
             if (selectedItems.isEmpty)
@@ -131,7 +143,7 @@ class MaintenanceCalendar extends StatelessWidget {
                   onStop: onStop == null ? null : () => onStop!(item),
                   onCorrect: onCorrect == null ? null : () => onCorrect!(item),
                 ),
-                if (item != selectedItems.last) const Divider(height: 16),
+                if (item != selectedItems.last) const SizedBox(height: 10),
               ],
           ],
         ),
@@ -145,57 +157,84 @@ class _CalendarDay extends StatelessWidget {
     required this.day,
     required this.inMonth,
     required this.selected,
-    required this.taskCount,
+    required this.items,
+    required this.today,
     required this.onTap,
   });
 
   final DateTime day;
   final bool inMonth;
   final bool selected;
-  final int taskCount;
+  final List<MaintenanceTaskItem> items;
+  final bool today;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      key: Key('maintenance-calendar-day-${_dateKey(day)}'),
-      borderRadius: BorderRadius.circular(10),
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        decoration: BoxDecoration(
-          color: selected ? scheme.primaryContainer : null,
+    return Padding(
+      padding: const EdgeInsets.all(2),
+      child: Material(
+        color: selected
+            ? scheme.secondaryContainer
+            : inMonth
+            ? scheme.surface
+            : scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
-          border: selected ? Border.all(color: scheme.primary) : null,
+          side: BorderSide(
+            color: selected ? scheme.primary : scheme.outlineVariant,
+          ),
         ),
-        child: Column(
-          children: [
-            Text(
-              '${day.day}',
-              style: TextStyle(
-                color: inMonth ? null : scheme.outline,
-                fontWeight: selected ? FontWeight.bold : null,
-              ),
+        child: InkWell(
+          key: Key('maintenance-calendar-day-${_dateKey(day)}'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+            child: Column(
+              children: [
+                Text(
+                  '${day.day}',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.25,
+                    color: today
+                        ? scheme.primary
+                        : inMonth
+                        ? null
+                        : scheme.outline,
+                    fontWeight: selected || today ? FontWeight.bold : null,
+                  ),
+                ),
+                for (final item in items.take(2))
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    decoration: BoxDecoration(
+                      color: scheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${item.state == MaintenanceTaskViewState.completed ? '✓ ' : ''}${item.task.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSecondaryContainer,
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                if (items.length > 2)
+                  Text(
+                    '+${items.length - 2}',
+                    style: const TextStyle(fontSize: 12, height: 1.25),
+                  ),
+              ],
             ),
-            if (taskCount > 0) ...[
-              const SizedBox(height: 3),
-              Container(
-                constraints: const BoxConstraints(minWidth: 18),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '$taskCount',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: scheme.onPrimary, fontSize: 10),
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -225,71 +264,86 @@ class _CalendarTask extends StatelessWidget {
         item.state != MaintenanceTaskViewState.completed;
     final lanthanum = isChemicalPlan(item.task);
     final cycle = item.cycleOccurrence != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          item.task.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        if (item.task.notes != null) ...[
-          const SizedBox(height: 4),
-          ExpansionTile(
-            title: const Text('查看执行说明'),
-            tilePadding: EdgeInsets.zero,
-            children: [Text(item.task.notes!)],
-          ),
-        ],
-        const SizedBox(height: 8),
-        if (enabled)
-          Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: Key('calendar-complete-${item.task.id}'),
-                  onPressed: onComplete,
-                  icon: const Icon(Icons.check),
-                  label: Text(cycle ? '添加滴定液' : '完成本次'),
-                ),
+    return Material(
+      color: enabled
+          ? Theme.of(context).colorScheme.surface
+          : Theme.of(context).colorScheme.secondaryContainer,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              item.task.title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (item.task.notes?.isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              ExpansionTile(
+                title: const Text('查看执行说明'),
+                tilePadding: EdgeInsets.zero,
+                children: [Text(item.task.notes!)],
               ),
-              const SizedBox(height: 8),
-              if (item.state == MaintenanceTaskViewState.snoozed)
-                Text('已推迟至 ${item.latestEvent?.snoozedUntil?.toLocal()}'),
-              Row(
+            ],
+            const SizedBox(height: 8),
+            if (enabled)
+              Column(
                 children: [
-                  if (onSnooze != null) ...[
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onSnooze,
-                        child: const Text('延迟'),
-                      ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      key: Key('calendar-complete-${item.task.id}'),
+                      onPressed: onComplete,
+                      icon: const Icon(Icons.check),
+                      label: Text(cycle ? '添加滴定液' : '完成本次'),
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  if (!cycle)
-                    Expanded(
-                      child: OutlinedButton(
-                        key: Key('calendar-skip-${item.task.id}'),
-                        onPressed: onSkip,
-                        child: Text(lanthanum ? '停止当天及后续' : '停止'),
-                      ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (item.state == MaintenanceTaskViewState.snoozed)
+                    Text('已推迟至 ${item.latestEvent?.snoozedUntil?.toLocal()}'),
+                  Row(
+                    children: [
+                      if (onSnooze != null) ...[
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: onSnooze,
+                            child: const Text('延迟'),
+                          ),
+                        ),
+                        if (!cycle) const SizedBox(width: 8),
+                      ],
+                      if (!cycle)
+                        Expanded(
+                          child: OutlinedButton(
+                            key: Key('calendar-skip-${item.task.id}'),
+                            onPressed: onSkip,
+                            child: Text(lanthanum ? '停止后续' : '停止'),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              )
+            else
+              Wrap(
+                children: [
+                  const Text('已完成'),
+                  if (onCorrect != null && item.canEditCompletion)
+                    TextButton(
+                      onPressed: onCorrect,
+                      child: const Text('修改完成日期'),
                     ),
+                  if (onReopen != null && item.canReopen)
+                    TextButton(onPressed: onReopen, child: const Text('撤销完成')),
                 ],
               ),
-            ],
-          )
-        else
-          Wrap(
-            children: [
-              const Text('已完成'),
-              if (onCorrect != null && item.canEditCompletion)
-                TextButton(onPressed: onCorrect, child: const Text('修改完成日期')),
-              if (onReopen != null && item.canReopen)
-                TextButton(onPressed: onReopen, child: const Text('撤销完成')),
-            ],
-          ),
-      ],
+          ],
+        ),
+      ),
     );
   }
 }

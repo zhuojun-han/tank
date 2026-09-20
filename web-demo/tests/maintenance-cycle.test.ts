@@ -1,8 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addMaintenanceCycle, currentMaintenanceCycle, cycleRemainingDays, cycleRemainingMl, delayMaintenanceCycle, maintenanceReminderDate, maintenanceTasksOnDate, overdueMaintenanceTasks, prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
+import { addMaintenanceCycle, currentMaintenanceCycle, cycleDailyLiquidMl, cycleNeedsRefill, cycleRemainingDays, cycleRemainingMl, cycleResidualMl, delayMaintenanceCycle, maintenanceReminderDate, maintenanceTasksOnDate, overdueMaintenanceTasks, prepareMaintenanceCycle } from '../app/maintenance-cycle.ts';
 import { pendingTasksOnDate, completedTasksOnDate } from '../app/task-calendar.ts';
 import type { MaintenanceInput } from '../app/maintenance-dosing.ts';
+import { calculateAlkalinityPlan } from '../app/alkalinity-calculator.ts';
+import { calculateLanthanumPlan } from '../app/lanthanum-calculator.ts';
+import { theoryDosingRecipe } from '../app/theory-dosing.ts';
 
 const input: MaintenanceInput = { solutionMl: 500, waterL: 200, po4Rise: 0.05, khDrop: 0.5, days: 6, khStrength: 6, khPurity: 100, temperature: 20, po4Flow: 100, khFlow: 100, po4Minutes: 1, khMinutes: 1, po4Unit: 'ml/min', khUnit: 'ml/min' };
 const start = '2026-09-08';
@@ -22,6 +25,12 @@ test('five-day reservoir is completed on days 1–4 and needs refill on day 5', 
   const due = maintenanceTasksOnDate([cycle], 1, '2026-09-12', '2026-09-12');
   assert.equal(pendingTasksOnDate(due, '2026-09-12').length, 1);
   assert.equal(due[0].state, 'due');
+  const native = prepareMaintenanceCycle(input, 'po4', '9007199254740993', start, undefined, 0, 'fbc9e91d-63e2-47f1-9c20-af429ea0a631');
+  const nativeDue = maintenanceTasksOnDate(JSON.parse(JSON.stringify([native])), native.tankId, native.refillDate, native.refillDate)[0];
+  assert.equal(nativeDue.id, `maintenance:${native.id}`);
+  assert.equal(nativeDue.maintenanceCycleId, native.id);
+  assert.equal(nativeDue.tankId, native.tankId);
+  assert.equal(delayMaintenanceCycle([native], native.id, 2, native.refillDate)[0].refillDeferredUntil, '2026-09-14');
 });
 
 test('fractional duration uses final run day, not displayed rounded days; one-day and month/year boundaries', () => {
@@ -229,4 +238,106 @@ test('zero demand, invalid dates, and unrepresentable refill dates cannot be sav
   assert.throws(() => prepareMaintenanceCycle({ ...input, po4Rise: 0 }, 'po4', 1, start));
   assert.throws(() => prepareMaintenanceCycle(input, 'po4', 1, '2026-02-30'));
   assert.throws(() => prepareMaintenanceCycle({ ...input, po4Rise: 1e-20, po4Flow: 1e-15 }, 'po4', 1, start), /日期超出/);
+});
+
+const po4Theory = () => theoryDosingRecipe(calculateLanthanumPlan({
+  currentPo4MgL: 0.65, targetPo4MgL: 0.1, netWaterVolumeL: 100,
+  maxDailyPo4DropMgL: 0.2, stockFinalVolumeMl: 500,
+}), { solutionMl: 500, flow: 100, minutes: 1, unit: 'ml/min', startDate: start, planId: 'po4-plan' });
+
+test('finite PO4 and KH plans preserve total demand, shorten only the last run, and freeze remaining liquid after ending', () => {
+  const po4 = po4Theory();
+  const kh = theoryDosingRecipe(calculateAlkalinityPlan({
+    currentDkh: 7, targetDkh: 8.2, netWaterVolumeL: 100, maxDailyDkhRise: 0.5,
+    dailyDkhConsumption: 0.3, purityPercent: 100, stockFinalVolumeMl: 500,
+    stockMlPer0_1Dkh100L: 6, stockTemperatureC: 20,
+  }), { solutionMl: 500, flow: 100 / 60, minutes: 1, unit: 'ml/s', startDate: start, planId: 'kh-plan' });
+  near(kh.input.khDrop, 0.8);
+  near(kh.theory.lastDayRatio, 0.5 / 0.8); // Last net rise plus the full daily consumption.
+  for (const [recipe, totalEffect] of [[po4, 55], [kh, 2.1]] as const) {
+    const cycle = prepareMaintenanceCycle(recipe.input, recipe.chemical, 1, start, undefined, 0, recipe.theory.planId, recipe.theory);
+    const finalDate = '2026-09-10';
+    assert.equal(cycle.theory!.endDate, finalDate);
+    near(cycleDailyLiquidMl(cycle, finalDate), 100 * recipe.theory.lastDayRatio);
+    const consumed = 200 + cycleDailyLiquidMl(cycle, finalDate);
+    near(consumed * cycle.effectPerMl, totalEffect);
+    near(cycleRemainingMl(cycle, finalDate), 300);
+    near(cycleRemainingMl(cycle, '2026-09-11'), 500 - consumed);
+    near(cycleRemainingMl(cycle, '2027-01-01'), 500 - consumed);
+    near(cycleRemainingDays(cycle, '2027-01-01'), (500 - consumed) / 100);
+    assert.equal(cycleDailyLiquidMl(cycle, '2026-09-11'), 0);
+    assert.equal(cycleNeedsRefill(cycle), false);
+    for (const date of [start, '2026-09-09', finalDate]) {
+      const tasks = maintenanceTasksOnDate([cycle], 1, date, date);
+      assert.equal(tasks.length, 1);
+      assert.equal(tasks[0].state, 'done');
+      assert.match(tasks[0].title, /理论计划/);
+      assert.doesNotMatch(tasks[0].title, /添加滴定液/);
+    }
+    assert.match(maintenanceTasksOnDate([cycle], 1, finalDate, finalDate)[0].detail, /运行 .* min 后停止/);
+    assert.deepEqual(maintenanceTasksOnDate([cycle], 1, '2026-09-11', '2026-09-11'), []);
+    assert.deepEqual(cycle.input, recipe.input);
+    assert.deepEqual(JSON.parse(JSON.stringify(cycle)).theory, recipe.theory);
+    recipe.input.solutionMl = 999;
+    recipe.theory.target = 999;
+    assert.equal(cycle.solutionMl, 500);
+    assert.notEqual(cycle.theory!.target, 999);
+  }
+});
+
+test('theory refills only when the remaining plan needs more than one bottle; postponement ends with the plan', () => {
+  const recipe = po4Theory();
+  for (const volume of [500, 275, 275 - 1e-9]) {
+    const cycle = prepareMaintenanceCycle({ ...recipe.input, solutionMl: volume }, 'po4', 1, start, undefined, 0, 700, recipe.theory);
+    assert.equal(cycleNeedsRefill(cycle), false);
+    assert.equal(maintenanceTasksOnDate([cycle], 1, '2026-09-10', '2026-09-10')[0].state, 'done');
+  }
+  const short = prepareMaintenanceCycle({ ...recipe.input, solutionMl: 200 }, 'po4', 1, start, undefined, 0, 700, recipe.theory);
+  assert.equal(cycleNeedsRefill(short), true);
+  assert.equal(short.refillDate, '2026-09-09');
+  assert.equal(maintenanceTasksOnDate([short], 1, short.refillDate, short.refillDate)[0].state, 'due');
+  const delayed = delayMaintenanceCycle([short], short.id, 99, short.refillDate)[0];
+  assert.equal(delayed.refillDeferredUntil, recipe.theory.endDate);
+  assert.equal(cycleRemainingMl(delayed, recipe.theory.endDate), 0);
+  assert.equal(maintenanceTasksOnDate([delayed], 1, recipe.theory.endDate, recipe.theory.endDate)[0].state, 'due');
+  assert.throws(() => delayMaintenanceCycle([delayed], short.id, 1, recipe.theory.endDate), /无需继续补液/);
+  assert.deepEqual(overdueMaintenanceTasks([delayed], 1, '2026-09-11'), []);
+  assert.equal(maintenanceTasksOnDate([delayed], 1, recipe.theory.endDate, '2026-09-11')[0].state, 'done');
+});
+
+test('theory renewal retains solute and original deadline while replacing only its tank and chemical', () => {
+  const recipe = po4Theory();
+  const old = prepareMaintenanceCycle(recipe.input, 'po4', 1, start, undefined, 0, 700, recipe.theory);
+  const otherTank = { ...old, id: 701, tankId: 2 };
+  const otherChemical = prepare('kh');
+  const next = prepareMaintenanceCycle(recipe.input, 'po4', 1, '2026-09-10', old, 300, 702, recipe.theory);
+  near(next.addedStockMl, 4);
+  near(next.addedWaterMl, 196);
+  const cycles = addMaintenanceCycle([old, otherTank, otherChemical], next);
+  assert.equal(cycles[0].closedOnDate, '2026-09-10');
+  near(cycleRemainingMl(cycles[0], '2027-01-01'), 300);
+  assert.equal(next.theory!.planStartDate, start);
+  assert.equal(next.theory!.endDate, '2026-09-10');
+  assert.equal(currentMaintenanceCycle(cycles, 1, 'po4')!.id, next.id);
+  assert.deepEqual(currentMaintenanceCycle(cycles, 2, 'po4'), otherTank);
+  assert.deepEqual(currentMaintenanceCycle(cycles, 1, 'kh'), otherChemical);
+  assert.equal(cycleNeedsRefill(next), false);
+  assert.equal(maintenanceTasksOnDate(cycles, 1, '2026-09-10', '2026-09-10').filter(t => t.maintenanceCycleId === old.id).length, 0);
+  assert.throws(() => prepareMaintenanceCycle(recipe.input, 'po4', 1, '2026-09-11', next, 0, 703, recipe.theory), /已结束/);
+  assert.throws(() => prepareMaintenanceCycle(recipe.input, 'kh', 1, start, undefined, 0, 703, recipe.theory), /不匹配/);
+  const stableReplacement = prepareMaintenanceCycle(input, 'po4', 1, '2026-09-11', next, 0, 704);
+  assert.equal(currentMaintenanceCycle(addMaintenanceCycle(cycles, stableReplacement), 1, 'po4')!.theory, undefined);
+});
+
+test('refill after dosing subtracts old daily use once and respects the final partial day', () => {
+  for (const chemical of ['po4', 'kh'] as const) {
+    const cycle = prepare(chemical);
+    near(cycleResidualMl(cycle, '2026-09-09'), 400);
+    near(cycleResidualMl(cycle, '2026-09-09', true), 300);
+    near(cycleResidualMl(cycle, '2026-09-09', true), 300);
+    near(cycleResidualMl(cycle, '2026-09-13', true), 0);
+    const partial = { ...cycle, theory: { planId: 'partial', source: 'alkalinity-plan' as const, target: 8, planStartDate: start, endDate: '2026-09-09', lastDayRatio: 0.25 } };
+    near(cycleResidualMl(partial, '2026-09-09', true), 375);
+    near(cycleResidualMl(partial, '2026-09-10', true), 375);
+  }
 });

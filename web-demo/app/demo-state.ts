@@ -1,14 +1,15 @@
+import { type EntityId } from "./entity-id.ts";
 import type { PhotoReview } from "./color-match/page";
 import type { KhTitrationResult } from "./kh-titration";
 import type { RollingTaskMetadata, RollingTaskProjection } from "./rolling-task";
 
-export type Tank = { id: number; name: string; volume: string; startedOn?: string };
+export type Tank = { id: EntityId; name: string; volume: string; startedOn?: string };
 export type Parameter = { id: string; name: string; label: string; unit: string; builtIn: boolean; photoSupported: boolean };
-export type Target = { tankId: number; parameterId: string; min: number | null; max: number | null };
-export type RecordItem = { id: number; tankId: number; parameterId: string; low: number; high: number; date: string; note: string; edited?: boolean; interpolation?: number | null; photoEstimate?: PhotoReview; khTitration?: KhTitrationResult & { tableId: string } };
+export type Target = { tankId: EntityId; parameterId: string; min: number | null; max: number | null };
+export type RecordItem = { id: EntityId; tankId: EntityId; parameterId: string; low: number; high: number; date: string; note: string; edited?: boolean; interpolation?: number | null; photoEstimate?: PhotoReview; khTitration?: KhTitrationResult & { tableId: string } };
 export type TaskItem = {
-  id: number;
-  tankId: number;
+  id: EntityId;
+  tankId: EntityId;
   title: string;
   cycle: string;
   due: string;
@@ -16,13 +17,15 @@ export type TaskItem = {
   handledAt?: string;
   detail?: string;
   source?: "manual" | "lanthanum-plan" | "alkalinity-plan" | "maintenance-cycle";
-  maintenanceCycleId?: number;
+  maintenanceCycleId?: EntityId;
   planId?: string;
   dayIndex?: number;
   totalDays?: number;
   oneOff?: boolean;
   scheduledDate?: string;
   intervalDays?: number;
+  nativeIntervalUnit?: "day" | "week" | "month";
+  nativeIntervalAmount?: number;
   completedDates?: string[];
   skippedDates?: string[];
   snoozedDates?: string[];

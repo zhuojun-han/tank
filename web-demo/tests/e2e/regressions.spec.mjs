@@ -11,7 +11,7 @@ for (const script of [
   'maintenance-volume.mjs', 'maintenance-browser.mjs', 'maintenance-cycle-browser.mjs',
   'maintenance-countdown-browser.mjs', 'task-postponement-browser.mjs', 'snooze-timer-browser.mjs',
   'kh-titration-browser.mjs', 'target-linkage-browser.mjs', 'tank-age-browser.mjs',
-  'fish-catalog-browser.mjs',
+  'fish-catalog-browser.mjs', 'reminder-snooze-browser.mjs',
 ]) {
   test(script, async ({}, info) => {
     const { stdout, stderr } = await run(process.execPath, [`tests/${script}`], {

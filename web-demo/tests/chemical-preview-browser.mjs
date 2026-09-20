@@ -1,101 +1,149 @@
 import { launchBrowser, baseURL } from './browser-support.mjs';
 import assert from 'node:assert/strict';
+import { expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+
 const browser = await launchBrowser();
-const output = new URL('../artifacts/chemical-preview/', import.meta.url);
-await mkdir(output, { recursive: true });
+const key = 'reef-demo-state-v10';
+const capture = process.env.CAPTURE_SCREENSHOTS === '1';
+if (capture) await mkdir('artifacts/chemical-preview', { recursive: true });
 try {
   for (const kind of ['lanthanum', 'alkalinity']) {
-    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+    const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+    const page = await context.newPage();
+    page.setDefaultTimeout(8_000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    await page.clock.setFixedTime(new Date('2026-09-08T04:00:00Z'));
     const source = `${kind}-plan`;
+    const chemical = kind === 'lanthanum' ? 'po4' : 'kh';
     const sheet = page.locator(`.${kind}-sheet`);
-    const conflict = page.getByRole('dialog', { name: '覆盖原计划？' });
     const current = kind === 'lanthanum' ? 'currentPo4MgL' : 'currentDkh';
     const target = kind === 'lanthanum' ? 'targetPo4MgL' : 'targetDkh';
-    const initial = kind === 'lanthanum' ? '0.43' : '6';
+    const initial = kind === 'lanthanum' ? '0.38' : '6.3';
     const desired = kind === 'lanthanum' ? '0.03' : '8';
-    const tasks = () => page.evaluate(() => JSON.parse(localStorage.getItem('reef-demo-state-v10')).tasks);
+    const read = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
+    const ready = () => page.locator('main[aria-busy=false]').waitFor();
+    const reload = async () => { await page.reload(); await ready(); };
+    const submit = () => sheet.locator('button[type=submit]').click();
+    const navTasks = () => page.locator('.bottom-nav').getByRole('button', { name: '✓ 任务' }).click();
+    const listCycle = page.locator('.task-list [data-testid=maintenance-cycle-task]');
+    const agendaCycle = page.locator('.daily-agenda [data-testid=maintenance-cycle-task]');
+    const pending = () => page.getByRole('tab', { name: /^待处理/ }).click();
+    const completed = () => page.getByRole('tab', { name: /^已完成/ }).click();
+    const date = day => page.locator('.calendar-grid button:not(.outside)').filter({ has: page.locator('.calendar-day-number', { hasText: new RegExp(`^${day}$`) }) }).click();
+    const waitCycles = count => page.waitForFunction(({ key, count }) => JSON.parse(localStorage.getItem(key)).maintenanceCycles.length === count, { key, count });
     async function open() {
       await page.getByRole('button', { name: '打开设置' }).click();
       await page.getByRole('button', { name: kind === 'lanthanum' ? /PO4 氯化镧理论计划/ : /碳酸氢钠补 KH 理论计划/ }).click();
-      await sheet.locator(`[name="${current}"]`).fill(initial);
-      await sheet.locator(`[name="${target}"]`).fill(desired);
+      await sheet.locator(`[name=${current}]`).fill(initial);
+      await sheet.locator(`[name=${target}]`).fill(desired);
     }
-    async function submit() { await sheet.locator('button[type="submit"]').click(); }
-    await page.goto(`${baseURL}`, { waitUntil: 'networkidle' });
-    await open();
-    await submit();
-    await sheet.getByText('✓ 已加入任务日历', { exact: true }).waitFor();
-    assert.equal((await tasks()).filter(t => t.source === source).length, 4);
-    // Preserve real generated plan structure while supplying done/skipped history,
-    // a previous-date task, another reagent and another tank as control records.
-    await page.evaluate(source => {
-      const state = JSON.parse(localStorage.getItem('reef-demo-state-v10'));
-      const generated = state.tasks.filter(t => t.source === source);
-      generated[0].state = 'done'; generated[0].handledAt = '09:15';
-      generated[1].state = 'skipped'; generated[1].handledAt = '09:30';
-      const past = new Date(`${generated[0].scheduledDate}T12:00:00`);
-      past.setDate(past.getDate() - 1);
-      const date = `${past.getFullYear()}-${String(past.getMonth()+1).padStart(2,'0')}-${String(past.getDate()).padStart(2,'0')}`;
-      state.tasks.push({ ...generated[0], id: 900001, scheduledDate: date });
-      state.tasks.push({ ...generated[0], id: 900002, tankId: 999, planId: 'other-tank' });
-      state.tasks.push({ ...generated[0], id: 900003, source: source === 'lanthanum-plan' ? 'alkalinity-plan' : 'lanthanum-plan', planId: 'other-reagent' });
-      localStorage.setItem('reef-demo-state-v10', JSON.stringify(state));
-    }, source);
-    await page.reload({ waitUntil: 'networkidle' });
-    const baseline = await tasks();
-    await open();
-    await sheet.locator(`[name="${target}"]`).fill(initial);
-    await submit();
-    await sheet.getByRole('alert').waitFor();
-    assert.equal(await conflict.count(), 0);
-    assert.deepEqual(await tasks(), baseline, 'invalid input must not mutate tasks');
-    await sheet.locator(`[name="${target}"]`).fill(desired);
-    await submit();
-    await conflict.getByRole('button', { name: '取消，保留原计划' }).click();
-    assert.deepEqual(await tasks(), baseline, 'cancel must preserve all tasks');
-    assert.equal(await sheet.locator(`[name="${current}"]`).inputValue(), initial);
-    await submit();
-    for (const width of [320, 375]) {
-      await page.setViewportSize({ width, height: 812 });
-      await page.screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${kind}-conflict-${width}.png`, output)) });
+    async function configure() {
+      await sheet.getByRole('button', { name: '配置滴定液', exact: true }).click();
+      await expect(page.getByLabel('选择指标')).toHaveValue(chemical);
+      await expect(page.getByLabel('选择指标')).toBeDisabled();
+      await page.getByLabel('单位').selectOption('ml/min');
+      await page.getByLabel('泵流速', { exact: true }).fill('100');
+      await page.getByLabel('每天运行时间（分钟）').fill('2');
+      await page.getByLabel('滴定溶液体积（mL）').fill('250');
     }
-    await conflict.getByRole('button', { name: '仅计算，不覆盖原计划' }).click();
-    await sheet.getByText('仅计算预览 · 未加入日历，原计划和处理记录保持不变', { exact: true }).waitFor();
-    assert.equal(await sheet.getByText('✓ 已加入任务日历', { exact: true }).count(), 0);
-    assert.equal(await sheet.getByRole('button', { name: '查看已加入的任务日历' }).count(), 0);
-    assert.deepEqual(await tasks(), baseline, 'preview must preserve every task field and history');
+    await page.goto(baseURL); await ready();
+    await page.waitForFunction(key => !!localStorage.getItem(key), key);
+    // A pre-existing finite plan represents real legacy data, not the new workflow.
+    await page.evaluate(({ key, source }) => {
+      const state = JSON.parse(localStorage.getItem(key));
+      const old = (id, date, extra = {}) => ({ id, tankId: state.tankId, title: `旧理论计划 ${id}`, cycle: '计划第 1/4 日',
+        due: `${date} 09:00`, scheduledDate: date, state: 'due', source, planId: 'legacy-plan', oneOff: true, dayIndex: 1, totalDays: 4, ...extra });
+      state.tasks = [old(900001, '2026-09-08'), old(900002, '2026-09-07', { state: 'done', handledAt: '09:15' }),
+        old(900003, '2026-09-07', { state: 'skipped', handledAt: '09:30' }),
+        old(900004, '2026-09-08', { tankId: 2 }),
+        old(900005, '2026-09-08', { source: source === 'lanthanum-plan' ? 'alkalinity-plan' : 'lanthanum-plan' })];
+      state.maintenanceCycles = []; state.notificationEnabled = false;
+      localStorage.setItem(key, JSON.stringify(state));
+    }, { key, source });
+    await reload();
+    const baseline = await read();
+    await open();
+    await sheet.locator(`[name=${target}]`).fill(initial);
+    await submit();
+    await expect(sheet.getByRole('alert')).toBeVisible();
+    assert.deepEqual((await read()).tasks, baseline.tasks, 'invalid calculation keeps legacy tasks');
+    await sheet.locator(`[name=${target}]`).fill(desired);
+    await submit();
+    await expect(sheet.getByText('计算预览 · 配好确认后保存', { exact: true })).toBeVisible();
+    assert.deepEqual((await read()).tasks, baseline.tasks, 'calculation never creates or replaces tasks');
+    assert.deepEqual((await read()).maintenanceCycles, []);
     const daily = sheet.locator('details').filter({ hasText: '本次计算的全部每日安排' });
     await daily.locator('summary').click();
     assert.equal(await daily.locator('article').count(), 4);
     for (const width of [320, 375]) {
       await page.setViewportSize({ width, height: 812 });
-      await sheet.evaluate(node => { node.scrollTop = 0; });
       assert.ok(await sheet.evaluate(node => node.scrollWidth <= node.clientWidth + 1));
-      await page.screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${kind}-preview-${width}.png`, output)) });
-      await daily.scrollIntoViewIfNeeded();
-      await page.screenshot({ animations: 'disabled', path: fileURLToPath(new URL(`${kind}-daily-${width}.png`, output)) });
     }
-    await sheet.getByRole('button', { name: '关闭计算结果' }).click();
-    await page.reload({ waitUntil: 'networkidle' });
-    assert.deepEqual(await tasks(), baseline, 'preview and close/reload must not persist new tasks');
-    await open();
-    await sheet.locator(`[name="${current}"]`).fill(kind === 'lanthanum' ? '0.33' : '6.5');
-    await submit();
-    await conflict.getByRole('button', { name: '覆盖并创建新计划' }).click();
-    await sheet.getByText('✓ 已加入任务日历', { exact: true }).waitFor();
-    const replaced = await tasks();
-    for (const id of [900001, 900002, 900003]) assert.deepEqual(replaced.find(t => t.id === id), baseline.find(t => t.id === id));
-    const preservedHistory = baseline.filter(t => ['done', 'skipped'].includes(t.state));
-    for (const old of preservedHistory) assert.deepEqual(replaced.find(t => t.id === old.id), old, 'replacement must retain actual handled history, including its original day');
-    const activeNew = replaced.filter(t => t.source === source && t.tankId !== 999 && t.id !== 900001 && !['done', 'skipped'].includes(t.state));
-    assert.equal(activeNew.length, 3);
-    assert.ok(activeNew.every(t => !baseline.some(old => old.planId === t.planId)));
+    await sheet.getByRole('button', { name: '仅计算，关闭', exact: true }).click();
+    await reload();
+    assert.deepEqual((await read()).tasks, baseline.tasks, 'preview close/reload preserves the old plan');
+    await open(); await submit(); await configure();
+    await page.getByRole('button', { name: '关闭滴定计算器' }).click();
+    assert.deepEqual((await read()).tasks, baseline.tasks, 'unconfirmed recipe never replaces the old plan');
+    assert.deepEqual((await read()).maintenanceCycles, []);
+    await open(); await submit(); await configure();
+    if (capture) await page.screenshot({ path: `artifacts/chemical-preview/${kind}-recipe.png`, animations: 'disabled' });
+    await page.getByRole('button', { name: /^已配好/ }).click(); await waitCycles(1);
+    const created = await read();
+    const first = created.maintenanceCycles[0];
+    assert.equal(first.theory.source, source);
+    assert.equal(first.theory.target, Number(desired));
+    assert.equal(first.theory.endDate, '2026-09-11');
+    assert.ok(first.theory.lastDayRatio > 0 && first.theory.lastDayRatio < 1);
+    assert.equal(first.solutionMl, 250); assert.equal(first.dailyLiquidMl, 200);
+    assert.equal(first.refillDate, '2026-09-09');
+    assert.deepEqual(created.tasks, baseline.tasks.filter(task => task.id !== 900001), 'confirmation replaces only the matching legacy pending plan, preserving history and other tanks/reagents');
+    await navTasks(); await pending(); await expect(listCycle).toHaveCount(0);
+    await completed(); await expect(listCycle).toHaveCount(1);
+    await listCycle.getByRole('button', { name: '提前续配' }).click();
+    await expect(page.getByRole('button', { name: /^已配好/ })).toBeDisabled();
+    await page.getByRole('radio', { name: '保留残液', exact: true }).check();
+    await expect(page.getByLabel('保留残液体积（mL）')).toHaveValue('250');
+    await page.getByRole('button', { name: '关闭滴定计算器' }).click();
+    assert.deepEqual((await read()).maintenanceCycles, created.maintenanceCycles, 'early-refill cancellation leaves the active cycle unchanged');
+
+    await page.clock.setFixedTime(new Date('2026-09-09T04:00:00Z'));
+    await reload(); await navTasks(); await pending(); await expect(listCycle).toHaveCount(1);
+    await listCycle.getByRole('button', { name: '添加滴定液' }).click();
+    await page.getByRole('radio', { name: '保留残液', exact: true }).check();
+    await expect(page.getByLabel('保留残液体积（mL）')).toHaveValue('50');
+    await page.getByLabel('滴定溶液体积（mL）').fill('1000');
+    await expect(page.getByText('本瓶足够完成计划，无需再次配液', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /^已配好/ }).click(); await waitCycles(2);
+    const refilled = await read();
+    const next = refilled.maintenanceCycles[1];
+    assert.equal(refilled.maintenanceCycles[0].closedOnDate, '2026-09-09');
+    assert.equal(next.retainedMl, 50);
+    assert.deepEqual(next.theory, first.theory, 'refilling must not restart or extend the target plan');
+    assert.deepEqual(refilled.tasks, created.tasks, 'refilling never produces daily to-do rows');
+    await pending(); await expect(listCycle).toHaveCount(0);
+    await completed(); await expect(listCycle).toHaveCount(1);
+    await date(11); await expect(agendaCycle).toHaveCount(1);
+    const shortenedRun = Number((2 * first.theory.lastDayRatio).toFixed(3));
+    const finalDayText = await agendaCycle.innerText();
+    assert.ok(finalDayText.includes(`运行 ${shortenedRun} min 后停止`), `the final day displays the shorter pump run: ${finalDayText}`);
+    await date(12); await expect(agendaCycle).toHaveCount(0);
+    await date(9); await completed();
+    await listCycle.getByRole('button', { name: '已达目标 / 停止计划' }).click();
+    const stop = page.getByRole('alertdialog', { name: '停止理论滴定' });
+    await stop.getByRole('button', { name: '取消', exact: true }).click();
+    assert.deepEqual((await read()).maintenanceCycles, refilled.maintenanceCycles);
+    await listCycle.getByRole('button', { name: '已达目标 / 停止计划' }).click();
+    await stop.getByRole('button', { name: '确认停止', exact: true }).click();
+    await page.waitForFunction(({ key, id }) => JSON.parse(localStorage.getItem(key)).maintenanceCycles.find(cycle => cycle.id === id).closedOnDate === '2026-09-09', { key, id: next.id });
+    await reload(); await navTasks(); await pending(); await expect(listCycle).toHaveCount(0);
+    await date(10); await expect(agendaCycle).toHaveCount(0);
+    assert.deepEqual((await read()).tasks, created.tasks);
+    assert.deepEqual((await read()).records, baseline.records);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${kind}: fresh create, invalid input, cancel, preview deep task equality including done/skipped, full daily results, reload, scoped replacement, 320/375 screenshots; ${browser.version()}`);
-    await page.close();
+    console.log(`PASS ${kind}: preview/cancel preserves data; confirmed pump recipe scopes legacy replacement; no daily todos; residual refill keeps plan end; partial final run; target-stop persists; narrow layout.`);
+    await context.close();
   }
 } finally { await browser.close(); }

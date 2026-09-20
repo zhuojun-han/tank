@@ -1,6 +1,8 @@
 # App 备份层
 
-当前 JSON wire format 为 **v12**，支持读取 v1–v11；版本与字段以 [local_backup_service.dart](local_backup_service.dart) 和 [技术设计](../../../../docs/TECHNICAL_DESIGN.md) 为准。
+当前 JSON wire format 为 **v13**，支持读取 v1–v12；版本与字段以 [local_backup_service.dart](local_backup_service.dart) 和 [技术设计](../../../../docs/TECHNICAL_DESIGN.md) 为准。
+
+- v13 周期配方快照增加可选理论计划元数据，经过来源、日期、末日比例和关联校验。旧版明确拒绝 v13，不能把有限理论周期按稳定配方恢复为无限提醒；数据库 schema 仍为 v12。
 
 - `LocalBackupService` 导出业务 JSON；v11 包含补液周期/配方、任务滚动排期、KH 原始滴定元数据、可空目标与一次初始化标记；v10 的确认/原始插值及草稿继续保留。旧范围不补插值；检测照片引用和设备派生通知 ID 在新旧格式读取/写出时清空。
 - v12 海缸新增可空 `startedOn`（`YYYY-MM-DD` 日历日期）；旧备份缺省为未设置，不从创建时间推算。读取允许合法未来日期以兼容设备日期回拨，新增或显式修改时才拒绝未来日期；不转换为 UTC 时间戳。

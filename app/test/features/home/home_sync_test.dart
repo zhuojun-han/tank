@@ -123,6 +123,10 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: MaterialApp.router(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
           theme: LanjiaoTheme.light,
           routerConfig: router,
         ),
@@ -142,6 +146,103 @@ void main() {
     chemical: kh ? DosingChemical.kh : DosingChemical.po4,
     startDate: cycleDateKey(DateTime(now.year, now.month, now.day - elapsed)),
     input: MaintenanceDosingInput(dailyChange: kh ? 0.5 : 0.02),
+  );
+
+  testWidgets(
+    'web home order and two-column metrics remain usable at 320px with large text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 1000);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      for (final (id, code) in [
+        (AppDatabase.no3Id, 'NO3'),
+        (AppDatabase.po4Id, 'PO4'),
+      ]) {
+        parameters.add(
+          WaterParameter(
+            id: id,
+            code: code,
+            displayName: code,
+            unit: 'mg/L',
+            isBuiltIn: true,
+            photoSupported: true,
+            createdAt: now,
+          ),
+        );
+        historyRecords.add(
+          TestRecord(
+            id: 'layout-$id',
+            tankId: tankA.id,
+            parameterId: id,
+            confirmedMinValue: 5,
+            unit: 'mg/L',
+            measuredAt: now,
+            wasManuallyEdited: false,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+      }
+      await tester.runAsync(
+        () => cycles.confirm(prepare('layout-cycle', tankA, kh: true)),
+      );
+      await open(tester);
+      final first = find.byKey(const Key('home-metric-${AppDatabase.no3Id}'));
+      final second = find.byKey(const Key('home-metric-${AppDatabase.po4Id}'));
+      await _show(tester, first);
+      expect(tester.getTopLeft(first).dy, tester.getTopLeft(second).dy);
+      expect(
+        tester.getTopLeft(first).dx,
+        lessThan(tester.getTopLeft(second).dx),
+      );
+      expect(
+        tester.getSize(first).width,
+        closeTo(tester.getSize(second).width, .01),
+      );
+      final scroll = tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byKey(const Key('home-scroll')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      double documentTop(Finder finder) =>
+          tester.getTopLeft(finder).dy + scroll.pixels;
+      var previous = documentTop(first);
+      for (final key in [
+        'home-advice-section',
+        'home-manage-parameters',
+        'home-dosing-heading',
+        'home-todos-heading',
+        'home-trends-heading',
+      ]) {
+        final finder = find.byKey(Key(key));
+        await _show(tester, finder);
+        final top = documentTop(finder);
+        expect(top, greaterThan(previous), reason: key);
+        previous = top;
+        expect(tester.takeException(), isNull, reason: key);
+      }
+      scroll.jumpTo(0);
+      await _flush(tester);
+      await _show(tester, first);
+      await tester.tap(first);
+      await _flush(tester);
+      expect(
+        tester
+            .widget<DatabaseRecordChart>(find.byKey(const Key('trend-chart')))
+            .scope,
+        (tankId: tankA.id, parameterId: AppDatabase.no3Id),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
   );
 
   testWidgets(
@@ -387,7 +488,13 @@ void main() {
       await _show(tester, record);
       await tester.tap(record);
       await _flush(tester);
-      expect(find.text('KH 趋势'), findsOneWidget);
+      expect(
+        tester
+            .widget<DatabaseRecordChart>(find.byKey(const Key('trend-chart')))
+            .scope
+            .parameterId,
+        AppDatabase.khId,
+      );
       expect(find.text('目标 ≥7 dKH'), findsOneWidget);
       expect(
         tester

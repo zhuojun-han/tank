@@ -20,8 +20,15 @@ import '../../maintenance/application/maintenance_providers.dart';
 import '../../tanks/application/tank_providers.dart';
 import '../../tanks/domain/tank_age.dart';
 
+enum SettingsSection { all, tanks, reminders, data }
+
 class SettingsPage extends ConsumerWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({this.section = SettingsSection.all, super.key});
+
+  final SettingsSection section;
+
+  bool _shows(SettingsSection value) =>
+      section == SettingsSection.all || section == value;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,13 +37,19 @@ class SettingsPage extends ConsumerWidget {
     final today = ref.watch(maintenanceDateProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('设置'),
+        title: Text(switch (section) {
+          SettingsSection.all => '设置',
+          SettingsSection.tanks => '海缸管理',
+          SettingsSection.reminders => '任务提醒',
+          SettingsSection.data => '备份与数据',
+        }),
         actions: [
-          IconButton(
-            tooltip: '添加海缸',
-            onPressed: () => showTankEditor(context),
-            icon: const Icon(Icons.add),
-          ),
+          if (_shows(SettingsSection.tanks))
+            IconButton(
+              tooltip: '添加海缸',
+              onPressed: () => showTankEditor(context),
+              icon: const Icon(Icons.add),
+            ),
         ],
       ),
       body: tanks.when(
@@ -53,149 +66,158 @@ class SettingsPage extends ConsumerWidget {
             }
           },
           child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
             children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
-                child: Text('海缸管理'),
-              ),
-              for (final tank in items)
-                RadioListTile<String>(
-                  value: tank.id,
-                  title: Text(tank.name),
-                  subtitle: Text(
-                    [
-                      if (tank.notes?.isNotEmpty ?? false) tank.notes!,
-                      if (tank.volumeLiters != null)
-                        '${tank.volumeLiters.toString().replaceFirst(RegExp(r'\.0$'), '')} L',
-                      formatTankAge(tank.startedOn, today),
-                      if (tank.startedOn != null) '开缸 ${tank.startedOn}',
-                    ].join(' · '),
-                  ),
-                  secondary: PopupMenuButton<String>(
-                    onSelected: (action) async {
-                      if (action == 'edit') {
-                        await showTankEditor(context, tank: tank);
-                      } else if (action == 'parameters') {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ParameterSettingsPage(tank: tank),
-                          ),
-                        );
-                      } else if (action == 'archive') {
-                        await _run(
-                          context,
-                          () => ref
-                              .read(tankRepositoryProvider)
-                              .archiveTank(tank.id),
-                        );
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'edit', child: Text('编辑')),
-                      PopupMenuItem(value: 'parameters', child: Text('参数')),
-                      PopupMenuItem(value: 'archive', child: Text('归档')),
-                    ],
-                  ),
+              if (_shows(SettingsSection.tanks)) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text('海缸管理'),
                 ),
-              const Divider(),
-              ListTile(
-                key: const Key('open-maintenance-dosing'),
-                leading: const Icon(Icons.opacity),
-                title: const Text('稳定滴定'),
-                subtitle: const Text('PO₄ / KH 每日平衡与补液'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/maintenance-dosing'),
-              ),
-              ListTile(
-                key: const Key('open-salinity-calculator'),
-                leading: const Icon(Icons.water_drop_outlined),
-                title: const Text('海盐配制计算器'),
-                subtitle: const Text('按初始比重、目标比重和水量估算海盐'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/salinity-calculator'),
-              ),
-              ListTile(
-                title: const Text('碳酸氢钠补 KH'),
-                subtitle: const Text('母液配制与分日计划'),
-                leading: const Icon(Icons.science_outlined),
-                onTap: () => context.push('/alkalinity-calculator'),
-              ),
-              ListTile(
-                key: const Key('open-lanthanum-calculator'),
-                leading: const Icon(Icons.science_outlined),
-                title: const Text('PO4 氯化镧理论计划'),
-                subtitle: const Text('母液配制与分日计划'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.push('/lanthanum-calculator'),
-              ),
-              const Divider(),
-              const _NotificationPermissionSection(),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.backup_outlined),
-                title: const Text('导出完整数据备份'),
-                subtitle: const Text('保存本机全部数据，不含检测照片'),
-                onTap: () async {
-                  try {
-                    final report = await ref
-                        .read(completeBackupServiceProvider)
-                        .exportToPrivateFile();
-                    final status = await ref
-                        .read(backupTransferGatewayProvider)
-                        .shareCompleteBackup(report.file);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            _shareResultMessage(
-                              status,
-                              success: '完整数据备份已交给系统分享面板',
-                              privatePath: report.file.path,
+                for (final tank in items)
+                  RadioListTile<String>(
+                    value: tank.id,
+                    title: Text(tank.name),
+                    subtitle: Text(
+                      [
+                        if (tank.notes?.isNotEmpty ?? false) tank.notes!,
+                        if (tank.volumeLiters != null)
+                          '${tank.volumeLiters.toString().replaceFirst(RegExp(r'\.0$'), '')} L',
+                        formatTankAge(tank.startedOn, today),
+                        if (tank.startedOn != null) '开缸 ${tank.startedOn}',
+                      ].join(' · '),
+                    ),
+                    secondary: PopupMenuButton<String>(
+                      onSelected: (action) async {
+                        if (action == 'edit') {
+                          await showTankEditor(context, tank: tank);
+                        } else if (action == 'parameters') {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => ParameterSettingsPage(tank: tank),
+                            ),
+                          );
+                        } else if (action == 'archive') {
+                          await _run(
+                            context,
+                            () => ref
+                                .read(tankRepositoryProvider)
+                                .archiveTank(tank.id),
+                          );
+                        }
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: Text('编辑')),
+                        PopupMenuItem(value: 'parameters', child: Text('参数')),
+                        PopupMenuItem(value: 'archive', child: Text('归档')),
+                      ],
+                    ),
+                  ),
+              ],
+              if (section == SettingsSection.all) ...[
+                const Divider(),
+                ListTile(
+                  key: const Key('open-maintenance-dosing'),
+                  leading: const Icon(Icons.opacity),
+                  title: const Text('稳定滴定'),
+                  subtitle: const Text('PO₄ / KH 每日平衡与补液'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/maintenance-dosing'),
+                ),
+                ListTile(
+                  key: const Key('open-salinity-calculator'),
+                  leading: const Icon(Icons.water_drop_outlined),
+                  title: const Text('海盐配制计算器'),
+                  subtitle: const Text('按初始比重、目标比重和水量估算海盐'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/salinity-calculator'),
+                ),
+                ListTile(
+                  title: const Text('碳酸氢钠补 KH'),
+                  subtitle: const Text('母液配制与分日计划'),
+                  leading: const Icon(Icons.science_outlined),
+                  onTap: () => context.push('/alkalinity-calculator'),
+                ),
+                ListTile(
+                  key: const Key('open-lanthanum-calculator'),
+                  leading: const Icon(Icons.science_outlined),
+                  title: const Text('PO4 氯化镧理论计划'),
+                  subtitle: const Text('母液配制与分日计划'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/lanthanum-calculator'),
+                ),
+                const Divider(),
+              ],
+              if (_shows(SettingsSection.reminders)) ...[
+                const _NotificationPermissionSection(),
+              ],
+              if (_shows(SettingsSection.data)) ...[
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('导出完整数据备份'),
+                  subtitle: const Text('保存本机全部数据，不含检测照片'),
+                  onTap: () async {
+                    try {
+                      final report = await ref
+                          .read(completeBackupServiceProvider)
+                          .exportToPrivateFile();
+                      final status = await ref
+                          .read(backupTransferGatewayProvider)
+                          .shareCompleteBackup(report.file);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _shareResultMessage(
+                                status,
+                                success: '完整数据备份已交给系统分享面板',
+                                privatePath: report.file.path,
+                              ),
                             ),
                           ),
-                        ),
-                      );
+                        );
+                      }
+                    } catch (error) {
+                      if (context.mounted) _showError(context, error);
                     }
-                  } catch (error) {
-                    if (context.mounted) _showError(context, error);
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.restore),
-                title: const Text('导入完整数据备份'),
-                subtitle: const Text('以备份替换本机数据'),
-                onTap: () => _pickAndConfirmRestore(context, ref),
-              ),
-              ListTile(
-                leading: const Icon(Icons.table_view_outlined),
-                title: const Text('导出当前海缸检测记录 CSV'),
-                subtitle: Text(
-                  currentTank == null ? '请先选择海缸' : currentTank.name,
+                  },
                 ),
-                onTap: currentTank == null
-                    ? null
-                    : () => _exportCsv(context, ref, currentTank.id),
-              ),
-              ListTile(
-                key: const Key('privacy-and-limits'),
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('隐私与已知限制'),
-                subtitle: const Text('本地数据与权限'),
-                onTap: () => context.push('/privacy-and-limits'),
-              ),
-              const Divider(),
-              SwitchListTile(
-                secondary: const Icon(Icons.dark_mode_outlined),
-                title: const Text('深色模式'),
-                value: ref.watch(themeModeProvider).value == ThemeMode.dark,
-                onChanged: (enabled) => _run(context, () async {
-                  await ref
-                      .read(tankRepositoryProvider)
-                      .setThemeMode(enabled ? 'dark' : 'light');
-                  ref.invalidate(themeModeProvider);
-                }),
-              ),
+                ListTile(
+                  leading: const Icon(Icons.restore),
+                  title: const Text('导入完整数据备份'),
+                  subtitle: const Text('以备份替换本机数据'),
+                  onTap: () => _pickAndConfirmRestore(context, ref),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.table_view_outlined),
+                  title: const Text('导出当前海缸检测记录 CSV'),
+                  subtitle: Text(
+                    currentTank == null ? '请先选择海缸' : currentTank.name,
+                  ),
+                  onTap: currentTank == null
+                      ? null
+                      : () => _exportCsv(context, ref, currentTank.id),
+                ),
+                ListTile(
+                  key: const Key('privacy-and-limits'),
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('隐私与已知限制'),
+                  subtitle: const Text('本地数据与权限'),
+                  onTap: () => context.push('/privacy-and-limits'),
+                ),
+                const Divider(),
+                SwitchListTile(
+                  secondary: const Icon(Icons.dark_mode_outlined),
+                  title: const Text('深色模式'),
+                  value: ref.watch(themeModeProvider).value == ThemeMode.dark,
+                  onChanged: (enabled) => _run(context, () async {
+                    await ref
+                        .read(tankRepositoryProvider)
+                        .setThemeMode(enabled ? 'dark' : 'light');
+                    ref.invalidate(themeModeProvider);
+                  }),
+                ),
+              ],
             ],
           ),
         ),

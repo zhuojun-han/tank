@@ -112,12 +112,14 @@ class DatabaseRecordHistory extends ConsumerStatefulWidget {
     required this.onOpen,
     this.rowBuilder,
     this.title = '检测记录',
+    this.headerTrailing,
   });
   final RecordHistoryScope scope;
   final RecordHistoryOverview overview;
   final ValueChanged<TestRecord> onOpen;
   final Widget Function(TestRecord)? rowBuilder;
   final String title;
+  final Widget? headerTrailing;
   @override
   ConsumerState<DatabaseRecordHistory> createState() =>
       _DatabaseRecordHistoryState();
@@ -182,6 +184,7 @@ class _DatabaseRecordHistoryState extends ConsumerState<DatabaseRecordHistory> {
         onOpen: widget.onOpen,
         rowBuilder: widget.rowBuilder,
         title: widget.title,
+        headerTrailing: widget.headerTrailing,
         onLoadMore: () {
           _load();
           setState(() {});

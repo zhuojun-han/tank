@@ -192,7 +192,7 @@ try {
     await form.current.fill('0.08');
     await form.submit();
     assert.equal(await form.target.evaluate(input => input.validity.rangeUnderflow), true);
-    await expect(form.sheet.getByText('✓ 已加入任务日历', { exact: true })).toHaveCount(0);
+    await expect(form.sheet.getByRole('button', { name: '配置滴定液', exact: true })).toHaveCount(0);
     await s.close();
     assert.deepEqual((await s.read()).records, before.records);
     assert.deepEqual((await s.read()).tasks, before.tasks);

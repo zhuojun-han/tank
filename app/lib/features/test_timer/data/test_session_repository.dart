@@ -74,6 +74,38 @@ class TestSessionRepository {
         );
   }
 
+  /// Changes only an unstarted/reset draft. Persist the next-test default in
+  /// the same transaction; a stale UI cannot alter a running timer deadline.
+  Future<void> setPreparationDurationSeconds({
+    required String tankId,
+    required String sessionId,
+    required int durationSeconds,
+  }) async {
+    TestTimerSnapshot.validateDuration(durationSeconds);
+    await _database.transaction(() async {
+      final session = await _requireDraft(tankId: tankId, sessionId: sessionId);
+      final changed =
+          await (_database.update(_database.activeTestSessions)..where(
+                (row) =>
+                    row.id.equals(sessionId) &
+                    row.tankId.equals(tankId) &
+                    row.stage.equals(ActiveTestStage.preparation.name),
+              ))
+              .write(
+                ActiveTestSessionsCompanion(
+                  timerDurationSeconds: Value(durationSeconds),
+                  updatedAt: Value(_utcNow()),
+                ),
+              );
+      if (changed != 1) throw StateError('计时已开始，请先重置再修改时长。');
+      await setDefaultDurationSeconds(
+        tankId: tankId,
+        parameterId: session.parameterId,
+        durationSeconds: durationSeconds,
+      );
+    });
+  }
+
   Stream<ActiveTestSession?> watchDraft({
     required String tankId,
     required String parameterId,

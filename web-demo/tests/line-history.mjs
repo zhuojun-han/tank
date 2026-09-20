@@ -10,9 +10,10 @@ const count=await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('re
 assert.ok(count>6);const rangeCount=await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('reef-demo-state-v10'));return s.records.filter(r=>r.tankId===s.tankId&&r.parameterId==='no3'&&r.low!==r.high).length;});
 assert.equal(await page.getByTestId('range-mark').count(),rangeCount);
 const dims=await scroll.evaluate(el=>({left:el.scrollLeft,max:el.scrollWidth-el.clientWidth,ratio:el.scrollWidth/el.clientWidth}));assert.ok(dims.max>0);assert.ok(Math.abs(dims.left-dims.max)<3);assert.ok(Math.abs(dims.ratio-count/5)<.05);
-assert.ok(await page.getByTestId('missing-interpolation').count()>0);
+assert.equal(await page.getByText(/未填插值|未填写/).count(),0);
 // Missing records retain both endpoint labels and are skipped by connecting valid points.
-const gaps=await page.getByTestId('missing-interpolation').locator('text').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('x'))));
+const gaps=await scroll.locator('g[data-record-id]').evaluateAll(nodes=>nodes.filter(n=>!n.querySelector('circle')).map(n=>Number(n.lastElementChild.getAttribute('x'))));
+assert.ok(gaps.length>0);
 const segments=await scroll.locator('line').evaluateAll(nodes=>nodes.map(n=>[Number(n.getAttribute('x1')),Number(n.getAttribute('x2'))]));
 const pointXs=await page.getByTestId('interpolation-point').evaluateAll(nodes=>nodes.map(n=>Number(n.getAttribute('cx'))));
 assert.deepEqual(segments,pointXs.slice(1).map((x,i)=>[pointXs[i],x]));

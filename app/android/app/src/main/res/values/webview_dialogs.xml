@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Match the shared website palette; scoped to LocalWebView only. -->
+    <style name="LanjiaoWebTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#176F69</item>
+        <item name="android:colorControlActivated">#176F69</item>
+        <item name="android:colorControlNormal">#71898B</item>
+        <item name="android:colorBackground">#F6FAF8</item>
+        <item name="android:textColorPrimary">#153B40</item>
+        <item name="android:textColorSecondary">#71898B</item>
+        <item name="android:alertDialogTheme">@style/LanjiaoWebDialog</item>
+        <item name="android:datePickerDialogTheme">@style/LanjiaoWebDialog</item>
+        <item name="android:timePickerDialogTheme">@style/LanjiaoWebDialog</item>
+        <item name="android:datePickerStyle">@style/LanjiaoWebDatePicker</item>
+        <item name="android:timePickerStyle">@style/LanjiaoWebTimePicker</item>
+    </style>
+
+    <style name="LanjiaoWebDialog" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/webview_dialog_background</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+        <item name="android:windowMinWidthMajor">60%</item>
+        <item name="android:windowElevation">12dp</item>
+        <item name="android:colorAccent">#176F69</item>
+        <item name="android:colorControlActivated">#176F69</item>
+        <item name="android:colorControlNormal">#71898B</item>
+        <item name="android:colorBackground">#F6FAF8</item>
+        <item name="android:colorBackgroundFloating">#F6FAF8</item>
+        <item name="android:textColorPrimary">#153B40</item>
+        <item name="android:textColorSecondary">#71898B</item>
+        <item name="android:buttonBarButtonStyle">@style/LanjiaoWebDialogButton</item>
+        <item name="android:datePickerStyle">@style/LanjiaoWebDatePicker</item>
+        <item name="android:timePickerStyle">@style/LanjiaoWebTimePicker</item>
+    </style>
+
+    <style name="LanjiaoWebDialogButton" parent="android:style/Widget.Material.Light.Button.Borderless">
+        <item name="android:textColor">#176F69</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="LanjiaoWebDatePicker" parent="android:style/Widget.Material.Light.DatePicker">
+        <item name="android:headerBackground">@drawable/webview_picker_header</item>
+    </style>
+
+    <style name="LanjiaoWebTimePicker" parent="android:style/Widget.Material.Light.TimePicker">
+        <item name="android:headerBackground">@drawable/webview_picker_header</item>
+        <item name="android:numbersSelectorColor">#176F69</item>
+        <item name="android:numbersBackgroundColor">#E6F3EF</item>
+    </style>
+</resources>
