@@ -27,3 +27,9 @@
 - 网页：在 `web-demo/` 按 [Web README](web-demo/README.md) 安装依赖、启动和验证。
 - App：在 `app/` 按 [App README](app/README.md) 运行 Flutter；Windows 环境处理也在该处维护。
 - 整理前的文档和逐批实证保存在 [归档索引](docs/archive/2026-09-08-before-workflow-cleanup/INDEX.md) 与 `docs/coordination/`；不删除旧用户决策、数据兼容要求或验证证据。
+
+## 开源许可
+
+本项目原创代码及随附文档采用 [MIT 许可证](LICENSE)，允许使用、修改、分发和商用，须保留版权与许可声明。
+
+第三方依赖遵循各自许可证。图像素材、原始照片、试剂色卡及设计参考图不在本项目 MIT 授权范围内；使用或再分发这些内容前，须另行确认原权利人的许可。素材来源保留在各自的设计记录和样本清单中。
